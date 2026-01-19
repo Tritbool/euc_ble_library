@@ -1,0 +1,29 @@
+plugins {
+    kotlin("jvm") version "1.9.0"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Core dependencies
+    implementation(kotlin("stdlib"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    
+    // Test dependencies
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}

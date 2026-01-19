@@ -1,0 +1,21 @@
+# WheelLog RAW File - Gotway/Begode BLE Frames
+# Format: timestamp,raw_hex_data,voltage,speed,distance,current,temperature,battery,status,motor_temp
+# This is a sample format - actual WheelLog format may differ
+#
+# timestamp: Unix timestamp in milliseconds
+# raw_hex_data: Raw BLE frame in hex format (space-separated bytes)
+# voltage: Expected voltage in volts
+# speed: Expected speed in km/h
+# distance: Expected distance in km
+# current: Expected current in amps
+# temperature: Expected temperature in °C
+# battery: Expected battery percentage
+# status: Status flags (bitmask)
+# motor_temp: Motor temperature in °C (if available)
+
+1712345678000,A5 5A 01 64 01 2C 01 40 42 0F 00 E8 03 14 00 64 01 1E 00,67.2,30.0,1000.0,100.0,20.0,100,1,30.0
+1712345678100,A5 5A 01 50 01 28 01 41 42 0F 00 E0 03 15 00 63 01 1F 00,66.8,28.0,1000.1,96.0,21.0,99,1,31.0
+1712345678200,A5 5A 01 4C 01 25 01 42 42 0F 00 D8 03 16 00 62 01 20 00,66.4,25.0,1000.2,92.0,22.0,98,1,32.0
+
+# Note: This is just a sample format to illustrate how we could integrate real data
+# The actual WheelLog RAW format may be different and would need to be adapted

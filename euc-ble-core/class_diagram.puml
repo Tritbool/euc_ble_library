@@ -1,0 +1,250 @@
+@startuml
+skinparam monochrome true
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+
+title EUC BLE Core Library - Class Diagram
+
+' Core Components
+class BLEManager {
+    + initialize()
+    + startScan()
+    + stopScan()
+    + connect(device: EUCDevice)
+    + disconnect()
+    + sendCommand(command: ByteArray, uuid: UUID)
+    + registerProtocol(protocol: EUCProtocol)
+    + setScanCallback(callback: ScanCallback)
+    + setConnectionCallback(callback: ConnectionCallback)
+    + setDataCallback(callback: DataCallback)
+    + setErrorCallback(callback: ErrorCallback)
+}
+
+class BLEConstants {
+    {static} KINGSONG_SERVICE_UUID
+    {static} GOTWAY_SERVICE_UUID
+    {static} INMOTION_SERVICE_UUID
+    {static} NINEBOT_SERVICE_UUID
+    {static} VETERAN_SERVICE_UUID
+    {static} DEFAULT_SCAN_TIMEOUT_MS
+    {static} DEFAULT_CONNECTION_TIMEOUT_MS
+    {static} MAX_MTU_SIZE
+    {static} toUUID(string: String): UUID
+}
+
+class ByteUtils {
+    {static} bytesToHex(bytes: ByteArray): String
+    {static} hexToBytes(hexString: String): ByteArray
+    {static} getUnsignedByte(data: ByteArray, offset: Int): Int
+    {static} getUnsignedShortLE(data: ByteArray, offset: Int): Int
+    {static} getUnsignedShortBE(data: ByteArray, offset: Int): Int
+    {static} calculateChecksum(data: ByteArray, offset: Int, length: Int): Byte
+    {static} startsWith(data: ByteArray, pattern: ByteArray): Boolean
+}
+
+interface Logger {
+    + verbose(tag: String, message: String)
+    + debug(tag: String, message: String)
+    + info(tag: String, message: String)
+    + warn(tag: String, message: String)
+    + error(tag: String, message: String)
+    + error(tag: String, message: String, throwable: Throwable)
+}
+
+class AndroidLogger {
+    + verbose(tag: String, message: String)
+    + debug(tag: String, message: String)
+    + info(tag: String, message: String)
+    + warn(tag: String, message: String)
+    + error(tag: String, message: String)
+    + error(tag: String, message: String, throwable: Throwable)
+}
+
+class NoOpLogger {
+    + verbose(tag: String, message: String)
+    + debug(tag: String, message: String)
+    + info(tag: String, message: String)
+    + warn(tag: String, message: String)
+    + error(tag: String, message: String)
+    + error(tag: String, message: String, throwable: Throwable)
+}
+
+' Data Models
+class EUCDevice {
+    + bluetoothDevice: BluetoothDevice
+    + name: String
+    + address: String
+    + manufacturerId: Int
+    + manufacturerData: ByteArray?
+    + rssi: Int
+    + timestamp: Long
+    + isSameDevice(other: EUCDevice?): Boolean
+}
+
+class EUCData {
+    + speed: Double
+    + voltage: Double
+    + current: Double
+    + temperature: Double
+    + batteryLevel: Int
+    + distance: Double
+    + power: Double
+    + timestamp: Long
+    + rawData: ByteArray
+    + manufacturer: String
+    + model: String
+    + serialNumber: String?
+    + firmwareVersion: String?
+    + isCharging: Boolean
+    + rideTime: Long
+    + cellVoltages: List<Double>?
+}
+
+' Protocol Interface
+interface EUCProtocol {
+    + manufacturer: String
+    + supportedModels: List<String>
+    + canHandle(device: EUCDevice): Boolean
+    + decode(data: ByteArray): EUCData?
+    + createCommand(commandType: CommandType, value: Any): ByteArray
+    + getServiceUUID(): UUID
+    + getDataCharacteristicUUID(): UUID
+    + isDeviceReady(data: EUCData): Boolean
+}
+
+class KingsongProtocol {
+    + manufacturer: String
+    + supportedModels: List<String>
+    + canHandle(device: EUCDevice): Boolean
+    + decode(data: ByteArray): EUCData?
+    + createCommand(commandType: CommandType, value: Any): ByteArray
+    + getServiceUUID(): UUID
+    + getDataCharacteristicUUID(): UUID
+    + isDeviceReady(data: EUCData): Boolean
+}
+
+class GotwayProtocol {
+    + manufacturer: String
+    + supportedModels: List<String>
+    + canHandle(device: EUCDevice): Boolean
+    + decode(data: ByteArray): EUCData?
+    + createCommand(commandType: CommandType, value: Any): ByteArray
+    + getServiceUUID(): UUID
+    + getDataCharacteristicUUID(): UUID
+    + isDeviceReady(data: EUCData): Boolean
+}
+
+' Callbacks
+interface ScanCallback {
+    + onScanStarted()
+    + onDeviceDiscovered(device: EUCDevice)
+    + onScanCompleted(devices: List<EUCDevice>)
+}
+
+interface ConnectionCallback {
+    + onConnected()
+    + onDisconnected()
+    + onConnectionFailed(error: BLEException)
+    + onServicesDiscovered(services: List<BluetoothGattService>)
+    + onMtuChanged(mtu: Int)
+}
+
+interface DataCallback {
+    + onDataReceived(data: EUCData)
+}
+
+interface ErrorCallback {
+    + onError(error: BLEException)
+}
+
+' Exceptions
+class BLEException {
+    + errorType: ErrorType
+    + message: String
+}
+
+enum ErrorType {
+    BLUETOOTH_DISABLED
+    BLUETOOTH_NOT_SUPPORTED
+    SCAN_FAILED
+    CONNECTION_FAILED
+    CONNECTION_TIMEOUT
+    SERVICE_DISCOVERY_FAILED
+    CHARACTERISTIC_NOT_FOUND
+    DATA_DECODING_FAILED
+    COMMAND_FAILED
+    MTU_NEGOTIATION_FAILED
+    DEVICE_NOT_SUPPORTED
+    UNKNOWN
+}
+
+enum CommandType {
+    LIGHT_ON
+    LIGHT_OFF
+    LIGHT_BRIGHTNESS
+    SPEAKER_VOLUME
+    BEEP
+    POWER_OFF
+    LOCK
+    UNLOCK
+    SET_SPEED_LIMIT
+    SET_ALARM_SPEED
+    CALIBRATE
+    REQUEST_SERIAL
+    REQUEST_FIRMWARE
+    REQUEST_BATTERY_INFO
+    CUSTOM
+}
+
+' Relationships
+BLEManager ..> BLEConstants : uses
+BLEManager ..> ByteUtils : uses
+BLEManager ..> Logger : uses
+BLEManager ..> EUCDevice : creates
+BLEManager ..> EUCData : creates
+BLEManager ..> BLEException : throws
+
+BLEManager o-- EUCProtocol : manages
+EUCProtocol <|-- KingsongProtocol
+EUCProtocol <|-- GotwayProtocol
+
+BLEManager ..> ScanCallback : implements
+BLEManager ..> ConnectionCallback : implements
+BLEManager ..> DataCallback : implements
+BLEManager ..> ErrorCallback : implements
+
+EUCProtocol ..> EUCData : creates
+EUCProtocol ..> EUCDevice : validates
+
+' Android System Classes
+class BluetoothAdapter
+class BluetoothGatt
+class BluetoothGattService
+class BluetoothGattCharacteristic
+
+BLEManager ..> BluetoothAdapter : uses
+BLEManager ..> BluetoothGatt : manages
+BluetoothGatt ..> BluetoothGattService : contains
+BluetoothGattService ..> BluetoothGattCharacteristic : contains
+
+' Styling
+skinparam class {
+    BackgroundColor<<Interface>> #AAAAFF
+    BackgroundColor<<Exception>> #FFAAAA
+    BackgroundColor<<DataModel>> #AAFFAA
+    BackgroundColor<<Enum>> #FFFFAA
+}
+
+EUCProtocol <<Interface>>
+Logger <<Interface>>
+ScanCallback <<Interface>>
+ConnectionCallback <<Interface>>
+DataCallback <<Interface>>
+ErrorCallback <<Interface>>
+
+EUCDevice <<DataModel>>
+EUCData <<DataModel>>
+
+ErrorType <<Enum>>
+CommandType <<Enum>>
+@enduml

@@ -1,0 +1,97 @@
+@startuml EUC_BLE_Sequence_Diagram
+
+skinparam monochrome true
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+
+title EUC BLE Core Library - Typical Usage Sequence
+
+actor User
+participant "MainActivity" as activity
+participant "BLEManager" as bleManager
+participant "KingsongProtocol" as protocol
+participant "BluetoothGatt" as gatt
+participant "BluetoothDevice" as device
+
+' Initialize
+User -> activity: Launch App
+activity -> bleManager: createInstance()
+activity -> bleManager: initialize()
+bleManager -> bleManager: setupBluetoothAdapter()
+activity -> bleManager: registerProtocol(protocol)
+
+' Start Scan
+User -> activity: Click "Scan"
+activity -> bleManager: startScan()
+bleManager -> bleManager: clearDiscoveredDevices()
+bleManager -> gatt: startBleScan()
+
+' Device Discovery
+loop Scan Results
+gatt -> bleManager: onScanResult(device)
+bleManager -> protocol: canHandle(device)
+protocol --> bleManager: true/false
+alt Supported Device
+    bleManager -> activity: onDeviceDiscovered(device)
+    activity -> activity: updateDeviceList()
+else Unsupported
+    bleManager -> bleManager: ignoreDevice()
+end
+end
+
+' Connect to Device
+User -> activity: Select Device
+activity -> bleManager: connect(selectedDevice)
+bleManager -> device: connectGatt()
+bleManager -> bleManager: setConnectionState(CONNECTING)
+activity -> activity: showConnectingUI()
+
+' Connection Established
+device -> bleManager: onConnectionStateChange(CONNECTED)
+bleManager -> bleManager: setConnectionState(CONNECTED)
+bleManager -> gatt: discoverServices()
+bleManager -> activity: onConnected()
+activity -> activity: showConnectedUI()
+
+' Services Discovered
+gatt -> bleManager: onServicesDiscovered()
+bleManager -> protocol: getDataCharacteristicUUID()
+protocol --> bleManager: characteristicUUID
+bleManager -> gatt: enableNotifications(characteristicUUID)
+bleManager -> activity: onServicesDiscovered()
+
+' Data Streaming
+gatt -> bleManager: onCharacteristicChanged(data)
+bleManager -> protocol: decode(data)
+protocol -> protocol: parseData()
+protocol -> protocol: validateChecksum()
+protocol --> bleManager: EUCData
+bleManager -> activity: onDataReceived(EUCData)
+activity -> activity: updateDashboard()
+
+' Send Command
+User -> activity: Toggle Light
+activity -> protocol: createCommand(LIGHT_ON)
+protocol --> activity: commandBytes
+activity -> bleManager: sendCommand(commandBytes)
+bleManager -> gatt: writeCharacteristic(commandBytes)
+
+' Disconnect
+gatt -> bleManager: onCharacteristicWrite(status)
+bleManager -> activity: onCommandSent(status)
+
+' Error Handling
+User -> activity: Disconnect
+activity -> bleManager: disconnect()
+bleManager -> gatt: disconnect()
+bleManager -> gatt: close()
+bleManager -> bleManager: cleanup()
+bleManager -> activity: onDisconnected()
+activity -> activity: showDisconnectedUI()
+
+' Alternative Error Flow
+[-> bleManager: onError(BLEException)
+bleManager -> activity: onError(error)
+activity -> activity: showErrorMessage()
+
+@enduml

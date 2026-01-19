@@ -1,0 +1,110 @@
+@startuml
+skinparam monochrome true
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+
+title EUC BLE Core Library Architecture
+
+package "EUC BLE Core Library" {
+    package "Core Components" {
+        [BLEManager] as bleManager
+        [BLEConstants] as bleConstants
+        [ByteUtils] as byteUtils
+        [Logger] as logger
+    }
+    
+    package "Data Models" {
+        [EUCDevice] as eucDevice
+        [EUCData] as eucData
+    }
+    
+    package "Protocols" {
+        interface EUCProtocol
+        [KingsongProtocol] as kingsongProtocol
+        [GotwayProtocol] as gotwayProtocol
+        [InMotionProtocol] as inmotionProtocol
+        [NinebotProtocol] as ninebotProtocol
+        [VeteranProtocol] as veteranProtocol
+    }
+    
+    package "Exceptions" {
+        [BLEException] as bleException
+    }
+    
+    package "Callbacks" {
+        interface ScanCallback
+        interface ConnectionCallback
+        interface DataCallback
+        interface ErrorCallback
+    }
+}
+
+package "Android App" {
+    [MainActivity] as mainActivity
+    [ViewModel] as viewModel
+    [UIComponents] as uiComponents
+}
+
+package "Android System" {
+    [BluetoothAdapter] as bluetoothAdapter
+    [BluetoothGatt] as bluetoothGatt
+    [BluetoothGattService] as bluetoothService
+    [BluetoothGattCharacteristic] as bluetoothCharacteristic
+}
+
+' Relationships
+bleManager --> bleConstants : uses
+bleManager --> byteUtils : uses
+bleManager --> logger : uses
+bleManager --> eucDevice : creates
+bleManager --> eucData : creates
+bleManager --> bleException : throws
+
+bleManager --> EUCProtocol : manages
+EUCProtocol <|-- kingsongProtocol
+EUCProtocol <|-- gotwayProtocol
+EUCProtocol <|-- inmotionProtocol
+EUCProtocol <|-- ninebotProtocol
+EUCProtocol <|-- veteranProtocol
+
+bleManager --> ScanCallback : implements
+bleManager --> ConnectionCallback : implements
+bleManager --> DataCallback : implements
+bleManager --> ErrorCallback : implements
+
+mainActivity --> bleManager : uses
+viewModel --> bleManager : uses
+uiComponents --> viewModel : binds to
+
+bleManager --> bluetoothAdapter : uses
+bleManager --> bluetoothGatt : manages
+bluetoothGatt --> bluetoothService : contains
+bluetoothService --> bluetoothCharacteristic : contains
+
+' Protocol relationships
+kingsongProtocol --> eucData : creates
+kingsongProtocol --> eucDevice : validates
+gotwayProtocol --> eucData : creates
+gotwayProtocol --> eucDevice : validates
+inmotionProtocol --> eucData : creates
+inmotionProtocol --> eucDevice : validates
+
+' Data flow
+note right of bleManager
+    <b>Data Flow:</b>
+    1. Scan for devices
+    2. Connect to device
+    3. Discover services
+    4. Enable notifications
+    5. Receive data
+    6. Decode with protocol
+    7. Deliver to callbacks
+end note
+
+' Color coding
+skinparam class {
+    BackgroundColor<<Interface>> #AAAAFF
+    BackgroundColor<<Exception>> #FFAAAA
+    BackgroundColor<<DataModel>> #AAFFAA
+}
+@enduml
