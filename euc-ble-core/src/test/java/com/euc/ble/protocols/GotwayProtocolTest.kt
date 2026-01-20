@@ -3,6 +3,7 @@ package com.euc.ble.protocols
 import com.euc.ble.models.EUCDevice
 import com.euc.ble.models.EUCData
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -12,41 +13,39 @@ class GotwayProtocolTest {
 
     private val protocol = GotwayProtocol()
 
+    @Before
+    fun setUp() {
+        // Initialize mock BLE environment for testing
+        MockBLEUtils.createMockProtocolTestEnvironment()
+    }
+
     @Test
     fun testCanHandle() {
         // Test Gotway device by manufacturer ID
-        val gotwayDevice = EUCDevice(
+        val gotwayDevice = MockBLEUtils.createMockDevice(
             name = "Gotway MSX",
-            address = "00:11:22:33:44:55",
-            manufacturerId = 0x0047,
-            rssi = -50
+            manufacturerId = 0x0047
         )
         assertTrue(protocol.canHandle(gotwayDevice))
 
         // Test Gotway device by name pattern
-        val gotwayByName = EUCDevice(
+        val gotwayByName = MockBLEUtils.createMockDevice(
             name = "Begode Master",
-            address = "00:11:22:33:44:56",
-            manufacturerId = 0x0000,
-            rssi = -60
+            manufacturerId = 0x0000
         )
         assertTrue(protocol.canHandle(gotwayByName))
 
         // Test non-Gotway device
-        val nonGotway = EUCDevice(
+        val nonGotway = MockBLEUtils.createMockDevice(
             name = "KingSong S18",
-            address = "00:11:22:33:44:57",
-            manufacturerId = 0x004E,
-            rssi = -70
+            manufacturerId = 0x004E
         )
         assertFalse(protocol.canHandle(nonGotway))
 
         // Test device with Mten pattern
-        val mtenDevice = EUCDevice(
+        val mtenDevice = MockBLEUtils.createMockDevice(
             name = "Mten3",
-            address = "00:11:22:33:44:58",
-            manufacturerId = 0x0000,
-            rssi = -55
+            manufacturerId = 0x0000
         )
         assertTrue(protocol.canHandle(mtenDevice))
 
@@ -280,23 +279,11 @@ class GotwayProtocolTest {
     @Test
     fun testIsDeviceReady() {
         // Test ready device
-        val readyData = EUCData(
+        val readyData = MockBLEUtils.createMockEUCData(
             speed = 5.0,
             voltage = 67.2,
-            current = 2.5,
-            temperature = 25.0,
-            batteryLevel = 80,
-            distance = 10.5,
-            power = 168.0,
-            timestamp = System.currentTimeMillis(),
-            rawData = byteArrayOf(),
             manufacturer = "Gotway",
             model = "MSX",
-            serialNumber = null,
-            firmwareVersion = null,
-            isCharging = false,
-            rideTime = 0,
-            cellVoltages = null,
             motorTemperature = null
         )
         assertTrue(protocol.isDeviceReady(readyData))

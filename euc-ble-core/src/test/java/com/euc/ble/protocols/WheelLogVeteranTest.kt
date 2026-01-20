@@ -8,31 +8,31 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * Test class for validating Ninebot protocol implementation using real WheelLog RAW data
- * Uses actual BLE frames captured from Ninebot wheels
- * Note: Currently uses Kingsong CSV files as examples until Ninebot CSV files are available
+ * Test class for validating Veteran protocol implementation using real WheelLog RAW data
+ * Uses actual BLE frames captured from Veteran wheels (Sherman, Lynx, etc.)
+ * Note: Currently uses Kingsong CSV files as examples until Veteran CSV files are available
  */
-class WheelLogNinebotTest {
+class WheelLogVeteranTest {
 
-    private val protocol = NinebotProtocol()
-    // TODO: Update this path when Ninebot CSV files are available
+    private val protocol = VeteranProtocol()
+    // TODO: Update this path when Veteran CSV files are available
     private val testDataPath = "/ble_frames/kingsong/RAW_WHEELLOG/" // Using Kingsong as example for now
 
     /**
-     * Test parsing and decoding a small sample of real Ninebot frames
+     * Test parsing and decoding a small sample of real Veteran frames
      * Currently uses Kingsong frames as examples
      */
     @Test
-    fun testRealNinebotFramesDecoding() {
-        // TODO: Update this to use actual Ninebot CSV files when available
-        val frames = loadNinebotFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 50)
+    fun testRealVeteranFramesDecoding() {
+        // TODO: Update this to use actual Veteran CSV files when available
+        val frames = loadVeteranFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 50)
         
         assertTrue("Should load some frames", frames.isNotEmpty())
         
         // Test that all frames have reasonable structure
         frames.forEach { frame ->
             assertTrue("Frame should have reasonable size", 
-                frame.bleData.size >= 20) // Minimum expected size for Ninebot frames
+                frame.bleData.size >= 50) // Minimum expected size for Veteran frames
         }
         
         // Test decoding a subset of frames
@@ -45,13 +45,13 @@ class WheelLogNinebotTest {
                 successfulDecodes++
                 
                 // Validate basic properties
-                assertEquals("Manufacturer should be Ninebot", "Ninebot", decoded.manufacturer)
+                assertEquals("Manufacturer should be Veteran", "Veteran", decoded.manufacturer)
                 assertNotNull("Raw data should be preserved", decoded.rawData)
                 assertTrue("Timestamp should be set", decoded.timestamp > 0)
                 
-                // Validate reasonable ranges for Ninebot wheels
-                assertTrue("Voltage should be reasonable", decoded.voltage in 40.0..100.0)
-                assertTrue("Speed should be reasonable", decoded.speed in 0.0..40.0)
+                // Validate reasonable ranges for Veteran wheels
+                assertTrue("Voltage should be reasonable", decoded.voltage in 60.0..120.0)
+                assertTrue("Speed should be reasonable", decoded.speed in 0.0..80.0)
                 assertTrue("Battery should be reasonable", decoded.batteryLevel in 0..100)
                 
             } else {
@@ -63,17 +63,17 @@ class WheelLogNinebotTest {
         println("Success rate: ${(successfulDecodes * 100.0 / frames.size).toInt()}%")
         
         // Note: Success rate may be lower when using Kingsong frames as examples
-        // Once actual Ninebot frames are available, this should be higher
-        println("Note: Using Kingsong frames as examples - success rate will improve with actual Ninebot data")
+        // Once actual Veteran frames are available, this should be higher
+        println("Note: Using Kingsong frames as examples - success rate will improve with actual Veteran data")
     }
 
     /**
      * Test protocol consistency across a sequence of real frames
      */
     @Test
-    fun testRealNinebotFramesConsistency() {
-        // TODO: Update this to use actual Ninebot CSV files when available
-        val frames = loadNinebotFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 100)
+    fun testRealVeteranFramesConsistency() {
+        // TODO: Update this to use actual Veteran CSV files when available
+        val frames = loadVeteranFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 100)
         
         assertTrue("Need multiple frames for consistency test", frames.size >= 10)
         
@@ -96,12 +96,12 @@ class WheelLogNinebotTest {
                 // Speed changes should be reasonable (not instant large jumps)
                 val speedDiff = kotlin.math.abs(curr.speed - prev.speed)
                 assertTrue("Speed change should be reasonable: $speedDiff km/h", 
-                    speedDiff < 10.0) // Less than 10 km/h change between frames
+                    speedDiff < 15.0) // Less than 15 km/h change between frames for high-performance wheels
                 
                 // Voltage changes should be gradual
                 val voltageDiff = kotlin.math.abs(curr.voltage - prev.voltage)
                 assertTrue("Voltage change should be reasonable: $voltageDiff V", 
-                    voltageDiff < 5.0) // Less than 5V change between frames
+                    voltageDiff < 10.0) // Less than 10V change between frames
                 
                 // Distance should be non-decreasing
                 assertTrue("Distance should not decrease", 
@@ -118,9 +118,9 @@ class WheelLogNinebotTest {
      * Test decoding performance with a larger dataset
      */
     @Test
-    fun testRealNinebotDecodingPerformance() {
-        // TODO: Update this to use actual Ninebot CSV files when available
-        val frames = loadNinebotFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
+    fun testRealVeteranDecodingPerformance() {
+        // TODO: Update this to use actual Veteran CSV files when available
+        val frames = loadVeteranFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
         
         assertTrue("Should load many frames for performance test", frames.size >= 500)
         
@@ -144,7 +144,7 @@ class WheelLogNinebotTest {
         println("Time taken: ${durationMs}ms")
         
         // Performance should be reasonable even with Kingsong frames
-        assertTrue("Should decode at reasonable speed", framesPerSecond > 1000)
+        assertTrue("Should decode at reasonable speed", framesPerSecond > 500)
         
         println("Note: Performance test using Kingsong frames as examples")
     }
@@ -153,8 +153,8 @@ class WheelLogNinebotTest {
      * Test edge cases found in real data
      */
     @Test
-    fun testRealNinebotEdgeCases() {
-        // TODO: Update this to use actual Ninebot CSV files when available
+    fun testRealVeteranEdgeCases() {
+        // TODO: Update this to use actual Veteran CSV files when available
         val testFiles = listOf(
             "RAW_2023_08_19_18_34_07.csv",
             "RAW_2023_08_25_15_02_03.csv",
@@ -166,7 +166,7 @@ class WheelLogNinebotTest {
         var edgeCasesFound = 0
         
         testFiles.forEach { filename ->
-            val frames = loadNinebotFrames("$testDataPath/$filename", maxFrames = 200)
+            val frames = loadVeteranFrames("$testDataPath/$filename", maxFrames = 200)
             totalFrames += frames.size
             
             frames.forEach { frame ->
@@ -194,9 +194,9 @@ class WheelLogNinebotTest {
      * Test specific known frame patterns
      */
     @Test
-    fun testKnownNinebotFramePatterns() {
-        // TODO: Update this to use actual Ninebot CSV files when available
-        val frames = loadNinebotFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv")
+    fun testKnownVeteranFramePatterns() {
+        // TODO: Update this to use actual Veteran CSV files when available
+        val frames = loadVeteranFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv")
         
         // Look for specific frame patterns we can validate
         val interestingFrames = frames.filter { frame ->
@@ -233,10 +233,42 @@ class WheelLogNinebotTest {
     }
 
     /**
-     * Load Ninebot frames from WheelLog CSV file
+     * Test BMS data parsing for Veteran wheels
+     */
+    @Test
+    fun testVeteranBMSDataParsing() {
+        // TODO: Update this to use actual Veteran CSV files when available
+        val frames = loadVeteranFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 200)
+        
+        var framesWithBMSData = 0
+        var totalCellVoltages = 0
+        
+        frames.forEach { frame ->
+            val decoded = protocol.decode(frame.bleData)
+            if (decoded != null && decoded.cellVoltages != null) {
+                framesWithBMSData++
+                totalCellVoltages += decoded.cellVoltages!!.size
+                
+                // Validate cell voltage ranges
+                decoded.cellVoltages!!.forEach { cellVoltage ->
+                    assertTrue("Cell voltage should be reasonable", cellVoltage in 2.5..4.5)
+                }
+            }
+        }
+        
+        println("Found BMS data in $framesWithBMSData frames")
+        if (framesWithBMSData > 0) {
+            println("Average cells per frame: ${totalCellVoltages / framesWithBMSData}")
+        }
+        
+        println("Note: BMS data test using Kingsong frames as examples")
+    }
+
+    /**
+     * Load Veteran frames from WheelLog CSV file
      * Currently uses Kingsong CSV format as example
      */
-    private fun loadNinebotFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
+    private fun loadVeteranFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
         
@@ -285,15 +317,15 @@ class WheelLogNinebotTest {
     }
 
     /**
-     * Check if a decoded frame represents an edge case for Ninebot
+     * Check if a decoded frame represents an edge case for Veteran
      */
     private fun isEdgeCase(data: EUCData): Boolean {
-        // Define what constitutes an edge case for Ninebot wheels
-        return data.speed > 30.0 ||           // High speed for Ninebot
-               data.voltage > 84.0 ||         // High voltage
-               data.voltage < 50.0 ||         // Low voltage
-               data.temperature > 60.0 ||     // High temperature
-               data.current > 50.0 ||          // High current
+        // Define what constitutes an edge case for Veteran wheels
+        return data.speed > 50.0 ||           // High speed for Veteran
+               data.voltage > 100.0 ||        // High voltage
+               data.voltage < 60.0 ||         // Low voltage
+               data.temperature > 80.0 ||     // High temperature
+               data.current > 100.0 ||         // High current
                data.batteryLevel < 20 ||       // Low battery
                data.isCharging                 // Charging state
     }
@@ -304,11 +336,11 @@ class WheelLogNinebotTest {
     private fun describeEdgeCase(data: EUCData): String {
         val reasons = mutableListOf<String>()
         
-        if (data.speed > 30.0) reasons.add("high speed (${data.speed} km/h)")
-        if (data.voltage > 84.0) reasons.add("high voltage (${data.voltage} V)")
-        if (data.voltage < 50.0) reasons.add("low voltage (${data.voltage} V)")
-        if (data.temperature > 60.0) reasons.add("high temp (${data.temperature} °C)")
-        if (data.current > 50.0) reasons.add("high current (${data.current} A)")
+        if (data.speed > 50.0) reasons.add("high speed (${data.speed} km/h)")
+        if (data.voltage > 100.0) reasons.add("high voltage (${data.voltage} V)")
+        if (data.voltage < 60.0) reasons.add("low voltage (${data.voltage} V)")
+        if (data.temperature > 80.0) reasons.add("high temp (${data.temperature} °C)")
+        if (data.current > 100.0) reasons.add("high current (${data.current} A)")
         if (data.batteryLevel < 20) reasons.add("low battery (${data.batteryLevel}%)")
         if (data.isCharging) reasons.add("charging state")
         
@@ -319,8 +351,9 @@ class WheelLogNinebotTest {
      * Describe a frame for reporting
      */
     private fun describeFrame(data: EUCData): String {
+        val cellInfo = if (data.cellVoltages != null) "${data.cellVoltages!!.size} cells" else "no BMS data"
         return "${data.speed.toInt()} km/h, ${data.voltage.toInt()} V, ${data.batteryLevel}% battery, " +
-               "${data.current.toInt()} A, ${data.temperature.toInt()} °C"
+               "${data.current.toInt()} A, ${data.temperature.toInt()} °C, $cellInfo"
     }
 
     /**
