@@ -5,6 +5,7 @@ import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import java.util.UUID
+import kotlin.math.absoluteValue
 
 /**
  * Veteran EUC Protocol Implementation

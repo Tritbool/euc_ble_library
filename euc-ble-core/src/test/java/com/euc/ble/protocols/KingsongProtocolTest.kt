@@ -63,10 +63,10 @@ class KingsongProtocolTest {
         // Battery: 0x64 (100%)
         val data = byteArrayOf(
             0xAA.toByte(), 0x55.toByte(), // Header
-            0x64.toByte(), 0x01.toByte(), // Voltage (36.0V)
+            0xF0.toByte(), 0x03.toByte(), // Voltage (100.8V)
             0x2C.toByte(), 0x01.toByte(), // Speed (30.0 km/h)
             0x40.toByte(), 0x42.toByte(), 0x0F.toByte(), 0x00.toByte(), // Distance (1000 km)
-            0xE8.toByte(), 0x03.toByte(), // Current (100.0A)
+            0xF4.toByte(), 0x01.toByte(), // Current (50.0A)
             0x14.toByte(), 0x00.toByte(), // Temperature (2.0°C)
             0x01.toByte(), // Status (charging)
             0x64.toByte(), // Battery (100%)
@@ -76,13 +76,13 @@ class KingsongProtocolTest {
         val result = protocol.decode(data)
 
         assertNotNull(result)
-        assertEquals(36.0, result?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(100.8, result?.voltage ?: Double.MAX_VALUE, 0.01)
         assertEquals(30.0, result?.speed ?: Double.MAX_VALUE, 0.01)
         assertEquals(1000.0, result?.distance ?: Double.MAX_VALUE, 0.01)
-        assertEquals(100.0, result?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(50.0, result?.current ?: Double.MAX_VALUE, 0.01)
         assertEquals(2.0, result?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(100, result?.batteryLevel)
-        assertEquals(3600.0, result?.power ?: Double.MAX_VALUE, 0.01) // 36.0V * 100.0A
+        assertEquals(5040.0, result?.power ?: Double.MAX_VALUE, 0.01) // 36.0V * 100.0A
         assertTrue(result?.isCharging == true)
         assertEquals("KingSong", result?.manufacturer)
     }
