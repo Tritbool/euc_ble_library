@@ -6,11 +6,11 @@ import android.bluetooth.BluetoothDevice
  * Represents an Electric Unicycle device
  */
 data class EUCDevice(
-    val bluetoothDevice: BluetoothDevice,
+    val bluetoothDevice: BluetoothDevice?=null,
     val name: String,
     val address: String,
     val manufacturerId: Int,
-    val manufacturerData: ByteArray?,
+    val manufacturerData: ByteArray?=null,
     val rssi: Int,
     val timestamp: Long = System.currentTimeMillis()
 ) {

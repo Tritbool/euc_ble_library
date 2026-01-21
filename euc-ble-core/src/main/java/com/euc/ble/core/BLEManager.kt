@@ -91,6 +91,8 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     /**
      * Start scanning for EUC devices
      */
+    @RequiresApi(Build.VERSION_CODES.M)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun startScan() {
         logger.info("BLEManager", "Starting BLE scan")
         
@@ -110,9 +112,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
         
         scanJob = coroutineScope.launch {
-            withContext(Dispatchers.IO) {
-                startBleScan()
-            }
+            withContext(Dispatchers.IO) { startBleScan() }
         }
         
         // Set timeout for scanning
@@ -125,6 +125,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     /**
      * Stop scanning for devices
      */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun stopScan() {
         scanJob?.cancel()
         bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
@@ -135,6 +136,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     /**
      * Connect to a specific device
      */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun connect(device: EUCDevice) {
         if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {
             errorCallback?.onError(BLEException("Already connecting or connected"))
@@ -146,7 +148,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
         
         connectionJob = coroutineScope.launch {
             withContext(Dispatchers.IO) {
-                connectToDevice(device.bluetoothDevice)
+                connectToDevice(device.bluetoothDevice!!)
             }
         }
         
@@ -162,6 +164,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     /**
      * Disconnect from current device
      */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun disconnect() {
         connectionJob?.cancel()
         bluetoothGatt?.disconnect()
@@ -357,7 +360,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             }
         }
     }
-    
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
         super.onServicesDiscovered(gatt, status)
         
@@ -414,7 +417,8 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             errorCallback?.onError(BLEException("MTU change failed: $status"))
         }
     }
-    
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun enableNotifications(characteristicUuid: UUID) {
         val characteristic = getCharacteristic(characteristicUuid)
         characteristic?.let { char ->
@@ -429,6 +433,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     }
     
     // Cleanup
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun cleanup() {
         disconnect()
         scanJob?.cancel()

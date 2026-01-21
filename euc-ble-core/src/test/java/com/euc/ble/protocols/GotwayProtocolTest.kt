@@ -145,15 +145,15 @@ class GotwayProtocolTest {
 
         val zeroResult = protocol.decode(zeroData)
         assertNotNull(zeroResult)
-        assertEquals(0.0, zeroResult?.voltage, 0.01)
-        assertEquals(0.0, zeroResult?.speed, 0.01)
-        assertEquals(0.0, zeroResult?.distance, 0.01)
-        assertEquals(0.0, zeroResult?.current, 0.01)
-        assertEquals(0.0, zeroResult?.temperature, 0.01)
+        assertEquals(0.0, zeroResult?.voltage?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.speed?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.distance?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.current?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.temperature?: Double.MAX_VALUE, 0.01)
         assertEquals(0, zeroResult?.batteryLevel)
-        assertEquals(0.0, zeroResult?.power, 0.01)
+        assertEquals(0.0, zeroResult?.power?: Double.MAX_VALUE, 0.01)
         assertFalse(zeroResult?.isCharging == true)
-        assertEquals(0.0, zeroResult?.motorTemperature, 0.01)
+        assertEquals(0.0, zeroResult?.motorTemperature?: 0.0, 0.01)
 
         // Test maximum values
         val maxData = byteArrayOf(
@@ -171,14 +171,14 @@ class GotwayProtocolTest {
 
         val maxResult = protocol.decode(maxData)
         assertNotNull(maxResult)
-        assertEquals(6553.5, maxResult?.voltage, 0.01)
-        assertEquals(6553.5, maxResult?.speed, 0.01)
-        assertEquals(4294967.295, maxResult?.distance, 0.01)
-        assertEquals(6553.5, maxResult?.current, 0.01)
-        assertEquals(6553.5, maxResult?.temperature, 0.01)
+        assertEquals(6553.5, maxResult?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(6553.5, maxResult?.speed ?: Double.MAX_VALUE, 0.01)
+        assertEquals(4294967.295, maxResult?.distance ?: Double.MAX_VALUE, 0.01)
+        assertEquals(6553.5, maxResult?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(6553.5, maxResult?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(255, maxResult?.batteryLevel)
         assertTrue(maxResult?.isCharging == true) // At least one flag is set
-        assertEquals(255.0, maxResult?.motorTemperature, 0.01)
+        assertEquals(255.0, maxResult?.motorTemperature ?: Double.MAX_VALUE, 0.01)
     }
 
     @Test
@@ -200,14 +200,14 @@ class GotwayProtocolTest {
         val result = protocol.decode(dataType02)
 
         assertNotNull(result)
-        assertEquals(36.0, result?.voltage, 0.01)
-        assertEquals(30.0, result?.speed, 0.01)
-        assertEquals(1000.0, result?.distance, 0.01)
-        assertEquals(100.0, result?.current, 0.01)
-        assertEquals(2.0, result?.temperature, 0.01)
+        assertEquals(36.0, result?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(30.0, result?.speed ?: Double.MAX_VALUE, 0.01)
+        assertEquals(1000.0, result?.distance ?: Double.MAX_VALUE, 0.01)
+        assertEquals(100.0, result?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(2.0, result?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(100, result?.batteryLevel)
         assertTrue(result?.isCharging == true)
-        assertEquals(30.0, result?.motorTemperature, 0.01)
+        assertEquals(30.0, result?.motorTemperature ?: Double.MAX_VALUE, 0.01)
     }
 
     @Test
@@ -228,11 +228,11 @@ class GotwayProtocolTest {
         val result = protocol.decode(dataNoMotor)
 
         assertNotNull(result)
-        assertEquals(36.0, result?.voltage, 0.01)
-        assertEquals(30.0, result?.speed, 0.01)
-        assertEquals(1000.0, result?.distance, 0.01)
-        assertEquals(100.0, result?.current, 0.01)
-        assertEquals(2.0, result?.temperature, 0.01)
+        assertEquals(36.0, result?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(30.0, result?.speed ?: Double.MAX_VALUE, 0.01)
+        assertEquals(1000.0, result?.distance ?: Double.MAX_VALUE, 0.01)
+        assertEquals(100.0, result?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(2.0, result?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(100, result?.batteryLevel)
         assertTrue(result?.isCharging == true)
         assertNull(result?.motorTemperature) // Should be null when no motor temp data

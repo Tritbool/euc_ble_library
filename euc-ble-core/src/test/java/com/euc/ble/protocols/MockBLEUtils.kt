@@ -17,14 +17,12 @@ object MockBLEUtils {
         address: String = "00:11:22:33:44:55",
         manufacturerId: Int = 0x0049,
         rssi: Int = -50,
-        protocol: String? = null
     ): EUCDevice {
         return EUCDevice(
             name = name,
             address = address,
             manufacturerId = manufacturerId,
-            rssi = rssi,
-            protocol = protocol
+            rssi = rssi
         )
     }
 

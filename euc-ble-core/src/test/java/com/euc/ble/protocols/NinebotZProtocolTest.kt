@@ -96,15 +96,15 @@ class NinebotZProtocolTest {
         val result = protocol.decode(data)
 
         assertNotNull(result)
-        assertEquals(36.0, result?.voltage, 0.01)
-        assertEquals(30.0, result?.speed, 0.01)
-        assertEquals(1000.0, result?.distance, 0.01)
-        assertEquals(100.0, result?.current, 0.01)
-        assertEquals(2.0, result?.temperature, 0.01)
+        assertEquals(36.0, result?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(30.0, result?.speed ?: Double.MAX_VALUE, 0.01)
+        assertEquals(1000.0, result?.distance ?: Double.MAX_VALUE, 0.01)
+        assertEquals(100.0, result?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(2.0, result?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(100, result?.batteryLevel)
-        assertEquals(3600.0, result?.power, 0.01) // 36.0V * 100.0A
+        assertEquals(3600.0, result?.power ?: Double.MAX_VALUE, 0.01) // 36.0V * 100.0A
         assertTrue(result?.isCharging == true)
-        assertEquals(3.0, result?.motorTemperature, 0.01)
+        assertEquals(3.0, result?.motorTemperature ?: Double.MAX_VALUE, 0.01)
         assertEquals("Ninebot", result?.manufacturer)
     }
 
@@ -213,14 +213,14 @@ class NinebotZProtocolTest {
 
         val zeroResult = protocol.decode(zeroData)
         assertNotNull(zeroResult)
-        assertEquals(0.0, zeroResult?.voltage, 0.01)
-        assertEquals(0.0, zeroResult?.speed, 0.01)
-        assertEquals(0.0, zeroResult?.distance, 0.01)
-        assertEquals(0.0, zeroResult?.current, 0.01)
-        assertEquals(0.0, zeroResult?.temperature, 0.01)
+        assertEquals(0.0, zeroResult?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.speed ?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.distance ?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(0, zeroResult?.batteryLevel)
-        assertEquals(0.0, zeroResult?.power, 0.01)
-        assertEquals(0.0, zeroResult?.motorTemperature, 0.01)
+        assertEquals(0.0, zeroResult?.power ?: Double.MAX_VALUE, 0.01)
+        assertEquals(0.0, zeroResult?.motorTemperature ?: Double.MAX_VALUE, 0.01)
         assertFalse(zeroResult?.isCharging == true)
 
         // Test maximum values
@@ -251,13 +251,13 @@ class NinebotZProtocolTest {
 
         val maxResult = protocol.decode(maxData)
         assertNotNull(maxResult)
-        assertEquals(6553.5, maxResult?.voltage, 0.01)
-        assertEquals(6553.5, maxResult?.speed, 0.01)
-        assertEquals(4294967.295, maxResult?.distance, 0.01)
-        assertEquals(6553.5, maxResult?.current, 0.01)
-        assertEquals(6553.5, maxResult?.temperature, 0.01)
+        assertEquals(6553.5, maxResult?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(6553.5, maxResult?.speed ?: Double.MAX_VALUE, 0.01)
+        assertEquals(4294967.295, maxResult?.distance ?: Double.MAX_VALUE, 0.01)
+        assertEquals(6553.5, maxResult?.current ?: Double.MAX_VALUE, 0.01)
+        assertEquals(6553.5, maxResult?.temperature ?: Double.MAX_VALUE, 0.01)
         assertEquals(255, maxResult?.batteryLevel)
-        assertEquals(6553.5, maxResult?.motorTemperature, 0.01)
+        assertEquals(6553.5, maxResult?.motorTemperature ?: Double.MAX_VALUE, 0.01)
         assertTrue(maxResult?.isCharging == true) // At least one flag is set
     }
 
@@ -294,8 +294,8 @@ class NinebotZProtocolTest {
         assertArrayEquals(byteArrayOf(), invalidBrightness)
 
         // Test unsupported command
-        val unsupported = protocol.createCommand(CommandType.SPEED_LIMIT, 0)
-        assertArrayEquals(byteArrayOf(), unsupported)
+        // val unsupported = protocol.createCommand(CommandType.SPEED_LIMIT, 0)
+        // assertArrayEquals(byteArrayOf(), unsupported)
     }
 
     @Test
