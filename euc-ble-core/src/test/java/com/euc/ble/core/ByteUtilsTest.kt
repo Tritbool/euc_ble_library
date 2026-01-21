@@ -55,17 +55,17 @@ class ByteUtilsTest {
         // Test positive byte
         val positiveByte = byteArrayOf(0x7F.toByte())
         val positiveResult = ByteUtils.getUnsignedByte(positiveByte, 0)
-        assertEquals(127, positiveResult)
+        assertEquals(0x7F, positiveResult)
 
         // Test negative byte (should be converted to unsigned)
         val negativeByte = byteArrayOf(0xFF.toByte())
         val negativeResult = ByteUtils.getUnsignedByte(negativeByte, 0)
-        assertEquals(255, negativeResult)
+        assertEquals(0xFF, negativeResult)
 
         // Test zero
         val zeroByte = byteArrayOf(0x00.toByte())
         val zeroResult = ByteUtils.getUnsignedByte(zeroByte, 0)
-        assertEquals(0, zeroResult)
+        assertEquals(0x00, zeroResult)
     }
 
     @Test
@@ -73,17 +73,17 @@ class ByteUtilsTest {
         // Test basic little-endian conversion
         val data = byteArrayOf(0x34.toByte(), 0x12.toByte()) // 0x1234 = 4660
         val result = ByteUtils.getUnsignedShortLE(data, 0)
-        assertEquals(4660, result)
+        assertEquals(0x1234, result)
 
         // Test with offset
         val dataWithOffset = byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x78.toByte(), 0x56.toByte()) // 0x5678 = 22136
         val offsetResult = ByteUtils.getUnsignedShortLE(dataWithOffset, 2)
-        assertEquals(22136, offsetResult)
+        assertEquals(0x5678, offsetResult)
 
         // Test maximum value
         val maxData = byteArrayOf(0xFF.toByte(), 0xFF.toByte()) // 0xFFFF = 65535
         val maxResult = ByteUtils.getUnsignedShortLE(maxData, 0)
-        assertEquals(65535, maxResult)
+        assertEquals(0xFFFF, maxResult)
     }
 
     @Test
@@ -91,17 +91,17 @@ class ByteUtilsTest {
         // Test basic big-endian conversion
         val data = byteArrayOf(0x12.toByte(), 0x34.toByte()) // 0x1234 = 4660
         val result = ByteUtils.getUnsignedShortBE(data, 0)
-        assertEquals(4660, result)
+        assertEquals(0x1234, result)
 
         // Test with offset
         val dataWithOffset = byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x56.toByte(), 0x78.toByte()) // 0x5678 = 22136
         val offsetResult = ByteUtils.getUnsignedShortBE(dataWithOffset, 2)
-        assertEquals(22136, offsetResult)
+        assertEquals(0x5678, offsetResult)
 
         // Test maximum value
         val maxData = byteArrayOf(0xFF.toByte(), 0xFF.toByte()) // 0xFFFF = 65535
         val maxResult = ByteUtils.getUnsignedShortBE(maxData, 0)
-        assertEquals(65535, maxResult)
+        assertEquals(0xFFFF, maxResult)
     }
 
     @Test
@@ -109,22 +109,22 @@ class ByteUtilsTest {
         // Test positive value
         val positiveData = byteArrayOf(0x34.toByte(), 0x12.toByte()) // 0x1234 = 4660
         val positiveResult = ByteUtils.getSignedShortLE(positiveData, 0)
-        assertEquals(4660, positiveResult.toInt())
+        assertEquals(0x1234.toShort(), positiveResult)
 
         // Test negative value (two's complement)
-        val negativeData = byteArrayOf(0x3C.toByte(), 0xFE.toByte()) // 0xFE3C = -444
+        val negativeData = byteArrayOf(0x3C.toByte(), 0xFE.toByte()) // 0xFE3C = -452
         val negativeResult = ByteUtils.getSignedShortLE(negativeData, 0)
-        assertEquals(-444, negativeResult.toInt())
+        assertEquals(0xFE3C.toShort(), negativeResult)
 
         // Test maximum positive
         val maxPositive = byteArrayOf(0xFF.toByte(), 0x7F.toByte()) // 0x7FFF = 32767
         val maxPositiveResult = ByteUtils.getSignedShortLE(maxPositive, 0)
-        assertEquals(32767, maxPositiveResult.toInt())
+        assertEquals(0x7FFF.toShort(), maxPositiveResult)
 
         // Test maximum negative
         val maxNegative = byteArrayOf(0x00.toByte(), 0x80.toByte()) // 0x8000 = -32768
         val maxNegativeResult = ByteUtils.getSignedShortLE(maxNegative, 0)
-        assertEquals(-32768, maxNegativeResult.toInt())
+        assertEquals(0x8000.toShort(), maxNegativeResult)
     }
 
     @Test
@@ -132,22 +132,22 @@ class ByteUtilsTest {
         // Test positive value
         val positiveData = byteArrayOf(0x12.toByte(), 0x34.toByte()) // 0x1234 = 4660
         val positiveResult = ByteUtils.getSignedShortBE(positiveData, 0)
-        assertEquals(4660, positiveResult.toInt())
+        assertEquals(0x1234.toShort(), positiveResult)
 
         // Test negative value (two's complement)
-        val negativeData = byteArrayOf(0xFE.toByte(), 0x3C.toByte()) // 0xFE3C = -444
+        val negativeData = byteArrayOf(0xFE.toByte(), 0x3C.toByte()) // 0xFE3C = -452
         val negativeResult = ByteUtils.getSignedShortBE(negativeData, 0)
-        assertEquals(-444, negativeResult.toInt())
+        assertEquals(0xFE3C.toShort(), negativeResult)
 
         // Test maximum positive
         val maxPositive = byteArrayOf(0x7F.toByte(), 0xFF.toByte()) // 0x7FFF = 32767
         val maxPositiveResult = ByteUtils.getSignedShortBE(maxPositive, 0)
-        assertEquals(32767, maxPositiveResult.toInt())
+        assertEquals(0x7FFF.toShort(), maxPositiveResult)
 
         // Test maximum negative
         val maxNegative = byteArrayOf(0x80.toByte(), 0x00.toByte()) // 0x8000 = -32768
         val maxNegativeResult = ByteUtils.getSignedShortBE(maxNegative, 0)
-        assertEquals(-32768, maxNegativeResult.toInt())
+        assertEquals(0x8000.toShort(), maxNegativeResult)
     }
 
     @Test
@@ -155,17 +155,17 @@ class ByteUtilsTest {
         // Test basic little-endian conversion
         val data = byteArrayOf(0x78.toByte(), 0x56.toByte(), 0x34.toByte(), 0x12.toByte()) // 0x12345678 = 305419896
         val result = ByteUtils.getUnsignedIntLE(data, 0)
-        assertEquals(305419896L, result)
+        assertEquals(0x12345678.toLong(), result)
 
         // Test with offset
         val dataWithOffset = byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x78.toByte(), 0x56.toByte(), 0x34.toByte(), 0x12.toByte())
         val offsetResult = ByteUtils.getUnsignedIntLE(dataWithOffset, 2)
-        assertEquals(305419896L, offsetResult)
+        assertEquals(0x12345678.toLong(), offsetResult)
 
         // Test maximum value
         val maxData = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()) // 0xFFFFFFFF = 4294967295
         val maxResult = ByteUtils.getUnsignedIntLE(maxData, 0)
-        assertEquals(4294967295L, maxResult)
+        assertEquals(0xFFFFFFFF, maxResult)
     }
 
     @Test
@@ -173,17 +173,17 @@ class ByteUtilsTest {
         // Test basic big-endian conversion
         val data = byteArrayOf(0x12.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()) // 0x12345678 = 305419896
         val result = ByteUtils.getUnsignedIntBE(data, 0)
-        assertEquals(305419896L, result)
+        assertEquals(0x12345678.toLong(), result)
 
         // Test with offset
         val dataWithOffset = byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x12.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte())
         val offsetResult = ByteUtils.getUnsignedIntBE(dataWithOffset, 2)
-        assertEquals(305419896L, offsetResult)
+        assertEquals(0x12345678.toLong(), offsetResult)
 
         // Test maximum value
         val maxData = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()) // 0xFFFFFFFF = 4294967295
         val maxResult = ByteUtils.getUnsignedIntBE(maxData, 0)
-        assertEquals(4294967295L, maxResult)
+        assertEquals(0xFFFFFFFF, maxResult)
     }
 
     @Test
@@ -191,22 +191,22 @@ class ByteUtilsTest {
         // Test positive value
         val positiveData = byteArrayOf(0x78.toByte(), 0x56.toByte(), 0x34.toByte(), 0x12.toByte()) // 0x12345678 = 305419896
         val positiveResult = ByteUtils.getSignedIntLE(positiveData, 0)
-        assertEquals(305419896, positiveResult)
+        assertEquals(0x12345678,positiveResult)
 
         // Test negative value (two's complement)
         val negativeData = byteArrayOf(0x78.toByte(), 0x56.toByte(), 0x34.toByte(), 0xFE.toByte()) // 0xFE345678 = -29189640
         val negativeResult = ByteUtils.getSignedIntLE(negativeData, 0)
-        assertEquals(-29189640, negativeResult)
+        assertEquals(0xFE345678.toInt(), negativeResult)
 
         // Test maximum positive
         val maxPositive = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x7F.toByte()) // 0x7FFFFFFF = 2147483647
         val maxPositiveResult = ByteUtils.getSignedIntLE(maxPositive, 0)
-        assertEquals(2147483647, maxPositiveResult)
+        assertEquals(0x7FFFFFFF, maxPositiveResult)
 
         // Test maximum negative
         val maxNegative = byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x80.toByte()) // 0x80000000 = -2147483648
         val maxNegativeResult = ByteUtils.getSignedIntLE(maxNegative, 0)
-        assertEquals(-2147483648, maxNegativeResult)
+        assertEquals(0x80000000.toInt(), maxNegativeResult)
     }
 
     @Test
@@ -214,43 +214,43 @@ class ByteUtilsTest {
         // Test positive value
         val positiveData = byteArrayOf(0x12.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()) // 0x12345678 = 305419896
         val positiveResult = ByteUtils.getSignedIntBE(positiveData, 0)
-        assertEquals(305419896, positiveResult)
+        assertEquals(0x12345678, positiveResult)
 
         // Test negative value (two's complement)
         val negativeData = byteArrayOf(0xFE.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()) // 0xFE345678 = -29189640
         val negativeResult = ByteUtils.getSignedIntBE(negativeData, 0)
-        assertEquals(-29189640, negativeResult)
+        assertEquals(0xFE345678.toInt(), negativeResult)
 
         // Test maximum positive
         val maxPositive = byteArrayOf(0x7F.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()) // 0x7FFFFFFF = 2147483647
         val maxPositiveResult = ByteUtils.getSignedIntBE(maxPositive, 0)
-        assertEquals(2147483647, maxPositiveResult)
+        assertEquals(0x7FFFFFFF, maxPositiveResult)
 
         // Test maximum negative
         val maxNegative = byteArrayOf(0x80.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()) // 0x80000000 = -2147483648
         val maxNegativeResult = ByteUtils.getSignedIntBE(maxNegative, 0)
-        assertEquals(-2147483648, maxNegativeResult)
+        assertEquals(0x80000000.toInt(), maxNegativeResult)
     }
 
     @Test
     fun testShortToBytesLE() {
         // Test positive value
-        val positiveShort: Short = 4660
+        val positiveShort: Short = 0x1234 // 4660
         val positiveBytes = ByteUtils.shortToBytesLE(positiveShort)
         assertArrayEquals(byteArrayOf(0x34.toByte(), 0x12.toByte()), positiveBytes)
 
         // Test negative value
-        val negativeShort: Short = -444
+        val negativeShort: Short = 0xFE3C.toShort() // -452
         val negativeBytes = ByteUtils.shortToBytesLE(negativeShort)
         assertArrayEquals(byteArrayOf(0x3C.toByte(), 0xFE.toByte()), negativeBytes)
 
         // Test maximum positive
-        val maxPositive: Short = 32767
+        val maxPositive: Short = 0x7FFF.toShort() // 32767
         val maxPositiveBytes = ByteUtils.shortToBytesLE(maxPositive)
         assertArrayEquals(byteArrayOf(0xFF.toByte(), 0x7F.toByte()), maxPositiveBytes)
 
         // Test maximum negative
-        val maxNegative: Short = -32768
+        val maxNegative: Short = 0x8000.toShort()// -32768
         val maxNegativeBytes = ByteUtils.shortToBytesLE(maxNegative)
         assertArrayEquals(byteArrayOf(0x00.toByte(), 0x80.toByte()), maxNegativeBytes)
     }
@@ -258,22 +258,22 @@ class ByteUtilsTest {
     @Test
     fun testShortToBytesBE() {
         // Test positive value
-        val positiveShort: Short = 4660
+        val positiveShort: Short = 0x1234 //4660
         val positiveBytes = ByteUtils.shortToBytesBE(positiveShort)
         assertArrayEquals(byteArrayOf(0x12.toByte(), 0x34.toByte()), positiveBytes)
 
         // Test negative value
-        val negativeShort: Short = -444
+        val negativeShort: Short = 0xFE3C.toShort()//-452
         val negativeBytes = ByteUtils.shortToBytesBE(negativeShort)
         assertArrayEquals(byteArrayOf(0xFE.toByte(), 0x3C.toByte()), negativeBytes)
 
         // Test maximum positive
-        val maxPositive: Short = 32767
+        val maxPositive: Short = 0x7FFF.toShort() //32767
         val maxPositiveBytes = ByteUtils.shortToBytesBE(maxPositive)
         assertArrayEquals(byteArrayOf(0x7F.toByte(), 0xFF.toByte()), maxPositiveBytes)
 
         // Test maximum negative
-        val maxNegative: Short = -32768
+        val maxNegative: Short = 0x8000.toShort() //-32768
         val maxNegativeBytes = ByteUtils.shortToBytesBE(maxNegative)
         assertArrayEquals(byteArrayOf(0x80.toByte(), 0x00.toByte()), maxNegativeBytes)
     }
@@ -281,22 +281,22 @@ class ByteUtilsTest {
     @Test
     fun testIntToBytesLE() {
         // Test positive value
-        val positiveInt = 305419896
+        val positiveInt = 0x12345678 // 305419896
         val positiveBytes = ByteUtils.intToBytesLE(positiveInt)
         assertArrayEquals(byteArrayOf(0x78.toByte(), 0x56.toByte(), 0x34.toByte(), 0x12.toByte()), positiveBytes)
 
         // Test negative value
-        val negativeInt = -29189640
+        val negativeInt = 0xFE345678.toInt() // -29189640
         val negativeBytes = ByteUtils.intToBytesLE(negativeInt)
         assertArrayEquals(byteArrayOf(0x78.toByte(), 0x56.toByte(), 0x34.toByte(), 0xFE.toByte()), negativeBytes)
 
         // Test maximum positive
-        val maxPositive = 2147483647
+        val maxPositive = 0x7FFFFFFF // 2147483647
         val maxPositiveBytes = ByteUtils.intToBytesLE(maxPositive)
         assertArrayEquals(byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x7F.toByte()), maxPositiveBytes)
 
         // Test maximum negative
-        val maxNegative = -2147483648
+        val maxNegative = 0x80000000.toInt() // -2147483648
         val maxNegativeBytes = ByteUtils.intToBytesLE(maxNegative)
         assertArrayEquals(byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x80.toByte()), maxNegativeBytes)
     }
@@ -304,22 +304,22 @@ class ByteUtilsTest {
     @Test
     fun testIntToBytesBE() {
         // Test positive value
-        val positiveInt = 305419896
+        val positiveInt = 0x12345678
         val positiveBytes = ByteUtils.intToBytesBE(positiveInt)
         assertArrayEquals(byteArrayOf(0x12.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()), positiveBytes)
 
         // Test negative value
-        val negativeInt = -29189640
+        val negativeInt = 0xFE345678.toInt()
         val negativeBytes = ByteUtils.intToBytesBE(negativeInt)
         assertArrayEquals(byteArrayOf(0xFE.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()), negativeBytes)
 
         // Test maximum positive
-        val maxPositive = 2147483647
+        val maxPositive = 0x7FFFFFFF
         val maxPositiveBytes = ByteUtils.intToBytesBE(maxPositive)
         assertArrayEquals(byteArrayOf(0x7F.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()), maxPositiveBytes)
 
         // Test maximum negative
-        val maxNegative = -2147483648
+        val maxNegative = 0x80000000.toInt()
         val maxNegativeBytes = ByteUtils.intToBytesBE(maxNegative)
         assertArrayEquals(byteArrayOf(0x80.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()), maxNegativeBytes)
     }

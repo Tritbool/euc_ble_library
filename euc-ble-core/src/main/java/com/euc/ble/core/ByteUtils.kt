@@ -20,11 +20,12 @@ object ByteUtils {
      * Convert hex string to byte array
      */
     fun hexToBytes(hexString: String): ByteArray {
-        val length = hexString.length
+        val cleanHexString=hexString.filterNot { it.isWhitespace() }
+        val length = cleanHexString.length
         val byteArray = ByteArray(length / 2)
         
         for (i in 0 until length step 2) {
-            val byteString = hexString.substring(i, i + 2)
+            val byteString = cleanHexString.substring(i, i + 2)
             byteArray[i / 2] = byteString.toInt(16).toByte()
         }
         
