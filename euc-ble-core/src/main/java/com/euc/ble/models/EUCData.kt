@@ -15,12 +15,13 @@ data class EUCData(
     val rawData: ByteArray,         // raw byte data
     val manufacturer: String,       // manufacturer name
     val model: String,              // device model
-    val serialNumber: String?,      // device serial
-    val firmwareVersion: String?,   // firmware version
+    val serialNumber: String?=null,      // device serial
+    val firmwareVersion: String?=null,   // firmware version
     val isCharging: Boolean,        // charging status
     val rideTime: Long,             // ride time in seconds
-    val cellVoltages: List<Double>?, // individual cell voltages
-    val motorTemperature: Double?   // motor temperature in degrees Celsius (null if not available)
+    val cellVoltages: List<Double>?=null, // individual cell voltages
+    val motorTemperature: Double?=null,   // motor temperature in degrees Celsius (null if not available)
+    val totalDistance: Double?=null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

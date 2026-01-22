@@ -108,7 +108,7 @@ class NinebotProtocol : EUCProtocol {
                 isCharging = isCharging,
                 rideTime = 0, // Would be calculated over time
                 cellVoltages = null, // Ninebot doesn't typically send cell voltages
-                motorTemperature = null
+                motorTemperature = null,
             )
 
         } catch (e: Exception) {

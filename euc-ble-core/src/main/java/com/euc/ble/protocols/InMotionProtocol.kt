@@ -92,7 +92,7 @@ class InMotionProtocol : EUCProtocol {
                 isCharging = isCharging,
                 rideTime = 0, // Would be calculated over time
                 cellVoltages = null, // InMotion doesn't typically send cell voltages in basic data
-                motorTemperature = null
+                motorTemperature = null,
             )
 
         } catch (e: Exception) {

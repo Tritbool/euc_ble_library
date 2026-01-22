@@ -5,7 +5,6 @@ import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import java.util.UUID
-import kotlin.math.absoluteValue
 
 /**
  * Improved KingSong protocol: tolerant parsing, header resync, safe bounds checks,
@@ -166,7 +165,7 @@ class KingsongProtocol : EUCProtocol {
                 isCharging = isCharging,
                 rideTime = 0,
                 cellVoltages = if (cellVoltages.isNotEmpty()) cellVoltages else null,
-                motorTemperature = null
+                motorTemperature = null,
             )
         } catch (e: Exception) {
             // defensive: on any parsing error return null

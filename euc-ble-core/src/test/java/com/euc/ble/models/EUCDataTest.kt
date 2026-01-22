@@ -28,7 +28,7 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 1800,
             cellVoltages = listOf(4.1, 4.2, 4.15, 4.18),
-            motorTemperature = 35.0
+            motorTemperature = 35.0,
         )
 
         assertEquals(25.5, data.speed, 0.01)
@@ -70,7 +70,7 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 0,
             cellVoltages = null,
-            motorTemperature = null
+            motorTemperature = null,
         )
 
         assertEquals(0.0, data.speed, 0.01)
@@ -112,7 +112,7 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 1800,
             cellVoltages = listOf(4.1),
-            motorTemperature = 35.0
+            motorTemperature = 35.0,
         )
 
         val data2 = EUCData(
@@ -132,7 +132,8 @@ class EUCDataTest {
             isCharging = true, // Different charging status
             rideTime = 3600, // Different ride time
             cellVoltages = listOf(4.2), // Different cell voltages
-            motorTemperature = 40.0 // Different motor temperature
+            motorTemperature = 40.0,
+            // Different motor temperature
         )
 
         // Should be equal because timestamp, manufacturer, and model are the same
@@ -172,7 +173,7 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 1800,
             cellVoltages = listOf(4.1, 4.2),
-            motorTemperature = 35.0
+            motorTemperature = 35.0,
         )
 
         // Test copy with no changes
@@ -216,7 +217,8 @@ class EUCDataTest {
             isCharging = true,
             rideTime = Long.MAX_VALUE, // Max ride time
             cellVoltages = List(20) { 4.2 }, // Many cells
-            motorTemperature = 100.0 // High motor temp
+            motorTemperature = 100.0,
+            // High motor temp
         )
 
         assertEquals(100.0, maxData.speed, 0.01)
@@ -255,7 +257,7 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 0,
             cellVoltages = emptyList(),
-            motorTemperature = null
+            motorTemperature = null,
         )
 
         assertEquals(0.0, minData.speed, 0.01)
@@ -297,7 +299,7 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 1800,
             cellVoltages = listOf(4.1, 4.2),
-            motorTemperature = 35.0
+            motorTemperature = 35.0,
         )
 
         val stringRepresentation = data.toString()
@@ -326,7 +328,8 @@ class EUCDataTest {
             isCharging = false,
             rideTime = 600,
             cellVoltages = listOf(3.8, 3.9),
-            motorTemperature = -5.0 // Cold motor
+            motorTemperature = -5.0,
+            // Cold motor
         )
 
         assertEquals(-5.0, negativeData.speed, 0.01)

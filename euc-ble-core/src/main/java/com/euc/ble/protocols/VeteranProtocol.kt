@@ -5,7 +5,6 @@ import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import java.util.UUID
-import kotlin.math.absoluteValue
 
 /**
  * Veteran EUC Protocol Implementation
@@ -168,7 +167,7 @@ class VeteranProtocol : EUCProtocol {
                 isCharging = isCharging,
                 rideTime = 0, // Would be calculated over time
                 cellVoltages = if (cellVoltages.isNotEmpty()) cellVoltages else null,
-                motorTemperature = motorTemperature
+                motorTemperature = motorTemperature,
             )
 
         } catch (e: Exception) {

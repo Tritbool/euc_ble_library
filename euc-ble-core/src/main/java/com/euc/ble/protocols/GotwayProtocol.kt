@@ -8,6 +8,8 @@ import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -90,9 +92,14 @@ import java.util.UUID
  */
 class GotwayProtocol : EUCProtocol {
 
+    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
+    val dataFlow: Flow<EUCData> = _dataFlow
+
+    private val scope = CoroutineScope(Dispatchers.IO)
+
     init {
         // Start observing frames asynchronously
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
             FrameReassembler.observeFrames().collectLatest { frame ->
                 processFrame(frame)
             }
@@ -117,168 +124,90 @@ class GotwayProtocol : EUCProtocol {
                 device.name.contains("MSX", ignoreCase = true) ||
                 device.name.contains("Nikola", ignoreCase = true)
     }
+
     override fun decode(data: ByteArray): EUCData? {
-        // Let the reassembler handle the incoming bytes (async)
-        CoroutineScope(Dispatchers.IO).launch {
+        // Let the reassembler handle the incoming bytes asynchronously
+        scope.launch {
             FrameReassembler.processIncomingBytes(data)
         }
-        return null // Decoding will happen when frames are emitted
+        // Return null because data is emitted asynchronously via the dataFlow
+        return null
     }
-    /*
-        Notes:
-        - Tous les accès aux octets utilisent maintenant les helpers sûrs de ByteUtils (tryGet\*),
-          qui retournent null si hors bornes.
-        - Les parsers restent défensifs : si un champ obligatoire manque on renvoie null.
-    */
+
     private fun processFrame(frame: ByteArray) {
-        when (frame[18].toInt() and 0xFF) { // Frame type at byte 18
+        val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {
             0x00 -> parseTypeA(frame)
             0x04 -> parseTypeB(frame)
-            else -> parseLegacy(frame)
+            else -> null // Ignore unknown frame types from the reassembler
+        }
+
+        eucData?.let {
+            scope.launch {
+                _dataFlow.emit(it)
+            }
         }
     }
 
-    private fun parseLegacy(data: ByteArray): EUCData? {
+    private fun parseTypeA(data: ByteArray): EUCData? {
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
         val speedRaw = ByteUtils.tryGetUnsignedShortBE(data, 4) ?: return null
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 6) ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
-        val batteryLevel = ByteUtils.tryGetUnsignedByte(data, 13) ?: 0
-        val statusByte = ByteUtils.tryGetUnsignedByte(data, 14) ?: 0
 
         val voltage = voltageRaw / 100.0
-        val speed = speedRaw / 100.0
-        val distanceMeters = distanceRaw.toDouble()        // en mètres (legacy)
+        val speed = (speedRaw * 3.6) / 100.0 // Convert to km/h
+        val distanceMeters = distanceRaw.toDouble()
         val current = currentRaw / 100.0
-        val temperature = tempRaw / 100.0
-        val isCharging = (statusByte and 0x01) != 0
+        val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
         val power = voltage * current
-        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16)
 
         return EUCData(
             speed = speed,
             voltage = voltage,
             current = current,
             temperature = temperature,
-            batteryLevel = batteryLevel.coerceIn(0, 100),
+            batteryLevel = 0, // Not available in this frame
             distance = distanceMeters,
             power = power,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = "Gotway (legacy)",
+            model = "Gotway (Type A)",
             serialNumber = null,
             firmwareVersion = null,
-            isCharging = isCharging,
+            isCharging = false, // Not available in this frame
             rideTime = 0,
-            cellVoltages = cellVoltages,
+            cellVoltages = null, // Not available in standard 24-byte frame
             motorTemperature = null
         )
     }
 
-    private fun parseTypeA(data: ByteArray): EUCData? {
-        // Supporte à la fois compact (sans header) et headered ; compact often LE
-        val baseOff = if ((data[0].toInt() and 0xFF) == 0x00) 0 else 0 // parsers utilisent offsets constants
-        val voltageRaw = ByteUtils.tryGetUnsignedShortLE(data, 1) ?: return null
-        val speedRaw = ByteUtils.tryGetUnsignedShortLE(data, 3) ?: return null
-        val distanceRaw = ByteUtils.tryGetUnsignedIntLE(data, 5) ?: return null
-        val currentRaw = ByteUtils.tryGetSignedShortLE(data, 9) ?: return null
-        val tempRaw = ByteUtils.tryGetSignedShortLE(data, 11) ?: return null
-        val batteryLevel = ByteUtils.tryGetUnsignedByte(data, 13) ?: 0
-        val statusByte = ByteUtils.tryGetUnsignedByte(data, 14) ?: 0
-        val motorTempRaw = ByteUtils.tryGetSignedByte(data, 15)
-
-        val voltage = voltageRaw / 10.0
-        val speed = speedRaw / 10.0
-        val distanceMeters = distanceRaw.toDouble()           // conserver en *mètres*
-        val current = currentRaw / 10.0
-        val temperature = tempRaw / 10.0
-        val isCharging = (statusByte and 0x01) != 0
-        val motorTemperature = motorTempRaw?.div(10.0)
-        val power = voltage * current
-        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16)
-
-        return EUCData(
-            speed = speed,
-            voltage = voltage,
-            current = current,
-            temperature = temperature,
-            batteryLevel = batteryLevel.coerceIn(0, 100),
-            distance = distanceMeters, // <-- mètres (align legacy)
-            power = power,
-            timestamp = System.currentTimeMillis(),
-            rawData = data,
-            manufacturer = manufacturer,
-            model = "Gotway A",
-            serialNumber = null,
-            firmwareVersion = null,
-            isCharging = isCharging,
-            rideTime = 0,
-            cellVoltages = cellVoltages,
-            motorTemperature = motorTemperature
-        )
-    }
-
     private fun parseTypeB(data: ByteArray): EUCData? {
-        val voltageRaw = ByteUtils.tryGetUnsignedShortLE(data, 1) ?: return null
-        val speedRaw = ByteUtils.tryGetUnsignedShortLE(data, 3) ?: return null
-        val distanceRaw = ByteUtils.tryGetUnsignedIntLE(data, 5) ?: return null
-        val currentRaw = ByteUtils.tryGetSignedShortLE(data, 9) ?: return null
-        val tempRaw = ByteUtils.tryGetSignedShortLE(data, 11) ?: return null
-        val batteryLevel = ByteUtils.tryGetUnsignedByte(data, 13) ?: 0
-        val statusByte = ByteUtils.tryGetUnsignedByte(data, 14) ?: 0
-        val motorTempRaw = ByteUtils.tryGetSignedByte(data, 15)
-
-        val voltage = voltageRaw / 10.0
-        val speed = speedRaw / 10.0
-        val distanceMeters = distanceRaw.toDouble()           // conserver en *mètres*
-        val current = currentRaw / 10.0
-        val temperature = tempRaw / 10.0
-        val isCharging = (statusByte and 0x01) != 0
-        val motorTemperature = motorTempRaw?.div(10.0)
-        val power = voltage * current
-        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16)
+        // Frame B primarily provides total distance. Other fields are not documented
+        // and may not be present.
+        val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
 
         return EUCData(
-            speed = speed,
-            voltage = voltage,
-            current = current,
-            temperature = temperature,
-            batteryLevel = batteryLevel.coerceIn(0, 100),
-            distance = distanceMeters, // <-- mètres (align legacy)
-            power = power,
+            // The following are placeholders as they are not in this frame type
+            speed = 0.0,
+            voltage = 0.0,
+            current = 0.0,
+            temperature = 0.0,
+            batteryLevel = 0,
+            distance = distanceRaw.toDouble(),
+            power = 0.0,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = "Gotway B",
+            model = "Gotway (Type B)",
             serialNumber = null,
             firmwareVersion = null,
-            isCharging = isCharging,
+            isCharging = false,
             rideTime = 0,
-            cellVoltages = cellVoltages,
-            motorTemperature = motorTemperature
+            cellVoltages = null,
+            motorTemperature = null
         )
-    }
-
-    private fun parseA5Like(data: ByteArray): EUCData? {
-        return if (data.size >= 16) parseLegacy(data) else null
-    }
-
-    private fun parseTrailingCellVoltages(data: ByteArray, startIndex: Int): List<Double>? {
-        if (data.size <= startIndex) return null
-        val remaining = data.size - startIndex
-        val cellCount = remaining / 2
-        if (cellCount <= 0) return null
-        val cells = mutableListOf<Double>()
-        var idx = startIndex
-        repeat(cellCount) {
-            val raw = ByteUtils.tryGetUnsignedShortLE(data, idx) ?: return@repeat
-            val cellVoltage = if (raw > 1000) raw / 1000.0 else raw / 100.0
-            cells.add(cellVoltage)
-            idx += 2
-        }
-        return if (cells.isNotEmpty()) cells else null
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
@@ -298,10 +227,7 @@ class GotwayProtocol : EUCProtocol {
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {
-        // Conservative readiness checks: positive voltage, reasonable temperature and battery
-        val tempOk = (data.temperature ?: Double.MAX_VALUE) < 75.0
-        val voltageOk = data.voltage > 30.0
-        val batteryOk = data.batteryLevel >= 5
-        return voltageOk && tempOk && batteryOk
+        // Conservative readiness checks: p
+        return data.voltage > 0 && data.speed >= 0
     }
 }

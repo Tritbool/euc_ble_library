@@ -60,7 +60,7 @@ object MockBLEUtils {
             isCharging = isCharging,
             rideTime = 0,
             cellVoltages = cellVoltages,
-            motorTemperature = motorTemperature
+            motorTemperature = motorTemperature,
         )
     }
 
