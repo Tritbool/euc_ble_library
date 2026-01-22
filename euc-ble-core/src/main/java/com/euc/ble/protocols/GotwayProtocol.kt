@@ -3,8 +3,13 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.core.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
@@ -85,6 +90,15 @@ import java.util.UUID
  */
 class GotwayProtocol : EUCProtocol {
 
+    init {
+        // Start observing frames asynchronously
+        CoroutineScope(Dispatchers.IO).launch {
+            FrameReassembler.observeFrames().collectLatest { frame ->
+                processFrame(frame)
+            }
+        }
+    }
+
     override val manufacturer: String = "Gotway"
     override val supportedModels: List<String> = listOf(
         "MSuper", "MSX", "MSX Pro", "Mten3", "Mten4", "MTen5",
@@ -103,32 +117,25 @@ class GotwayProtocol : EUCProtocol {
                 device.name.contains("MSX", ignoreCase = true) ||
                 device.name.contains("Nikola", ignoreCase = true)
     }
-
+    override fun decode(data: ByteArray): EUCData? {
+        // Let the reassembler handle the incoming bytes (async)
+        CoroutineScope(Dispatchers.IO).launch {
+            FrameReassembler.processIncomingBytes(data)
+        }
+        return null // Decoding will happen when frames are emitted
+    }
     /*
         Notes:
         - Tous les accès aux octets utilisent maintenant les helpers sûrs de ByteUtils (tryGet\*),
           qui retournent null si hors bornes.
         - Les parsers restent défensifs : si un champ obligatoire manque on renvoie null.
     */
-    override fun decode(data: ByteArray): EUCData? {
-        if (data.isEmpty()) return null
-
-        // Cas: paquets compacts émis par certains adaptateurs (pas de header)
-        val first = data[0].toInt() and 0xFF
-        if (first == 0x00) return parseTypeA(data)
-        if (first == 0x04) return parseTypeB(data)
-
-        // Cas: Trame série full avec header 0x55 0xAA
-        if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) {
-            val frameType = ByteUtils.tryGetUnsignedByte(data, 18) ?: -1
-            return when (frameType) {
-                0x00 -> parseTypeA(data)
-                0x04 -> parseTypeB(data)
-                else -> parseLegacy(data)
-            }
+    private fun processFrame(frame: ByteArray) {
+        when (frame[18].toInt() and 0xFF) { // Frame type at byte 18
+            0x00 -> parseTypeA(frame)
+            0x04 -> parseTypeB(frame)
+            else -> parseLegacy(frame)
         }
-
-        return null
     }
 
     private fun parseLegacy(data: ByteArray): EUCData? {

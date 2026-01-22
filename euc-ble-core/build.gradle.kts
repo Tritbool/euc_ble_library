@@ -33,6 +33,12 @@ android {
             //languageVersion = "2.0" // or KotlinVersion.KOTLIN_2_0
         }
     }
+
+    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
 }
 
 dependencies {
@@ -42,6 +48,9 @@ dependencies {
     
     // Test dependencies
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-engine:5.9.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3") // Coroutines Test
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
 }
