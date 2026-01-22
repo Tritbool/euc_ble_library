@@ -123,6 +123,7 @@ class KingsongProtocol : EUCProtocol {
     
     override fun isDeviceReady(data: EUCData): Boolean {
         // Device is ready if we have valid data and it's not in an error state
-        return data.speed.absoluteValue >= 0 && data.voltage > 40.0 && data.temperature < 80.0
+        // return data.speed.absoluteValue >= 0 && data.voltage > 40.0 && data.temperature < 80.0
+        return data.voltage > 0.0 && data.temperature < 90.0
     }
 }

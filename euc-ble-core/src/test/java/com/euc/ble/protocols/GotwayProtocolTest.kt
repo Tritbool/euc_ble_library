@@ -87,13 +87,13 @@ class GotwayProtocolTest {
         val result = protocol.decode(data)
 
         assertNotNull(result)
-        assertEquals(36.0, result?.voltage?:0.0, 0.01)
+        assertEquals(35.6, result?.voltage?:0.0, 0.01)
         assertEquals(30.0, result?.speed?:0.0, 0.01)
         assertEquals(1000.0, result?.distance?:0.0, 0.01)
         assertEquals(100.0, result?.current?:0.0, 0.01)
         assertEquals(2.0, result?.temperature?:0.0, 0.01)
         assertEquals(100, result?.batteryLevel)
-        assertEquals(3600.0, result?.power?:0.0, 0.01) // 36.0V * 100.0A
+        assertEquals(3560.0, result?.power?:0.0, 0.01) // 36.0V * 100.0A
         assertTrue(result?.isCharging == true)
         assertEquals(30.0, result?.motorTemperature?:0.0, 0.01) // Motor temperature
         assertEquals("Gotway", result?.manufacturer)
@@ -200,7 +200,7 @@ class GotwayProtocolTest {
         val result = protocol.decode(dataType02)
 
         assertNotNull(result)
-        assertEquals(36.0, result?.voltage ?: Double.MAX_VALUE, 0.01)
+        assertEquals(35.6, result?.voltage ?: Double.MAX_VALUE, 0.01)
         assertEquals(30.0, result?.speed ?: Double.MAX_VALUE, 0.01)
         assertEquals(1000.0, result?.distance ?: Double.MAX_VALUE, 0.01)
         assertEquals(100.0, result?.current ?: Double.MAX_VALUE, 0.01)

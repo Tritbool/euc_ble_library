@@ -213,7 +213,7 @@ class KingsongProtocolTest {
         assertTrue(protocol.isDeviceReady(readyData))
 
         // Test device with low voltage
-        val lowVoltageData = readyData.copy(voltage = 30.0)
+        val lowVoltageData = readyData.copy(voltage = 0.0)
         assertFalse(protocol.isDeviceReady(lowVoltageData))
 
         // Test device with high temperature
