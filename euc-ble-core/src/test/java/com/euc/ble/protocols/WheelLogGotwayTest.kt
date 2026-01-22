@@ -9,7 +9,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
 
-class GotwayProtocolWheelLogTest {
+class WheelLogGotwayTest {
 
     private val protocol = GotwayProtocol()
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
