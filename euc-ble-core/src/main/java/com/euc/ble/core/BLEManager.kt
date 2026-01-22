@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.text.compareTo
 
 /**
  * Main BLE Manager for Electric Unicycles
@@ -48,7 +49,14 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     private var currentDevice: EUCDevice? = null
     private var bluetoothGatt: BluetoothGatt? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
-    
+
+    // Champs d'état pour la reconnexion (à placer avec les autres champs d'état)
+    private var reconnectRetryCount: Int = 0
+    private var reconnectJob: Job? = null
+    private var manualDisconnect: Boolean = false
+    private val reconnectBaseDelayMs: Long = 1000L
+    private val maxReconnectDelayMs: Long = 30_000L
+
     // Protocol management
     private val protocols: MutableList<EUCProtocol> = mutableListOf()
     private var currentProtocol: EUCProtocol? = null
@@ -142,16 +150,19 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             errorCallback?.onError(BLEException("Already connecting or connected"))
             return
         }
-        
+
+        manualDisconnect = false
+        reconnectRetryCount = 0
+
         currentDevice = device
         connectionState = BLEConstants.ConnectionState.CONNECTING
-        
+
         connectionJob = coroutineScope.launch {
             withContext(Dispatchers.IO) {
                 connectToDevice(device.bluetoothDevice!!)
             }
         }
-        
+
         // Set connection timeout
         Handler(Looper.getMainLooper()).postDelayed({
             if (connectionState == BLEConstants.ConnectionState.CONNECTING) {
@@ -166,6 +177,11 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
      */
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun disconnect() {
+        manualDisconnect = true
+        reconnectJob?.cancel()
+        reconnectJob = null
+        reconnectRetryCount = 0
+
         connectionJob?.cancel()
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
@@ -185,13 +201,25 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             errorCallback?.onError(BLEException("Not connected to a device"))
             return
         }
-        
+
         val characteristic = getCharacteristic(characteristicUuid)
+        val payload = command.clone() // copie défensive
 
         characteristic?.let { char ->
-            char.value = command
+            // s'assurer d'un write type cohérent (par défaut)
             char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            bluetoothGatt?.writeCharacteristic(char)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // nouvelle surcharge API 33+
+                bluetoothGatt?.writeCharacteristic(char, payload, char.writeType)
+            } else {
+                // fallback pour anciennes API
+                @Suppress("DEPRECATION")
+                run {
+                    char.setValue(payload)
+                    bluetoothGatt?.writeCharacteristic(char)
+                }
+            }
         } ?: run {
             errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
         }
@@ -269,7 +297,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
                 processScanResult(result)
             }
             
-            override fun onScanFailed(errorCode: Int) {
+            override fun onScanFailed( errorCode: Int) {
                 errorCallback?.onError(BLEException("Scan failed with error: $errorCode"))
             }
         }
@@ -337,9 +365,13 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
         super.onConnectionStateChange(gatt, status, newState)
-        
+
         when (newState) {
             BluetoothProfile.STATE_CONNECTED -> {
+                // reset des compteurs de reconnexion
+                reconnectRetryCount = 0
+                reconnectJob?.cancel()
+                reconnectJob = null
                 connectionState = BLEConstants.ConnectionState.CONNECTED
                 connectionCallback?.onConnected()
                 // Discover services
@@ -348,8 +380,12 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             BluetoothProfile.STATE_DISCONNECTED -> {
                 connectionState = BLEConstants.ConnectionState.DISCONNECTED
                 connectionCallback?.onDisconnected()
-                if (autoReconnect && currentDevice != null) {
-                    // Implement reconnection logic
+
+                if (!manualDisconnect && autoReconnect && currentDevice != null) {
+                    scheduleReconnect()
+                } else {
+                    // si on ne veut pas reconnecter, réinitialiser le compteur
+                    reconnectRetryCount = 0
                 }
             }
             BluetoothProfile.STATE_CONNECTING -> {
@@ -360,6 +396,60 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             }
         }
     }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun scheduleReconnect() {
+        // Si déjà en cours ou atteint les retries max, ne pas replanifier
+        if (reconnectJob != null) return
+        if (reconnectRetryCount >= maxRetries) {
+            connectionCallback?.onConnectionFailed(BLEException("Reconnection failed after $reconnectRetryCount attempts"))
+            reconnectRetryCount = 0
+            return
+        }
+
+        // calcul du delay with backoff and jitter
+        val multiplier = 1L shl reconnectRetryCount.coerceAtMost(30) // éviter overflow
+        val baseDelay = (reconnectBaseDelayMs * multiplier).coerceAtMost(maxReconnectDelayMs)
+        val jitter = kotlin.random.Random.nextLong(0, 500)
+        val delayMs = (baseDelay + jitter).coerceAtMost(maxReconnectDelayMs)
+
+        reconnectJob = coroutineScope.launch {
+            withContext(Dispatchers.IO) {
+                kotlinx.coroutines.delay(delayMs)
+                // double-check conditions avant tentative
+                if (manualDisconnect) {
+                    reconnectJob = null
+                    return@withContext
+                }
+                if (connectionState == BLEConstants.ConnectionState.CONNECTED) {
+                    reconnectJob = null
+                    reconnectRetryCount = 0
+                    return@withContext
+                }
+                reconnectRetryCount++
+                connectionState = BLEConstants.ConnectionState.CONNECTING
+                try {
+                    currentDevice?.bluetoothDevice?.let { device ->
+                        connectToDevice(device)
+                    } ?: run {
+                        connectionCallback?.onConnectionFailed(BLEException("No device to reconnect"))
+                        reconnectJob = null
+                    }
+                } catch (e: Exception) {
+                    // en cas d'échec immédiat on laissera le prochain onConnectionStateChange lancer une nouvelle tentative
+                    reconnectJob = null
+                }
+            }
+        }
+    }
+
+    // Optionnel: helper pour annuler explicitement la reconnexion (utilisé par cleanup si besoin)
+    private fun cancelReconnectAttempts() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        reconnectRetryCount = 0
+    }
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
         super.onServicesDiscovered(gatt, status)
@@ -383,17 +473,33 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             disconnect()
         }
     }
-    
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onCharacteristicChanged(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray
+    ) {
+        super.onCharacteristicChanged(gatt, characteristic, value)
+        val data = value.clone()
+        handleIncomingBytes(data)
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @Suppress("DEPRECATION")
     override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
         super.onCharacteristicChanged(gatt, characteristic)
-        
-        val data = characteristic.value
+        val raw = characteristic.value ?: return
+        val data = raw.clone()
+        handleIncomingBytes(data)
+    }
+
+    private fun handleIncomingBytes(data: ByteArray) {
         currentProtocol?.let { protocol ->
             try {
                 val eucData = protocol.decode(data)
-                eucData?.let { data ->
-                    dataCallback?.onDataReceived(data)
-                }
+                eucData?.let { d -> dataCallback?.onDataReceived(d) }
             } catch (e: Exception) {
                 errorCallback?.onError(BLEException("Data decoding failed: ${e.message}"))
             }
@@ -423,18 +529,30 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
         val characteristic = getCharacteristic(characteristicUuid)
         characteristic?.let { char ->
             val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)
-            val descriptor = char.getDescriptor(cccdUuid)
-            descriptor?.let { desc ->
-                desc.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                bluetoothGatt?.writeDescriptor(desc)
-                bluetoothGatt?.setCharacteristicNotification(char, true)
+            val descriptor = char.getDescriptor(cccdUuid) ?: return@let
+            val enableValue = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // copie défensive
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Utiliser la nouvelle surcharge API 33+
+                bluetoothGatt?.writeDescriptor(descriptor, enableValue)
+            } else {
+                // Fallback pour anciennes API (setValue + writeDescriptor)
+                @Suppress("DEPRECATION")
+                run {
+                    descriptor.value = enableValue
+                    bluetoothGatt?.writeDescriptor(descriptor)
+                }
             }
+
+            // Activer les notifications localement
+            bluetoothGatt?.setCharacteristicNotification(char, true)
         }
     }
     
     // Cleanup
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun cleanup() {
+        cancelReconnectAttempts()
         disconnect()
         scanJob?.cancel()
         connectionJob?.cancel()

@@ -11,6 +11,78 @@ import java.util.UUID
  * Gotway EUC Protocol Implementation
  * Supports Gotway series electric unicycles
  */
+
+
+/**
+ * Gotway/Begode reverse‑engineered protocol (mise à jour)
+ *
+ * Ce commentaire rassemble les variantes observées :
+ *  - Trames "A" / "B" brutes (flux série du contrôleur, header 0x55 0xAA)
+ *  - Paquets "legacy" courts (ex. 0x01 / 0x02) réémis par certains adaptateurs
+ *  - Paquets de type 0xA5 (commandes / statuts compressés émis par firmwares/adaptateurs)
+ *
+ * Observations générales
+ *  - Les trames brutes A/B observées sur le port série utilisent typiquement un header
+ *    0x55 0xAA et des champs en Big Endian (BE) pour les entiers 16/32 bits.
+ *  - Les paquets "legacy" (0x01/0x02) et certains paquets 0xA5 utilisent souvent
+ *    un encodage Little Endian (LE) et un format plus compact.
+ *  - Les champs courant / température peuvent être signés ; il faut convertir correctement.
+ *  - Beaucoup de firmwares/adaptateurs n'ajoutent pas de checksum. Le flux peut être
+ *    fragmenté, retardé, ou perdre des octets côté BLE (pas de flow control).
+ *  - Certains paquets incluent, à la fin, des tensions de cellules BMS encodées
+ *    en paires de 2 octets (LE) ou en mV / centi‑volts selon la variante.
+ *
+ * Exemple (observé)
+ *   A: 55 AA 19 F0 00 00 00 00 00 00 01 2C FD CA 00 01 FF F8 00 18 5A 5A 5A 5A
+ *   B: 55 AA 00 0A 4A 12 48 00 1C 20 00 2A 00 03 00 07 00 08 04 18 5A 5A 5A 5A
+ *
+ * Format résumé (à ajuster selon firmware / modèle) :
+ *  - Frame A (header 0x55 0xAA):
+ *      Bytes 0-1:  0x55 0xAA
+ *      Bytes 2-3:  BE voltage (fixed point, ex: 1/100)
+ *      Bytes 4-5:  BE speed (fixed point, ex: 3.6 * value / 100 -> km/h)
+ *      Bytes 6-9:  BE distance (uint32, mètres)
+ *      Bytes 10-11: BE current (signed, fixed point)
+ *      Bytes 12-13: BE temperature (signed or raw MPU value)
+ *      Bytes 14-17: inconnus / flags
+ *      Byte 18:    frame type (ex. 0x00)
+ *      Byte 19:    footer (0x18)
+ *      Bytes 20-..: footer 0x5A 0x5A 0x5A 0x5A (ou variantes) + éventuel BMS trailing
+ *
+ *  - Frame B (header 0x55 0xAA):
+ *      Bytes 2-5:  BE total distance (uint32)
+ *      Byte 6:     pedals mode / alarms (nibbles)
+ *      Bytes 7-12: champs additionnels inconnus
+ *      Byte 13:    LED / mode
+ *      Bytes 14-17: inconnus
+ *      Byte 18:    frame type (ex. 0x04)
+ *      Footer idem
+ *
+ *  - Paquets "legacy" (ex. 0x01 / 0x02) :
+ *      - Souvent envoyés par Serial->BLE adapter ou firmwares alternatifs.
+ *      - Champs en LE, formats plus compacts; peuvent représenter voltage/speed/etc.
+ *
+ *  - Paquets 0xA5 :
+ *      - Utilisés pour commandes (LIGHT_ON/OFF, BEEP, POWER_OFF) et parfois
+ *        pour états compressés. Structure différente (header 0xA5 ...).
+ *
+ * Recommandations de parsing
+ *  - Dispatcher par premier octet / header : 0x55 (A/B raw), 0x01/0x02 (legacy),
+ *    0xA5 (command/status), ou par octet type dans la trame si présent.
+ *  - Pour A/B : traiter les entiers en BE. Pour legacy/0xA5 : essayer LE.
+ *  - Gérer la fragmentation : tolérer tailles variables, ignorer trames trop courtes,
+ *    tenter une re‑synchronisation sur 0x55 0xAA ou les headers adapter.
+ *  - Extraire dynamiquement les tensions de cellules depuis la queue si présentes :
+ *      lire paires de 2 octets (LE) et convertir en V (mV -> V ou /100 -> V selon plages).
+ *  - Convertir correctement les valeurs signées (courant, températures moteur).
+ *  - Rester défensif : valider plages plausibles (voltage, courant, température).
+ *
+ * Pourquoi ces variantes n'étaient pas dans l'ancien commentaire ?
+ *  - Le commentaire d'origine décrit le flux série brut observé sur un contrôleur/firme
+ *    donné. D'autres firmwares/adaptateurs (Serial->BLE) réémettent ou transforment
+ *    ces octets (headers différents, endianness différente) — ces variantes n'étaient
+ *    pas forcément présentes lors de la rétro‑ingénierie initiale.
+ */
 class GotwayProtocol : EUCProtocol {
 
     override val manufacturer: String = "Gotway"
@@ -32,150 +104,101 @@ class GotwayProtocol : EUCProtocol {
                 device.name.contains("Nikola", ignoreCase = true)
     }
 
-    private fun toSignedShort(raw: Int): Int = if (raw >= 0x8000) raw - 0x10000 else raw
-    private fun toSignedByte(raw: Int): Int = if (raw >= 0x80) raw - 0x100 else raw
-
     /*
-        Gotway/Begode reverse-engineered protocol
-
-        Gotway uses byte stream from a serial port via Serial-to-BLE adapter.
-        There are two types of frames, A and B. Normally they alternate.
-        Most numeric values are encoded as Big Endian (BE) 16 or 32 bit integers.
-        The protocol has no checksums.
-
-        Since the BLE adapter has no serial flow control and has limited input buffer,
-        data come in variable-size chunks with arbitrary delays between chunks. Some
-        bytes may even be lost in case of BLE transmit buffer overflow.
-
-             0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
-            -----------------------------------------------------------------------
-         A: 55 AA 19 F0 00 00 00 00 00 00 01 2C FD CA 00 01 FF F8 00 18 5A 5A 5A 5A
-         B: 55 AA 00 0A 4A 12 48 00 1C 20 00 2A 00 03 00 07 00 08 04 18 5A 5A 5A 5A
-         A: 55 AA 19 F0 00 00 00 00 00 00 00 F0 FD D2 00 01 FF F8 00 18 5A 5A 5A 5A
-         B: 55 AA 00 0A 4A 12 48 00 1C 20 00 2A 00 03 00 07 00 08 04 18 5A 5A 5A 5A
-            ....
-
-        Frame A:
-            Bytes 0-1:   frame header, 55 AA
-            Bytes 2-3:   BE voltage, fixed point, 1/100th (assumes 67.2 battery, rescale for other voltages)
-            Bytes 4-5:   BE speed, fixed point, 3.6 * value / 100 km/h
-            Bytes 6-9:   BE distance, 32bit fixed point, meters
-            Bytes 10-11: BE current, signed fixed point, 1/100th amperes
-            Bytes 12-13: BE temperature, (value / 340 + 36.53) / 100, Celsius degrees (MPU6050 native data)
-            Bytes 14-17: unknown
-            Byte  18:    frame type, 00 for frame A
-            Byte  19:    18 frame footer
-            Bytes 20-23: frame footer, 5A 5A 5A 5A
-
-        Frame B:
-            Bytes 0-1:   frame header, 55 AA
-            Bytes 2-5:   BE total distance, 32bit fixed point, meters
-            Byte  6:     pedals mode (high nibble), speed alarms (low nibble)
-            Bytes 7-12:  unknown
-            Byte  13:    LED mode
-            Bytes 14-17: unknown
-            Byte  18:    frame type, 04 for frame B
-            Byte  19:    18 frame footer
-            Bytes 20-23: frame footer, 5A 5A 5A 5A
-
-        Unknown bytes may carry out other data, but currently not used by the parser.
+        Notes:
+        - Tous les accès aux octets utilisent maintenant les helpers sûrs de ByteUtils (tryGet\*),
+          qui retournent null si hors bornes.
+        - Les parsers restent défensifs : si un champ obligatoire manque on renvoie null.
     */
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
 
-        try {
-            val packetType = ByteUtils.getUnsignedByte(data, 0)
+        // Cas: paquets compacts émis par certains adaptateurs (pas de header)
+        val first = data[0].toInt() and 0xFF
+        if (first == 0x00) return parseTypeA(data)
+        if (first == 0x04) return parseTypeB(data)
 
-            // Dispatch selon type de trame. Les valeurs réelles pour 'A'/'B' doivent
-            // correspondre au commentaire de `GotwayAdapter.java` (ASCII ou octal selon impl).
-            return when {
-                // Legacy numeric packets (ex. 0x01 / 0x02)
-                packetType == 0x01 || packetType == 0x02 -> parseLegacy(data)
-
-                // ASCII 'A' / 'B' frames (0x41 / 0x42) — ajuste selon commentaire original
-                packetType == 0x00 /* 'A' */ -> parseTypeA(data)
-                packetType == 0x04 /* 'B' */ -> parseTypeB(data)
-
-                // Certains firmwares utilisent 0xA5 header for commands/packets
-                packetType == 0xA5 -> parseA5Like(data)
-
-                else -> null // type inconnu
+        // Cas: Trame série full avec header 0x55 0xAA
+        if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) {
+            val frameType = ByteUtils.tryGetUnsignedByte(data, 18) ?: -1
+            return when (frameType) {
+                0x00 -> parseTypeA(data)
+                0x04 -> parseTypeB(data)
+                else -> parseLegacy(data)
             }
-
-        } catch (e: Exception) {
-            return null
         }
+
+        return null
     }
 
-    // Parseur pour les trames "legacy" déjà présentes dans l'implémentation précédente
     private fun parseLegacy(data: ByteArray): EUCData? {
-        if (data.size < 16) return null
-        val voltage = ByteUtils.getUnsignedShortLE(data, 1) / 10.0
-        val speed = ByteUtils.getUnsignedShortLE(data, 3) / 10.0
-        val distanceMeters = ByteUtils.getUnsignedIntLE(data, 5).toDouble() // garder en mètres
-        val rawCurrent = ByteUtils.getUnsignedShortLE(data, 9)
-        val current = toSignedShort(rawCurrent) / 10.0
-        val rawTemp = ByteUtils.getUnsignedShortLE(data, 11)
-        val temperature = toSignedShort(rawTemp) / 10.0
-        val batteryLevel = ByteUtils.getUnsignedByte(data, 13).toInt().coerceIn(0, 100)
-        val power = voltage * current
+        val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
+        val speedRaw = ByteUtils.tryGetUnsignedShortBE(data, 4) ?: return null
+        val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 6) ?: return null
+        val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
+        val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
+        val batteryLevel = ByteUtils.tryGetUnsignedByte(data, 13) ?: 0
+        val statusByte = ByteUtils.tryGetUnsignedByte(data, 14) ?: 0
 
-        val statusByte = ByteUtils.getUnsignedByte(data, 14)
+        val voltage = voltageRaw / 100.0
+        val speed = speedRaw / 100.0
+        val distanceMeters = distanceRaw.toDouble()        // en mètres (legacy)
+        val current = currentRaw / 100.0
+        val temperature = tempRaw / 100.0
         val isCharging = (statusByte and 0x01) != 0
-
-        val motorTemperature = if (data.size > 15) {
-            toSignedByte(ByteUtils.getUnsignedByte(data, 15)) / 10.0
-        } else null
-
-        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 15)
+        val power = voltage * current
+        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16)
 
         return EUCData(
             speed = speed,
             voltage = voltage,
             current = current,
             temperature = temperature,
-            batteryLevel = batteryLevel,
-            distance = distanceMeters / 1000.0, // convertir en km si EUCData attend km
+            batteryLevel = batteryLevel.coerceIn(0, 100),
+            distance = distanceMeters,
             power = power,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = "Unknown Gotway",
+            model = "Gotway (legacy)",
             serialNumber = null,
             firmwareVersion = null,
             isCharging = isCharging,
             rideTime = 0,
             cellVoltages = cellVoltages,
-            motorTemperature = motorTemperature
+            motorTemperature = null
         )
     }
 
-    // Exemple de parsing pour trame de type 'A' — adapter les offsets selon le commentaire original
     private fun parseTypeA(data: ByteArray): EUCData? {
-        // Défensive: vérifier taille minimale attendue
-        if (data.size < 18) return null
+        // Supporte à la fois compact (sans header) et headered ; compact often LE
+        val baseOff = if ((data[0].toInt() and 0xFF) == 0x00) 0 else 0 // parsers utilisent offsets constants
+        val voltageRaw = ByteUtils.tryGetUnsignedShortLE(data, 1) ?: return null
+        val speedRaw = ByteUtils.tryGetUnsignedShortLE(data, 3) ?: return null
+        val distanceRaw = ByteUtils.tryGetUnsignedIntLE(data, 5) ?: return null
+        val currentRaw = ByteUtils.tryGetSignedShortLE(data, 9) ?: return null
+        val tempRaw = ByteUtils.tryGetSignedShortLE(data, 11) ?: return null
+        val batteryLevel = ByteUtils.tryGetUnsignedByte(data, 13) ?: 0
+        val statusByte = ByteUtils.tryGetUnsignedByte(data, 14) ?: 0
+        val motorTempRaw = ByteUtils.tryGetSignedByte(data, 15)
 
-        val voltage = ByteUtils.getUnsignedShortLE(data, 1) / 10.0
-        val speed = ByteUtils.getUnsignedShortLE(data, 3) / 10.0
-        val distanceMeters = ByteUtils.getUnsignedIntLE(data, 5).toDouble()
-        val rawCurrent = ByteUtils.getUnsignedShortLE(data, 9)
-        val current = toSignedShort(rawCurrent) / 10.0
-        val rawTemp = ByteUtils.getUnsignedShortLE(data, 11)
-        val temperature = toSignedShort(rawTemp) / 10.0
-        val batteryLevel = ByteUtils.getUnsignedByte(data, 13).toInt().coerceIn(0, 100)
-        val power = voltage * current
-        val statusByte = ByteUtils.getUnsignedByte(data, 14)
+        val voltage = voltageRaw / 10.0
+        val speed = speedRaw / 10.0
+        val distanceMeters = distanceRaw.toDouble()           // conserver en *mètres*
+        val current = currentRaw / 10.0
+        val temperature = tempRaw / 10.0
         val isCharging = (statusByte and 0x01) != 0
-        val motorTemperature = if (data.size > 15) toSignedByte(ByteUtils.getUnsignedByte(data, 15)) / 10.0 else null
-        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16) // si BMS starts after 16
+        val motorTemperature = motorTempRaw?.div(10.0)
+        val power = voltage * current
+        val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16)
 
         return EUCData(
             speed = speed,
             voltage = voltage,
             current = current,
             temperature = temperature,
-            batteryLevel = batteryLevel,
-            distance = distanceMeters / 1000.0,
+            batteryLevel = batteryLevel.coerceIn(0, 100),
+            distance = distanceMeters, // <-- mètres (align legacy)
             power = power,
             timestamp = System.currentTimeMillis(),
             rawData = data,
@@ -190,25 +213,24 @@ class GotwayProtocol : EUCProtocol {
         )
     }
 
-    // Exemple de parsing pour trame de type 'B' — souvent BMS / pack détaillé
     private fun parseTypeB(data: ByteArray): EUCData? {
-        if (data.size < 20) return null
+        val voltageRaw = ByteUtils.tryGetUnsignedShortLE(data, 1) ?: return null
+        val speedRaw = ByteUtils.tryGetUnsignedShortLE(data, 3) ?: return null
+        val distanceRaw = ByteUtils.tryGetUnsignedIntLE(data, 5) ?: return null
+        val currentRaw = ByteUtils.tryGetSignedShortLE(data, 9) ?: return null
+        val tempRaw = ByteUtils.tryGetSignedShortLE(data, 11) ?: return null
+        val batteryLevel = ByteUtils.tryGetUnsignedByte(data, 13) ?: 0
+        val statusByte = ByteUtils.tryGetUnsignedByte(data, 14) ?: 0
+        val motorTempRaw = ByteUtils.tryGetSignedByte(data, 15)
 
-        // Certains paquets B contiennent d'abord des infos pack (voltage, current) puis plusieurs paires (cell)
-        val voltage = ByteUtils.getUnsignedShortLE(data, 1) / 10.0
-        val speed = ByteUtils.getUnsignedShortLE(data, 3) / 10.0
-        val distanceMeters = ByteUtils.getUnsignedIntLE(data, 5).toDouble()
-        val rawCurrent = ByteUtils.getUnsignedShortLE(data, 9)
-        val current = toSignedShort(rawCurrent) / 10.0
-        val rawTemp = ByteUtils.getUnsignedShortLE(data, 11)
-        val temperature = toSignedShort(rawTemp) / 10.0
-        val batteryLevel = ByteUtils.getUnsignedByte(data, 13).toInt().coerceIn(0, 100)
-        val power = voltage * current
-        val statusByte = ByteUtils.getUnsignedByte(data, 14)
+        val voltage = voltageRaw / 10.0
+        val speed = speedRaw / 10.0
+        val distanceMeters = distanceRaw.toDouble()           // conserver en *mètres*
+        val current = currentRaw / 10.0
+        val temperature = tempRaw / 10.0
         val isCharging = (statusByte and 0x01) != 0
-        val motorTemperature = if (data.size > 15) toSignedByte(ByteUtils.getUnsignedByte(data, 15)) / 10.0 else null
-
-        // Pour BMS : essayer d'extraire des tensions de cellule en 2 octets LE à partir d'un offset connu.
+        val motorTemperature = motorTempRaw?.div(10.0)
+        val power = voltage * current
         val cellVoltages = parseTrailingCellVoltages(data, startIndex = 16)
 
         return EUCData(
@@ -216,8 +238,8 @@ class GotwayProtocol : EUCProtocol {
             voltage = voltage,
             current = current,
             temperature = temperature,
-            batteryLevel = batteryLevel,
-            distance = distanceMeters / 1000.0,
+            batteryLevel = batteryLevel.coerceIn(0, 100),
+            distance = distanceMeters, // <-- mètres (align legacy)
             power = power,
             timestamp = System.currentTimeMillis(),
             rawData = data,
@@ -232,14 +254,10 @@ class GotwayProtocol : EUCProtocol {
         )
     }
 
-    // Parser pour paquets 0xA5-like (command/status). Simple extraction similaire aux legacy.
     private fun parseA5Like(data: ByteArray): EUCData? {
-        // Si payload est court, renvoyer null ou une EUCData minimale — ici on tente l'ancienne logique si possible
         return if (data.size >= 16) parseLegacy(data) else null
     }
 
-    // Extrait dynamiquement des tensions de cellules en paires LE (2 octets) depuis startIndex.
-    // Retourne null si aucune cellule n'est présente.
     private fun parseTrailingCellVoltages(data: ByteArray, startIndex: Int): List<Double>? {
         if (data.size <= startIndex) return null
         val remaining = data.size - startIndex
@@ -248,9 +266,7 @@ class GotwayProtocol : EUCProtocol {
         val cells = mutableListOf<Double>()
         var idx = startIndex
         repeat(cellCount) {
-            if (idx + 1 >= data.size) return@repeat
-            val raw = ByteUtils.getUnsignedShortLE(data, idx)
-            // raw typically in mV or 0.001V units — tenter mV -> V conversion si valeur plausible (> 1000)
+            val raw = ByteUtils.tryGetUnsignedShortLE(data, idx) ?: return@repeat
             val cellVoltage = if (raw > 1000) raw / 1000.0 else raw / 100.0
             cells.add(cellVoltage)
             idx += 2
@@ -275,9 +291,10 @@ class GotwayProtocol : EUCProtocol {
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {
-        return data.speed >= 0 &&
-                data.voltage > 30.0 &&
-                data.temperature < 85.0 &&
-                data.batteryLevel > 3
+        // Conservative readiness checks: positive voltage, reasonable temperature and battery
+        val tempOk = (data.temperature ?: Double.MAX_VALUE) < 75.0
+        val voltageOk = data.voltage > 30.0
+        val batteryOk = data.batteryLevel >= 5
+        return voltageOk && tempOk && batteryOk
     }
 }

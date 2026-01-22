@@ -179,4 +179,36 @@ object ByteUtils {
         
         return -1
     }
+
+    // -- accès sûrs (retournent null si hors bornes) --
+    fun tryGetUnsignedByte(data: ByteArray, offset: Int): Int? =
+        if (offset in 0 until data.size) data[offset].toInt() and 0xFF else null
+
+    fun tryGetSignedByte(data: ByteArray, offset: Int): Int? =
+        tryGetUnsignedByte(data, offset)?.let { raw -> if (raw >= 0x80) raw - 0x100 else raw }
+
+    fun tryGetUnsignedShortLE(data: ByteArray, offset: Int): Int? =
+        if (offset + 1 < data.size) getUnsignedShortLE(data, offset) else null
+
+    fun tryGetUnsignedShortBE(data: ByteArray, offset: Int): Int? =
+        if (offset + 1 < data.size) getUnsignedShortBE(data, offset) else null
+
+    fun tryGetSignedShortLE(data: ByteArray, offset: Int): Short? =
+        if (offset + 1 < data.size) getSignedShortLE(data, offset) else null
+
+    fun tryGetSignedShortBE(data: ByteArray, offset: Int): Short? =
+        if (offset + 1 < data.size) getSignedShortBE(data, offset) else null
+
+    fun tryGetUnsignedIntLE(data: ByteArray, offset: Int): Long? =
+        if (offset + 3 < data.size) getUnsignedIntLE(data, offset) else null
+
+    fun tryGetUnsignedIntBE(data: ByteArray, offset: Int): Long? =
+        if (offset + 3 < data.size) getUnsignedIntBE(data, offset) else null
+
+    fun tryGetSignedIntLE(data: ByteArray, offset: Int): Int? =
+        if (offset + 3 < data.size) getSignedIntLE(data, offset) else null
+
+    fun tryGetSignedIntBE(data: ByteArray, offset: Int): Int? =
+        if (offset + 3 < data.size) getSignedIntBE(data, offset) else null
+
 }
