@@ -39,7 +39,7 @@ class FrameReassemblerTest {
         val result = async {
             FrameReassembler.observeFrames().first()
         }
-
+        runCurrent()
         FrameReassembler.processIncomingBytes(frame)
         advanceUntilIdle()
         assertArrayEquals(frame,  result.await())
