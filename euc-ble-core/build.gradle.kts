@@ -33,12 +33,6 @@ android {
             //languageVersion = "2.0" // or KotlinVersion.KOTLIN_2_0
         }
     }
-
-    testOptions {
-        unitTests.all {
-            it.useJUnitPlatform()
-        }
-    }
 }
 
 dependencies {

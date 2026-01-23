@@ -1,6 +1,7 @@
 // File: `euc-ble-core/src/main/java/com/euc/ble/protocols/GotwayProtocol.kt`
 package com.euc.ble.protocols
 
+import androidx.annotation.VisibleForTesting
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.core.FrameReassembler
@@ -140,7 +141,7 @@ class GotwayProtocol : EUCProtocol {
         // Return null because data is emitted asynchronously via the dataFlow
         return null
     }
-
+    @VisibleForTesting
     private fun processFrame(frame: ByteArray) {
         val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {
             0x00 -> parseTypeA(frame)
@@ -154,7 +155,7 @@ class GotwayProtocol : EUCProtocol {
             }
         }
     }
-
+    @VisibleForTesting
     private fun parseTypeA(data: ByteArray): EUCData? {
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
         val speedRaw = ByteUtils.tryGetUnsignedShortBE(data, 4) ?: return null
@@ -189,7 +190,7 @@ class GotwayProtocol : EUCProtocol {
             motorTemperature = null
         )
     }
-
+    @VisibleForTesting
     private fun parseTypeB(data: ByteArray): EUCData? {
         // Frame B primarily provides total distance. Other fields are not documented
         // and may not be present.
