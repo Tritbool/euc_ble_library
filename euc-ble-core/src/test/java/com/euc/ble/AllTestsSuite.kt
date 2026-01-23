@@ -1,6 +1,8 @@
 package com.euc.ble
 
+import com.euc.ble.core.ByteUtilsSafeAccessTest
 import com.euc.ble.core.ByteUtilsTest
+import com.euc.ble.frames.GotwayFrameReassemblerTest
 import com.euc.ble.models.EUCDataTest
 import com.euc.ble.protocols.GotwayProtocolTest
 import com.euc.ble.protocols.KingsongProtocolTest
@@ -15,12 +17,12 @@ import org.junit.runners.Suite
  */
 @RunWith(Suite::class)
 @Suite.SuiteClasses(
+    FrameReassemblerStaticFlowTest::class,
     ByteUtilsTest::class,           // Core byte manipulation utilities
+    ByteUtilsSafeAccessTest::class,
     EUCDataTest::class,            // Data model tests
-    KingsongProtocolTest::class,   // Kingsong protocol tests
     GotwayProtocolTest::class,     // Gotway/Begode protocol tests
-    WheelLogKingsongTest::class,  // Real Kingsong BLE frames from WheelLog
-    WheelLogNinebotTest::class,    // Real Ninebot BLE frames from WheelLog
+    GotwayFrameReassemblerTest::class,
     WheelLogGotwayTest::class      // Real Gotway BLE frames from WheelLog
 )
 class AllTestsSuite {

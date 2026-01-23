@@ -4,7 +4,7 @@ package com.euc.ble.protocols
 import androidx.annotation.VisibleForTesting
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
-import com.euc.ble.core.FrameReassembler
+import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope

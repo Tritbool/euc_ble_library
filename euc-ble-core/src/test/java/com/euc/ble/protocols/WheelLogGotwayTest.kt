@@ -2,7 +2,7 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
-import com.euc.ble.core.FrameReassembler
+import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -148,8 +148,8 @@ class WheelLogGotwayTest {
     fun testFrameReassemblerDirectlyWithRealData() = runBlocking {
         val reassembler = FrameReassembler(
             frameSize = 24,
-            frameHeader = byteArrayOf(0x55.toByte(), 0xAA.toByte()),
-            frameFooter = byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
+            header = byteArrayOf(0x55.toByte(), 0xAA.toByte()),
+            footer = byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
         )
 
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 100)
