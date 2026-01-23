@@ -1,5 +1,6 @@
 package com.euc.ble.core
 
+import com.euc.ble.protocols.GotwayProtocol
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
@@ -9,22 +10,27 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-class FrameReassemblerTest {
+class GotwayFrameReassemblerTest {
 
     private val testDispatcher = StandardTestDispatcher()
+    private lateinit var frameReassembler: FrameReassembler
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @BeforeEach
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        FrameReassembler.reset() // Clear buffer and state before each test
+        frameReassembler = FrameReassembler(
+            frameSize = GotwayProtocol.FRAME_SIZE,
+            frameHeader = GotwayProtocol.HEADER,
+            frameFooter = GotwayProtocol.FOOTER
+        )
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @AfterEach
     fun tearDown() {
         Dispatchers.resetMain()
-        FrameReassembler.reset() // Clear buffer and state after each test
+        frameReassembler.reset() // Clear buffer and state after each test
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -37,10 +43,10 @@ class FrameReassemblerTest {
         )
 
         val result = async {
-            FrameReassembler.observeFrames().first()
+            frameReassembler.observeFrames().first()
         }
         runCurrent()
-        FrameReassembler.processIncomingBytes(frame)
+        frameReassembler.processIncomingBytes(frame)
         advanceUntilIdle()
         assertArrayEquals(frame,  result.await())
     }
@@ -63,10 +69,10 @@ class FrameReassemblerTest {
         val results = mutableListOf<ByteArray>()
 
         val job = launch {
-            FrameReassembler.observeFrames().toList(results)
+            frameReassembler.observeFrames().toList(results)
         }
         runCurrent()
-        FrameReassembler.processIncomingBytes(data)
+        frameReassembler.processIncomingBytes(data)
         advanceUntilIdle()
 
         assertEquals(2, results.size)
@@ -95,10 +101,10 @@ class FrameReassemblerTest {
         val results = mutableListOf<ByteArray>()
 
         val job = launch {
-            FrameReassembler.observeFrames().toList(results)
+            frameReassembler.observeFrames().toList(results)
         }
         runCurrent()
-        FrameReassembler.processIncomingBytes(data)
+        frameReassembler.processIncomingBytes(data)
         advanceUntilIdle()
 
         assertEquals(2, results.size)
@@ -121,14 +127,14 @@ class FrameReassemblerTest {
         val chunk2 = frame.copyOfRange(10, 24)
 
         val result = async {
-            FrameReassembler.observeFrames().first()
+            frameReassembler.observeFrames().first()
         }
         runCurrent()
 
-        FrameReassembler.processIncomingBytes(chunk1)
+        frameReassembler.processIncomingBytes(chunk1)
         advanceUntilIdle() // Ensure the first chunk is processed
 
-        FrameReassembler.processIncomingBytes(chunk2)
+        frameReassembler.processIncomingBytes(chunk2)
         advanceUntilIdle() // Ensure the second chunk is processed
 
         assertArrayEquals(frame, result.await())

@@ -92,6 +92,13 @@ import java.util.UUID
  */
 class GotwayProtocol : EUCProtocol {
 
+    companion object{
+        const val FRAME_SIZE=24
+        val HEADER: ByteArray=byteArrayOf(0x55.toByte(),0xAA.toByte())
+        val FOOTER: ByteArray=byteArrayOf(0x5A.toByte(),0x5A.toByte(),0x5A.toByte(),0x5A.toByte())
+    }
+
+    private val frameReassembler: FrameReassembler= FrameReassembler(FRAME_SIZE,HEADER,FOOTER)
     private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
     val dataFlow: Flow<EUCData> = _dataFlow
 
@@ -100,7 +107,7 @@ class GotwayProtocol : EUCProtocol {
     init {
         // Start observing frames asynchronously
         scope.launch {
-            FrameReassembler.observeFrames().collectLatest { frame ->
+            frameReassembler.observeFrames().collectLatest { frame ->
                 processFrame(frame)
             }
         }
@@ -128,7 +135,7 @@ class GotwayProtocol : EUCProtocol {
     override fun decode(data: ByteArray): EUCData? {
         // Let the reassembler handle the incoming bytes asynchronously
         scope.launch {
-            FrameReassembler.processIncomingBytes(data)
+            frameReassembler.processIncomingBytes(data)
         }
         // Return null because data is emitted asynchronously via the dataFlow
         return null

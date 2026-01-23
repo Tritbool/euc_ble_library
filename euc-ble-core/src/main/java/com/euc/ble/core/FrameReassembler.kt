@@ -6,7 +6,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-object FrameReassembler {
+class FrameReassembler(
+    private val frameSize: Int,
+    private val frameHeader: ByteArray,
+    private val frameFooter: ByteArray
+) {
 
     private val mutex = Mutex()
     private val buffer = mutableListOf<Byte>()
@@ -24,13 +28,8 @@ object FrameReassembler {
                 if (headerIndex == -1) {
                     // No full header found.
                     // To prevent the buffer from growing indefinitely with invalid data,
-                    // we'll clear it, but preserve a trailing 0x55 if it exists,
-                    // as it might be the start of a future header.
-                    val lastByteIs55 = buffer.isNotEmpty() && buffer.last() == 0x55.toByte()
-                    buffer.clear()
-                    if (lastByteIs55) {
-                        buffer.add(0x55.toByte())
-                    }
+                    // we'll clear it, but preserve trailing bytes that might be the start of a future header.
+                    preservePartialHeader()
                     continueProcessing = false
                 } else {
                     // Discard any data before the header.
@@ -38,12 +37,12 @@ object FrameReassembler {
                         buffer.subList(0, headerIndex).clear()
                     }
 
-                    if (buffer.size < 24) {
+                    if (buffer.size < frameSize) {
                         // Not enough data for a full frame. Wait for more.
                         continueProcessing = false
                     } else {
                         // We have enough data for a frame, check the footer.
-                        val frameCandidate = buffer.subList(0, 24)
+                        val frameCandidate = buffer.subList(0, frameSize)
                         if (isValidFooter(frameCandidate)) {
                             // Valid frame, emit it.
                             frameFlow.emit(frameCandidate.toByteArray())
@@ -51,7 +50,7 @@ object FrameReassembler {
                             frameCandidate.clear()
                         } else {
                             // Invalid footer. This isn't a valid frame.
-                            // Discard the header's first byte (0x55) to avoid getting stuck, then re-process buffer.
+                            // Discard the header's first byte to avoid getting stuck, then re-process buffer.
                             buffer.removeAt(0)
                         }
                     }
@@ -61,20 +60,48 @@ object FrameReassembler {
     }
 
     /**
-     * Finds the index of the first occurrence of the frame header (0x55, 0xAA).
+     * Finds the index of the first occurrence of the frame header.
      */
     private fun findHeader(): Int {
-        for (i in 0 until buffer.size - 1) {
-            if (buffer[i] == 0x55.toByte() && buffer[i + 1] == 0xAA.toByte()) {
-                return i
+        if (frameHeader.isEmpty()) return if (buffer.isNotEmpty()) 0 else -1
+        outer@ for (i in 0..buffer.size - frameHeader.size) {
+            for (j in frameHeader.indices) {
+                if (buffer[i + j] != frameHeader[j]) continue@outer
             }
+            return i
         }
         return -1
     }
 
     private fun isValidFooter(frame: List<Byte>): Boolean {
-        return frame.size == 24 &&
-                frame.subList(20, 24) == listOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
+        if (frame.size != frameSize) return false
+        if (frameFooter.isEmpty()) return true
+        val footerStart = frameSize - frameFooter.size
+        return frame.subList(footerStart, frameSize) == frameFooter.toList()
+    }
+
+    /**
+     * Preserves trailing bytes that might be the start of a future header.
+     * Clears the buffer but keeps any partial header match at the end.
+     */
+    private fun preservePartialHeader() {
+        if (frameHeader.isEmpty() || buffer.isEmpty()) {
+            buffer.clear()
+            return
+        }
+
+        // Check if the end of the buffer contains a partial match of the header
+        val maxPartialLength = minOf(frameHeader.size - 1, buffer.size)
+        for (partialLen in maxPartialLength downTo 1) {
+            val bufferEnd = buffer.takeLast(partialLen)
+            val headerStart = frameHeader.take(partialLen).toList()
+            if (bufferEnd == headerStart) {
+                buffer.clear()
+                buffer.addAll(bufferEnd)
+                return
+            }
+        }
+        buffer.clear()
     }
 
     @VisibleForTesting
