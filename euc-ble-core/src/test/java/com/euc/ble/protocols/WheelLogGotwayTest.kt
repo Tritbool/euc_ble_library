@@ -2,6 +2,7 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.frames.FixedSizeFrameParser
 import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import kotlinx.coroutines.Dispatchers
@@ -146,11 +147,10 @@ class WheelLogGotwayTest {
 
     @Test
     fun testFrameReassemblerDirectlyWithRealData() = runBlocking {
-        val reassembler = FrameReassembler(
-            frameSize = 24,
-            header = byteArrayOf(0x55.toByte(), 0xAA.toByte()),
-            footer = byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
-        )
+        val frameParser= FixedSizeFrameParser(GotwayProtocol.FRAME_SIZE, GotwayProtocol.HEADER,
+            GotwayProtocol.FOOTER)
+        val reassembler = FrameReassembler(frameParser)
+
 
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 100)
         assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())

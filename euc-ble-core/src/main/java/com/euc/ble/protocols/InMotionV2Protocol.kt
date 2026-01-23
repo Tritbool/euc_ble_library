@@ -2,15 +2,12 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.frames.FrameReassembler
+import com.euc.ble.frames.InmotionV2FrameParser
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import java.util.UUID
 
-/**
- * InMotion V2 EUC Protocol Implementation
- * Supports newer InMotion series electric unicycles with V2 protocol
- * Uses different UUIDs and enhanced message structure
- */
 class InMotionV2Protocol : EUCProtocol {
 
     override val manufacturer: String = "InMotion"
@@ -18,76 +15,65 @@ class InMotionV2Protocol : EUCProtocol {
         "V11", "V12", "V12 Pro", "V12 HT", "V13"
     )
 
-    // InMotion V2 uses different UUIDs
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_V2_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
     override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
-        // InMotion V2 devices have specific service UUIDs and naming patterns
         return device.name.contains("InMotion", ignoreCase = true) &&
-               (device.name.contains("V11", ignoreCase = true) ||
-                device.name.contains("V12", ignoreCase = true) ||
-                device.name.contains("V13", ignoreCase = true))
+                (device.name.contains("V11", ignoreCase = true) ||
+                        device.name.contains("V12", ignoreCase = true) ||
+                        device.name.contains("V13", ignoreCase = true))
+    }
+
+    /**
+     * Usine pour obtenir un FrameReassembler prêt à l'emploi pour ce protocole.
+     * Exemple d'utilisation :
+     *   val re = protocol.createFrameReassembler()
+     *   re.frames.onEach { frame -> protocol.decode(frame)?.let { ... } }.launchIn(scope)
+     */
+    fun createFrameReassembler(): FrameReassembler {
+        return InmotionV2FrameParser().createReassembler()
+    }
+
+    /**
+     * Utility pour alimenter le reassembler avec des octets reçus (par notifications BLE).
+     */
+    fun feedReassembler(reassembler: FrameReassembler, data: ByteArray) {
+        reassembler.processIncomingBytes(data)
     }
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.size < 24) {
-            return null // Minimum packet size for InMotion V2
+            return null
         }
 
         try {
-            // InMotion V2 protocol has enhanced data structure
-            // Byte 0: Start marker (0x55)
-            // Byte 1: Frame length
-            // Byte 2: Command/Response type
-            // Byte 3: Sequence number
-            // Byte 4-5: Voltage (little-endian, 0.1V units)
-            // Byte 6-7: Speed (little-endian, 0.1 km/h units)
-            // Byte 8-11: Distance (little-endian, meters)
-            // Byte 12-13: Current (little-endian, 0.1A units)
-            // Byte 14-15: Temperature (little-endian, 0.1°C units)
-            // Byte 16: Battery percentage
-            // Byte 17: Status flags
-            // Byte 18: Checksum
-            
             val startMarker = ByteUtils.getUnsignedByte(data, 0)
-            if (startMarker != 0x55) {
-                return null // Invalid start marker
-            }
+            if (startMarker != 0x55) return null
 
             val frameLength = ByteUtils.getUnsignedByte(data, 1)
-            if (frameLength != data.size) {
-                return null // Length mismatch
-            }
+            if (frameLength != data.size) return null
 
             val messageType = ByteUtils.getUnsignedByte(data, 2)
-            
-            // Only process data messages (type 0x01 for real-time data)
-            if (messageType != 0x01) {
-                return null
-            }
+            if (messageType != 0x01) return null
 
             val voltage = ByteUtils.getUnsignedShortLE(data, 4) / 10.0
             val speed = ByteUtils.getUnsignedShortLE(data, 6) / 10.0
-            val distance = ByteUtils.getUnsignedIntLE(data, 8).toDouble() / 1000.0 // Convert to km
+            val distance = ByteUtils.getUnsignedIntLE(data, 8).toDouble() / 1000.0
             val current = ByteUtils.getUnsignedShortLE(data, 12) / 10.0
             val temperature = ByteUtils.getUnsignedShortLE(data, 14) / 10.0
             val batteryLevel = ByteUtils.getUnsignedByte(data, 16).toInt()
             val power = voltage * current
 
-            // Parse status flags
             val statusByte = ByteUtils.getUnsignedByte(data, 17)
             val isCharging = (statusByte and 0x01) != 0
             val hasAlarm = (statusByte and 0x02) != 0
             val isLocked = (statusByte and 0x04) != 0
 
-            // Verify checksum
             val calculatedChecksum = ByteUtils.calculateChecksum(data, 0, data.size - 1)
             val receivedChecksum = data[data.size - 1]
-            if (calculatedChecksum != receivedChecksum) {
-                return null // Checksum mismatch
-            }
+            if (calculatedChecksum != receivedChecksum) return null
 
             return EUCData(
                 speed = speed,
@@ -100,60 +86,39 @@ class InMotionV2Protocol : EUCProtocol {
                 timestamp = System.currentTimeMillis(),
                 rawData = data,
                 manufacturer = manufacturer,
-                model = "Unknown InMotion V2", // Would be detected during connection
+                model = "Unknown InMotion V2",
                 serialNumber = null,
                 firmwareVersion = null,
                 isCharging = isCharging,
-                rideTime = 0, // Would be calculated over time
-                cellVoltages = null, // InMotion V2 may send cell data in separate messages
+                rideTime = 0,
+                cellVoltages = null,
                 motorTemperature = null,
             )
 
         } catch (e: Exception) {
-            // Log decoding error
             return null
         }
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
-        // InMotion V2 command format
         return when (commandType) {
-            CommandType.LIGHT_ON -> {
-                byteArrayOf(0x55.toByte(), 0x05.toByte(), 0x01, 0x01, 0x01, 0x00, 0x00)
-            }
-            CommandType.LIGHT_OFF -> {
-                byteArrayOf(0x55.toByte(), 0x05.toByte(), 0x01, 0x01, 0x00, 0x00, 0x00)
-            }
-            CommandType.BEEP -> {
-                byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x02, 0x01, 0x00, 0x00)
-            }
-            CommandType.POWER_OFF -> {
-                byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x03, 0x01, 0x00, 0x00)
-            }
+            CommandType.LIGHT_ON -> byteArrayOf(0x55.toByte(), 0x05.toByte(), 0x01, 0x01, 0x01, 0x00, 0x00)
+            CommandType.LIGHT_OFF -> byteArrayOf(0x55.toByte(), 0x05.toByte(), 0x01, 0x01, 0x00, 0x00, 0x00)
+            CommandType.BEEP -> byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x02, 0x01, 0x00, 0x00)
+            CommandType.POWER_OFF -> byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x03, 0x01, 0x00, 0x00)
             CommandType.LIGHT_BRIGHTNESS -> {
                 if (value is Int && value in 0..100) {
                     val brightness = (value * 255 / 100).toByte()
                     byteArrayOf(0x55.toByte(), 0x05.toByte(), 0x04, brightness, 0x00, 0x00, 0x00)
-                } else {
-                    byteArrayOf() // Invalid value
-                }
+                } else byteArrayOf()
             }
-            CommandType.REQUEST_SERIAL -> {
-                // Request serial number
-                byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x10, 0x01, 0x00, 0x00)
-            }
-            CommandType.REQUEST_FIRMWARE -> {
-                // Request firmware version
-                byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x11, 0x01, 0x00, 0x00)
-            }
-            else -> {
-                byteArrayOf() // Unsupported command
-            }
+            CommandType.REQUEST_SERIAL -> byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x10, 0x01, 0x00, 0x00)
+            CommandType.REQUEST_FIRMWARE -> byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x11, 0x01, 0x00, 0x00)
+            else -> byteArrayOf()
         }
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {
-        // Device is ready if we have valid data and it's not in an error state
         return data.speed >= 0 && data.voltage > 50.0 && data.temperature < 70.0
     }
 }

@@ -4,6 +4,7 @@ package com.euc.ble.protocols
 import androidx.annotation.VisibleForTesting
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.frames.FixedSizeFrameParser
 import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
@@ -98,8 +99,8 @@ class GotwayProtocol : EUCProtocol {
         val HEADER: ByteArray=byteArrayOf(0x55.toByte(),0xAA.toByte())
         val FOOTER: ByteArray=byteArrayOf(0x5A.toByte(),0x5A.toByte(),0x5A.toByte(),0x5A.toByte())
     }
-
-    private val frameReassembler: FrameReassembler= FrameReassembler(FRAME_SIZE,HEADER,FOOTER)
+    private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
+    private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
     private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
     val dataFlow: Flow<EUCData> = _dataFlow
 

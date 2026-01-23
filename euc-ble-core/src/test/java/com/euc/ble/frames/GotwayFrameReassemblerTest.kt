@@ -1,6 +1,9 @@
 package com.euc.ble.frames
 
 import com.euc.ble.protocols.GotwayProtocol
+import com.euc.ble.protocols.GotwayProtocol.Companion.FOOTER
+import com.euc.ble.protocols.GotwayProtocol.Companion.FRAME_SIZE
+import com.euc.ble.protocols.GotwayProtocol.Companion.HEADER
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -21,17 +24,14 @@ import org.junit.jupiter.api.Test
 class GotwayFrameReassemblerTest {
 
     private val testDispatcher = StandardTestDispatcher()
+    private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
     private lateinit var frameReassembler: FrameReassembler
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @BeforeEach
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        frameReassembler = FrameReassembler(
-            frameSize = GotwayProtocol.FRAME_SIZE,
-            header = GotwayProtocol.HEADER,
-            footer = GotwayProtocol.FOOTER
-        )
+        frameReassembler = FrameReassembler(frameParser)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
