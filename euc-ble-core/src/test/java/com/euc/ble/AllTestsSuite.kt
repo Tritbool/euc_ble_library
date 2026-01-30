@@ -5,10 +5,8 @@ import com.euc.ble.core.ByteUtilsTest
 import com.euc.ble.frames.GotwayFrameReassemblerTest
 import com.euc.ble.models.EUCDataTest
 import com.euc.ble.protocols.GotwayProtocolTest
-import com.euc.ble.protocols.KingsongProtocolTest
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogKingsongTest
-import com.euc.ble.protocols.WheelLogNinebotTest
 import org.junit.runner.RunWith
 import org.junit.runners.Suite
 

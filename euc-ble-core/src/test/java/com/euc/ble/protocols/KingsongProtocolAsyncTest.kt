@@ -1,0 +1,139 @@
+package com.euc.ble.protocols
+
+import com.euc.ble.core.ByteUtils
+import com.euc.ble.models.EUCData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.*
+import org.junit.Test
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+class KingsongProtocolAsyncTest {
+
+    private suspend fun collectN(flow: kotlinx.coroutines.flow.Flow<EUCData>, n: Int, timeoutMs: Long = 1000L): List<EUCData> {
+        val out = CopyOnWriteArrayList<EUCData>()
+        val job = kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            flow.collect { out.add(it) }
+        }
+        try {
+            withTimeout(timeoutMs) {
+                while (out.size < n) kotlinx.coroutines.delay(10)
+            }
+        } catch (e: Exception) {
+            // timeout
+        } finally {
+            job.cancel()
+        }
+        return out.toList()
+    }
+
+    @Test
+    fun testSingleCompleteFrameEmitsEucData() = runBlocking {
+        val protocol = KingsongProtocol()
+        val hex = "AA5564012C0140420F00E80314000164740E"
+        val payload = ByteUtils.hexToBytes(hex)
+
+        val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
+        protocol.decode(payload)
+
+        val items = withTimeout(1000L) { collector.await() }
+        assertEquals(1, items.size)
+        val d = items[0]
+        assertEquals("KingSong", d.manufacturer)
+        assertEquals(35.6, d.voltage, 0.01)
+        assertEquals(30.0, d.speed, 0.01)
+        assertEquals(1000000.0, d.distance, 0.1)
+        assertEquals(100.0, d.current, 0.01)
+        assertEquals(2.0, d.temperature, 0.01)
+        assertTrue(d.isCharging)
+        assertEquals(100, d.batteryLevel)
+        assertNotNull(d.cellVoltages)
+        assertTrue(d.cellVoltages!!.contains(3.7))
+    }
+
+    @Test
+    fun testFragmentedFrameAcrossTwoDecodeCalls() = runBlocking {
+        val protocol = KingsongProtocol()
+        val hexA = "AA5564012C0140420F"
+        val hexB = "00E80314000164740E"
+        val a = ByteUtils.hexToBytes(hexA)
+        val b = ByteUtils.hexToBytes(hexB)
+
+        val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
+        protocol.decode(a)
+        protocol.decode(b)
+
+        val items = withTimeout(1000L) { collector.await() }
+        assertEquals(1, items.size)
+        val d = items[0]
+        assertEquals(35.6, d.voltage, 0.01)
+        assertEquals(30.0, d.speed, 0.01)
+        assertEquals(1000000.0, d.distance, 0.1)
+    }
+
+    @Test
+    fun testTwoFramesInOnePayload() = runBlocking {
+        val protocol = KingsongProtocol()
+        val hex = "AA5564012C0140420F00E80314000164740E" + "AA5564012C0140420F00E80314000164740E"
+        val payload = ByteUtils.hexToBytes(hex)
+
+        val collector = async { collectN(protocol.dataFlow, 2, 1000L) }
+        protocol.decode(payload)
+
+        val items = withTimeout(1000L) { collector.await() }
+        assertEquals(2, items.size)
+        assertEquals(35.6, items[0].voltage, 0.01)
+        assertEquals(35.6, items[1].voltage, 0.01)
+    }
+
+    @Test
+    fun testLeadingNoiseAndResync() = runBlocking {
+        val protocol = KingsongProtocol()
+        val hex = "00FFAA55" + "64012C0140420F00E80314000164740E"
+        val payload = ByteUtils.hexToBytes(hex)
+
+        val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
+        protocol.decode(payload)
+
+        val items = withTimeout(1000L) { collector.await() }
+        assertEquals(1, items.size)
+        val d = items[0]
+        assertEquals(35.6, d.voltage, 0.01)
+    }
+
+    @Test
+    fun testTruncatedThenCompletedFrame() = runBlocking {
+        val protocol = KingsongProtocol()
+        val part1 = ByteUtils.hexToBytes("AA5564012C014042") // too short
+        val part2 = ByteUtils.hexToBytes("0F00E80314000164740E")
+
+        val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
+        protocol.decode(part1)
+        // ensure no immediate emission
+        val none = withTimeoutOrNull(200L) { collector.await() }
+        // collector may time out; we expect no emission yet
+        // Now send rest
+        protocol.decode(part2)
+        val items = withTimeout(1000L) { collector.await() }
+        assertEquals(1, items.size)
+        assertEquals(35.6, items[0].voltage, 0.01)
+    }
+
+    @Test
+    fun testHeaderVariant55AA() = runBlocking {
+        val protocol = KingsongProtocol()
+        val hex = "55AA64012C0140420F00E80314000164740E"
+        val payload = ByteUtils.hexToBytes(hex)
+
+        val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
+        protocol.decode(payload)
+
+        val items = withTimeout(1000L) { collector.await() }
+        assertEquals(1, items.size)
+        assertEquals(35.6, items[0].voltage, 0.01)
+    }
+}

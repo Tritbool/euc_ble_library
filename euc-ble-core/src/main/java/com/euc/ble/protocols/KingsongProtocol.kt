@@ -2,15 +2,21 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.frames.ByteByByteFrameParser
+import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
- * Improved KingSong protocol: tolerant parsing, header resync, safe bounds checks,
- * optional cell voltages parsing, and clamped command generation.
- *
- * File: `euc-ble-core/src/main/java/com/euc/ble/protocols/KingsongProtocol.kt`
+ * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
+ * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
  */
 class KingsongProtocol : EUCProtocol {
 
@@ -33,17 +39,90 @@ class KingsongProtocol : EUCProtocol {
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     private val MIN_LENGTH = 16 // flexible minimal length
 
-    private fun findHeaderIndex(data: ByteArray): Int {
-        // search for either header sequence to allow some adapter variants
-        for (i in 0..(data.size - 2)) {
-            if (data[i] == header1[0] && data[i + 1] == header1[1]) return i
-            if (data[i] == header2[0] && data[i + 1] == header2[1]) return i
-        }
-        return -1
-    }
-
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
+    }
+
+    // Internal buffer used by the unpacker
+    private val unpackBuffer = ArrayList<Byte>()
+
+    // Unpacker: accumule octets et retourne 0..N trames complètes.
+    // Règle heuristique : détecte en-têtes (AA 55 ou 55 AA) et extrait la tranche jusqu'au prochain en-tête.
+    private val unpacker: (Byte) -> List<ByteArray> = { b: Byte ->
+        val out = mutableListOf<ByteArray>()
+        unpackBuffer.add(b)
+
+        fun findHeaderIndex(from: Int = 0): Int {
+            val bufSize = unpackBuffer.size
+            if (bufSize < 2) return -1
+            var i = maxOf(from, 0)
+            val maxStart = bufSize - 2
+            while (i <= maxStart) {
+                val a = unpackBuffer[i]
+                val c = unpackBuffer[i + 1]
+                if ((a == header1[0] && c == header1[1]) || (a == header2[0] && c == header2[1])) return i
+                i++
+            }
+            return -1
+        }
+
+        var headerIdx = findHeaderIndex(0)
+        while (headerIdx >= 0) {
+            // chercher l'en-tête suivant
+            val nextHeader = findHeaderIndex(headerIdx + 2)
+            if (nextHeader >= 0) {
+                // extraire frame [headerIdx, nextHeader)
+                val len = nextHeader - headerIdx
+                val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
+                out.add(frame)
+                // supprimer les octets émis
+                repeat(nextHeader) { unpackBuffer.removeAt(0) }
+                headerIdx = findHeaderIndex(0)
+                continue
+            }
+
+            // pas d'en-tête suivant
+            // si on a au moins MIN_LENGTH octets après l'en-tête, émettre au moins cela (heuristique de flottement)
+            if (unpackBuffer.size >= headerIdx + MIN_LENGTH) {
+                // émettre tout le restant comme une trame au lieu d'attendre indéfiniment
+                val len = unpackBuffer.size - headerIdx
+                val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
+                out.add(frame)
+                // supprimer les octets émis
+                repeat(headerIdx + len) { unpackBuffer.removeAt(0) }
+            } else {
+                // pas assez de données pour compléter une trame, attendre plus
+                break
+            }
+            headerIdx = findHeaderIndex(0)
+        }
+
+        // si pas d'en-tête, garder au plus 1 octet (préserver possibilité de header fractured)
+        if (findHeaderIndex(0) < 0) {
+            val keep = 1
+            while (unpackBuffer.size > keep) unpackBuffer.removeAt(0)
+        }
+
+        out
+    }
+
+    private val byteParser = ByteByByteFrameParser(unpacker, resetUnpacker = {
+        unpackBuffer.clear()
+    })
+    private val frameReassembler = FrameReassembler(byteParser)
+
+    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
+    val dataFlow: Flow<EUCData> = _dataFlow
+
+    private val scope = CoroutineScope(Dispatchers.IO)
+
+    init {
+        // Start observing frames asynchronously and process them
+        scope.launch {
+            frameReassembler.observeFrames().collectLatest { frame ->
+                processFrame(frame)
+            }
+        }
     }
 
     /**
@@ -95,21 +174,27 @@ class KingsongProtocol : EUCProtocol {
      *  - Être défensif : entourer les lectures par des vérifications d'indice et catcher
      *    les exceptions pour éviter de planter le décodeur.
      */
-    override fun decode(data: ByteArray): EUCData? {
+    private fun parseFrame(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
 
-        val headerIdx = findHeaderIndex(data)
+        val headerIdx = run {
+            // trouver l'en-tête dans la trame (souvent 0)
+            for (i in 0..(data.size - 2)) {
+                if (data[i] == header1[0] && data[i + 1] == header1[1]) return@run i
+                if (data[i] == header2[0] && data[i + 1] == header2[1]) return@run i
+            }
+            -1
+        }
         if (headerIdx < 0) return null
 
         if (data.size - headerIdx < MIN_LENGTH) {
-            // not enough bytes after header for minimal decoding
+            // pas assez d'octets
             return null
         }
 
         try {
             val base = headerIdx
 
-            // Safely read fields only if enough bytes remain, fallback to sensible defaults
             val voltage = if (ensureRange(data, base + 2, 2))
                 ByteUtils.getUnsignedShortLE(data, base + 2) / 10.0 else 0.0
 
@@ -126,19 +211,17 @@ class KingsongProtocol : EUCProtocol {
                 ByteUtils.getSignedShortLE(data, base + 12) / 10.0 else 0.0
 
             val statusByte = if (ensureRange(data, base + 14, 1))
-                ByteUtils.getUnsignedByte(data, base + 14) else 0x00.toByte()
+                ByteUtils.getUnsignedByte(data, base + 14) else 0
 
             val batteryLevel = if (ensureRange(data, base + 15, 1))
-                ByteUtils.getUnsignedByte(data, base + 15).toInt().coerceIn(0, 100) else 0
+                ByteUtils.getUnsignedByte(data, base + 15).coerceIn(0, 100) else 0
 
-            val isCharging = (statusByte.toInt() and 0x01) != 0
+            val isCharging = (statusByte and 0x01) != 0
 
-            // Optional: parse trailing cell voltages if present (pairs of uint16 LE).
             val cellVoltages = mutableListOf<Double>()
             var idx = base + 16
             while (ensureRange(data, idx, 2)) {
                 val raw = ByteUtils.getUnsignedShortLE(data, idx)
-                // Heuristic: if value looks like mV (e.g. >2000) convert to volts
                 val volt = if (raw > 2000) raw / 1000.0 else raw / 100.0
                 if (volt > 0.0) cellVoltages.add(volt)
                 idx += 2
@@ -146,7 +229,7 @@ class KingsongProtocol : EUCProtocol {
 
             val power = voltage * current
 
-            val model = "KingSong" // could be refined if additional identification bytes exist
+            val model = "KingSong"
 
             return EUCData(
                 speed = speed,
@@ -167,10 +250,27 @@ class KingsongProtocol : EUCProtocol {
                 cellVoltages = if (cellVoltages.isNotEmpty()) cellVoltages else null,
                 motorTemperature = null,
             )
-        } catch (e: Exception) {
-            // defensive: on any parsing error return null
+        } catch (_: Exception) {
             return null
         }
+    }
+
+    private fun processFrame(frame: ByteArray) {
+        val parsed = parseFrame(frame)
+        parsed?.let {
+            scope.launch { _dataFlow.emit(it) }
+        }
+    }
+
+    override fun decode(data: ByteArray): EUCData? {
+        if (data.isEmpty()) return null
+
+        // Let the reassembler handle the incoming bytes asynchronously
+        scope.launch {
+            frameReassembler.processIncomingBytes(data)
+        }
+        // Return null because data is emitted asynchronously via the dataFlow
+        return null
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
@@ -190,8 +290,7 @@ class KingsongProtocol : EUCProtocol {
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {
-        // Conservative readiness checks: positive voltage, reasonable temperature and battery
-        val tempOk = (data.temperature ?: Double.MAX_VALUE) < 75.0
+        val tempOk = data.temperature < 75.0
         val voltageOk = data.voltage > 30.0
         val batteryOk = data.batteryLevel >= 5
         return voltageOk && tempOk && batteryOk
