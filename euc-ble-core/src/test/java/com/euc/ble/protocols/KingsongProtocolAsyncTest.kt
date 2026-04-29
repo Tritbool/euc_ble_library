@@ -34,7 +34,7 @@ class KingsongProtocolAsyncTest {
     @Test
     fun testSingleCompleteFrameEmitsEucData() = runBlocking {
         val protocol = KingsongProtocol()
-        val hex = "AA5564012C0140420F00E80314000164740E"
+        val hex = "AA55E52F8B060D000A9A1500E40C02E0A9145A5A"
         val payload = ByteUtils.hexToBytes(hex)
 
         val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
@@ -44,22 +44,21 @@ class KingsongProtocolAsyncTest {
         assertEquals(1, items.size)
         val d = items[0]
         assertEquals("KingSong", d.manufacturer)
-        assertEquals(35.6, d.voltage, 0.01)
-        assertEquals(30.0, d.speed, 0.01)
-        assertEquals(1000000.0, d.distance, 0.1)
-        assertEquals(100.0, d.current, 0.01)
-        assertEquals(2.0, d.temperature, 0.01)
-        assertTrue(d.isCharging)
-        assertEquals(100, d.batteryLevel)
-        assertNotNull(d.cellVoltages)
-        assertTrue(d.cellVoltages!!.contains(3.7))
+        assertEquals(122.61, d.voltage, 0.01)
+        assertEquals(16.75, d.speed, 0.01)
+        assertEquals(2584346637.0, d.distance, 0.1)
+        assertEquals(0.21, d.current, 0.01)
+        assertEquals(33.0, d.temperature, 0.01)
+        assertFalse(d.isCharging)
+        assertEquals(0, d.batteryLevel)
+        assertNull(d.cellVoltages)
     }
 
     @Test
     fun testFragmentedFrameAcrossTwoDecodeCalls() = runBlocking {
         val protocol = KingsongProtocol()
-        val hexA = "AA5564012C0140420F"
-        val hexB = "00E80314000164740E"
+        val hexA = "AA55E52F8B060D000A9A"
+        val hexB = "1500E40C02E0A9145A5A"
         val a = ByteUtils.hexToBytes(hexA)
         val b = ByteUtils.hexToBytes(hexB)
 
@@ -70,15 +69,15 @@ class KingsongProtocolAsyncTest {
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(1, items.size)
         val d = items[0]
-        assertEquals(35.6, d.voltage, 0.01)
-        assertEquals(30.0, d.speed, 0.01)
-        assertEquals(1000000.0, d.distance, 0.1)
+        assertEquals(122.61, d.voltage, 0.01)
+        assertEquals(16.75, d.speed, 0.01)
+        assertEquals(2584346637.0, d.distance, 0.1)
     }
 
     @Test
     fun testTwoFramesInOnePayload() = runBlocking {
         val protocol = KingsongProtocol()
-        val hex = "AA5564012C0140420F00E80314000164740E" + "AA5564012C0140420F00E80314000164740E"
+        val hex = "AA55E52F8B060D000A9A1500E40C02E0A9145A5A" + "AA55E52F8B060D000A9A1500E40C02E0A9145A5A"
         val payload = ByteUtils.hexToBytes(hex)
 
         val collector = async { collectN(protocol.dataFlow, 2, 1000L) }
@@ -86,14 +85,14 @@ class KingsongProtocolAsyncTest {
 
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(2, items.size)
-        assertEquals(35.6, items[0].voltage, 0.01)
-        assertEquals(35.6, items[1].voltage, 0.01)
+        assertEquals(122.61, items[0].voltage, 0.01)
+        assertEquals(122.61, items[1].voltage, 0.01)
     }
 
     @Test
     fun testLeadingNoiseAndResync() = runBlocking {
         val protocol = KingsongProtocol()
-        val hex = "00FFAA55" + "64012C0140420F00E80314000164740E"
+        val hex = "00FFAA55" + "E52F8B060D000A9A1500E40C02E0A9145A5A"
         val payload = ByteUtils.hexToBytes(hex)
 
         val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
@@ -102,14 +101,14 @@ class KingsongProtocolAsyncTest {
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(1, items.size)
         val d = items[0]
-        assertEquals(35.6, d.voltage, 0.01)
+        assertEquals(122.61, d.voltage, 0.01)
     }
 
     @Test
     fun testTruncatedThenCompletedFrame() = runBlocking {
         val protocol = KingsongProtocol()
-        val part1 = ByteUtils.hexToBytes("AA5564012C014042") // too short
-        val part2 = ByteUtils.hexToBytes("0F00E80314000164740E")
+        val part1 = ByteUtils.hexToBytes("AA55E52F8B060D00") // too short
+        val part2 = ByteUtils.hexToBytes("0A9A1500E40C02E0A9145A5A")
 
         val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
         protocol.decode(part1)
@@ -120,13 +119,13 @@ class KingsongProtocolAsyncTest {
         protocol.decode(part2)
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(1, items.size)
-        assertEquals(35.6, items[0].voltage, 0.01)
+        assertEquals(122.61, items[0].voltage, 0.01)
     }
 
     @Test
     fun testHeaderVariant55AA() = runBlocking {
         val protocol = KingsongProtocol()
-        val hex = "55AA64012C0140420F00E80314000164740E"
+        val hex = "55AAE52F8B060D000A9A1500E40C02E0A9145A5A"
         val payload = ByteUtils.hexToBytes(hex)
 
         val collector = async { collectN(protocol.dataFlow, 1, 1000L) }
@@ -134,6 +133,6 @@ class KingsongProtocolAsyncTest {
 
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(1, items.size)
-        assertEquals(35.6, items[0].voltage, 0.01)
+        assertEquals(122.61, items[0].voltage, 0.01)
     }
 }
