@@ -39,8 +39,9 @@ class KingsongProtocol : EUCProtocol {
     private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     private val MIN_LENGTH = 20
-    private val DATA_FLOW_REPLAY_SIZE = 8
-    private val DATA_FLOW_EXTRA_BUFFER_SIZE = 32
+    // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
+    private val dataFlowReplaySize = 8
+    private val dataFlowExtraBufferSize = 32
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
@@ -115,8 +116,8 @@ class KingsongProtocol : EUCProtocol {
     private val frameReassembler = FrameReassembler(byteParser)
 
     private val _dataFlow = MutableSharedFlow<EUCData>(
-        replay = DATA_FLOW_REPLAY_SIZE,
-        extraBufferCapacity = DATA_FLOW_EXTRA_BUFFER_SIZE
+        replay = dataFlowReplaySize,
+        extraBufferCapacity = dataFlowExtraBufferSize
     )
     val dataFlow: Flow<EUCData> = _dataFlow
 
