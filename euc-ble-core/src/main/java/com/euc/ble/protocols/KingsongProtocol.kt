@@ -7,10 +7,11 @@ import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -111,15 +112,15 @@ class KingsongProtocol : EUCProtocol {
     })
     private val frameReassembler = FrameReassembler(byteParser)
 
-    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
+    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 32, extraBufferCapacity = 32)
     val dataFlow: Flow<EUCData> = _dataFlow
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
     init {
         // Start observing frames asynchronously and process them
-        scope.launch {
-            frameReassembler.observeFrames().collectLatest { frame ->
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            frameReassembler.observeFrames().collect { frame ->
                 processFrame(frame)
             }
         }
@@ -252,7 +253,7 @@ class KingsongProtocol : EUCProtocol {
     private fun processFrame(frame: ByteArray) {
         val parsed = parseFrame(frame)
         parsed?.let {
-            scope.launch { _dataFlow.emit(it) }
+            _dataFlow.tryEmit(it)
         }
     }
 
