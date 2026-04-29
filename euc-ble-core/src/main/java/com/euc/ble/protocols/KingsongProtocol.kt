@@ -253,7 +253,7 @@ class KingsongProtocol : EUCProtocol {
     private fun processFrame(frame: ByteArray) {
         val parsed = parseFrame(frame)
         parsed?.let {
-            _dataFlow.tryEmit(it)
+            scope.launch { _dataFlow.emit(it) }
         }
     }
 
