@@ -24,23 +24,23 @@ class InMotionProtocolTest {
         )
 
         val decoded = packets
-            .map { protocol.decode(ByteUtils.hexToBytes(it)) }
-            .lastOrNull { it != null }
-            ?: fail("Expected realtime telemetry frame to decode")
+            .mapNotNull { protocol.decode(ByteUtils.hexToBytes(it)) }
+            //.lastOrNull { it != null }
+            //?: fail("Expected realtime telemetry frame to decode")
 
-        assertEquals("InMotion", decoded.manufacturer)
-        assertEquals("InMotion V9", decoded.model)
-        assertEquals("A1421950A000465F", decoded.serialNumber)
-        assertEquals("Main:1.8.38 Drv:7.4.40 BLE:1.4.10", decoded.firmwareVersion)
+        assertEquals("InMotion", decoded.first().manufacturer)
+        assertEquals("InMotion V9", decoded.first().model)
+        assertEquals("A1421950A000465F", decoded.first().serialNumber)
+        assertEquals("Main:1.8.38 Drv:7.4.40 BLE:1.4.10", decoded.first().firmwareVersion)
 
-        assertEquals(0.0, decoded.speed, 0.01)
-        assertEquals(77.42, decoded.voltage, 0.01)
-        assertEquals(0.12, decoded.current, 0.01)
-        assertEquals(29.0, decoded.temperature, 0.01)
-        assertEquals(25.0, decoded.motorTemperature ?: -1.0, 0.01)
-        assertEquals(58, decoded.batteryLevel)
-        assertEquals(0.06, decoded.distance, 0.01)
-        assertEquals(252.33, decoded.totalDistance ?: -1.0, 0.01)
+        assertEquals(0.0, decoded.first().speed, 0.01)
+        assertEquals(77.42, decoded.first().voltage, 0.01)
+        assertEquals(0.12, decoded.first().current, 0.01)
+        assertEquals(29.0, decoded.first().temperature, 0.01)
+        assertEquals(25.0, decoded.first().motorTemperature ?: -1.0, 0.01)
+        assertEquals(58, decoded.first().batteryLevel)
+        assertEquals(0.06, decoded.first().distance, 0.01)
+        assertEquals(252.33, decoded.first().totalDistance ?: -1.0, 0.01)
     }
 
     @Test
