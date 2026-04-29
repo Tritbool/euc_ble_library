@@ -5,8 +5,10 @@ import com.euc.ble.core.ByteUtilsTest
 import com.euc.ble.frames.GotwayFrameReassemblerTest
 import com.euc.ble.models.EUCDataTest
 import com.euc.ble.protocols.GotwayProtocolTest
+import com.euc.ble.protocols.InMotionProtocolTest
 import com.euc.ble.protocols.KingsongProtocolAsyncTest
 import com.euc.ble.protocols.WheelLogGotwayTest
+import com.euc.ble.protocols.WheelLogInMotionTest
 import com.euc.ble.protocols.WheelLogKingsongTest
 import org.junit.runner.RunWith
 import org.junit.runners.Suite
@@ -21,9 +23,11 @@ import org.junit.runners.Suite
     ByteUtilsSafeAccessTest::class,
     EUCDataTest::class,            // Data model tests
     GotwayProtocolTest::class,     // Gotway/Begode protocol tests
+    InMotionProtocolTest::class,   // InMotion V2 protocol (V9-first) tests
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
-    WheelLogGotwayTest::class      // Real Gotway BLE frames from WheelLog
+    WheelLogGotwayTest::class,     // Real Gotway BLE frames from WheelLog
+    WheelLogInMotionTest::class    // Real InMotion BLE frames from WheelLog
 )
 class AllTestsSuite {
     // This class remains empty, it is used only as a holder for the above annotations
