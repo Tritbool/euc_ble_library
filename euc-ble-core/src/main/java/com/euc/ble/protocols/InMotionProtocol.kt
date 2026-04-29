@@ -286,14 +286,19 @@ class InMotionProtocol : EUCProtocol {
 
         val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, 43) ?: return null) / 100.0
         val current = (ByteUtils.tryGetSignedShortLE(frame, 39)?.toInt() ?: 0) / 100.0
-        val speed = 0.0
+        val speedRaw = ByteUtils.tryGetSignedShortLE(frame, 95)?.toInt() ?: 0
+        val speed = (speedRaw / 820.0).coerceIn(-80.0, 80.0)
+        val tripDistanceKm = (ByteUtils.tryGetUnsignedIntLE(frame, 83)?.toDouble() ?: 0.0) / 1000.0
         val totalDistance = (ByteUtils.tryGetUnsignedIntLE(frame, 63)?.toDouble() ?: 0.0) / 1000.0
-        val battery = ByteUtils.tryGetUnsignedByte(frame, 154)
-            ?.coerceIn(0, 100)
-            ?: (((voltage - 55.0) / 30.0) * 100.0).roundToInt().coerceIn(0, 100)
+        val battery = if (frame.size > 154) {
+            (frame[154].toInt() and 0xFF).coerceIn(0, 100)
+        } else {
+            (((voltage - 55.0) / 30.0) * 100.0).roundToInt().coerceIn(0, 100)
+        }
 
         val temperature = ByteUtils.tryGetSignedByte(frame, 51)?.toDouble() ?: 0.0
         val motorTemp = ByteUtils.tryGetSignedByte(frame, 53)?.toDouble()
+        val rideTimeSeconds = ByteUtils.tryGetUnsignedIntLE(frame, 103)?.toLong() ?: 0L
 
         if (totalDistance > 0.0) totalDistanceKm = totalDistance
 
@@ -303,7 +308,7 @@ class InMotionProtocol : EUCProtocol {
             current = current,
             temperature = temperature,
             batteryLevel = battery,
-            distance = 0.0,
+            distance = tripDistanceKm,
             power = voltage * current,
             timestamp = System.currentTimeMillis(),
             rawData = frame,
@@ -312,7 +317,7 @@ class InMotionProtocol : EUCProtocol {
             serialNumber = serialNumber,
             firmwareVersion = firmwareVersion,
             isCharging = false,
-            rideTime = 0,
+            rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = motorTemp,
             totalDistance = totalDistanceKm
