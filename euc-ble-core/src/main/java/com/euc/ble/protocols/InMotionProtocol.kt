@@ -186,7 +186,14 @@ class InMotionProtocol : EUCProtocol {
 
     private fun isLikelyLegacyChunk(chunk: ByteArray): Boolean {
         if (chunk.size >= 2 && chunk[0] == HEADER[0] && chunk[1] == HEADER[1]) {
-            return !isLikelyV2Chunk(chunk)
+            if (chunk.size >= 4) {
+                val flags = chunk[2].toInt() and 0xFF
+                val len = chunk[3].toInt() and 0xFF
+                if ((flags == FLAG_INITIAL || flags == FLAG_DEFAULT || flags == FLAG_EXTENDED) && len in 1..MAX_LEN) {
+                    return false
+                }
+            }
+            return true
         }
         return chunk.size >= 2 && chunk[chunk.size - 2] == LEGACY_TAIL[0] && chunk[chunk.size - 1] == LEGACY_TAIL[1]
     }
@@ -240,6 +247,7 @@ class InMotionProtocol : EUCProtocol {
     private fun parseLegacyInfo(frame: ByteArray) {
         if (frame.size < 48) return
 
+        // Legacy captures encode model marker and serial seed in the same block.
         serialNumber = decodeLegacySerial(frame)
         modelName = mapLegacyModel(frame.getOrNull(19)?.toInt()?.and(0xFF) ?: 0)
         firmwareVersion = decodeLegacyFirmware(frame)

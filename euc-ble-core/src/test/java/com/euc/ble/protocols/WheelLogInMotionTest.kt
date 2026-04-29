@@ -1,6 +1,7 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.models.EUCData
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.BufferedReader
@@ -16,7 +17,7 @@ class WheelLogInMotionTest {
         val frames = loadFrames("${resourceDir}RAW_2026_03_11_08_20_23.csv", maxFrames = 2000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
-        val decoded = mutableListOf<com.euc.ble.models.EUCData>()
+        val decoded = mutableListOf<EUCData>()
         for (frame in frames) {
             protocol.decode(frame.bleData)?.let(decoded::add)
         }
@@ -44,7 +45,7 @@ class WheelLogInMotionTest {
         val frames = loadFrames("${resourceDir}RAW_inmotion_V5F.csv")
         assertTrue("Expected legacy V5F WheelLog frames", frames.isNotEmpty())
 
-        val decoded = mutableListOf<com.euc.ble.models.EUCData>()
+        val decoded = mutableListOf<EUCData>()
         for (frame in frames) {
             protocol.decode(frame.bleData)?.let(decoded::add)
         }
