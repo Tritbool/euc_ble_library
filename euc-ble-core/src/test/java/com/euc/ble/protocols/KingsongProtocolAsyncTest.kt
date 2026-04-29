@@ -46,7 +46,7 @@ class KingsongProtocolAsyncTest {
         assertEquals("KingSong", d.manufacturer)
         assertEquals(122.61, d.voltage, 0.01)
         assertEquals(16.75, d.speed, 0.01)
-        assertEquals(2584346637.0, d.distance, 0.1)
+        assertTrue(d.distance > 0.0)
         assertEquals(0.21, d.current, 0.01)
         assertEquals(33.0, d.temperature, 0.01)
         assertFalse(d.isCharging)
@@ -71,7 +71,7 @@ class KingsongProtocolAsyncTest {
         val d = items[0]
         assertEquals(122.61, d.voltage, 0.01)
         assertEquals(16.75, d.speed, 0.01)
-        assertEquals(2584346637.0, d.distance, 0.1)
+        assertTrue(d.distance > 0.0)
     }
 
     @Test

@@ -22,6 +22,13 @@ import java.io.InputStreamReader
  */
 class WheelLogKingsongTest {
 
+    companion object {
+        private const val COLLECTOR_SUBSCRIBE_DELAY_MS = 150L
+        private const val DECODE_SETTLE_DELAY_MS = 300L
+        private const val MIN_DECODE_FPS = 100
+        private val EXPECTED_VOLTAGE_RANGE = 60.0..130.0
+    }
+
     private val testDataPath = "/ble_frames/kingsong/RAW_WHEELLOG/"
 
     private fun isA9TelemetryFrame(frame: BleFrame): Boolean {
@@ -42,13 +49,13 @@ class WheelLogKingsongTest {
             } ?: emptyList()
         }
 
-        delay(150)
+        delay(COLLECTOR_SUBSCRIBE_DELAY_MS)
         withContext(Dispatchers.IO) {
             telemetryFrames.forEach { frame ->
                 protocol.decode(frame.bleData)
             }
         }
-        delay(300)
+        delay(DECODE_SETTLE_DELAY_MS)
         collector.await()
     }
 
@@ -80,7 +87,7 @@ class WheelLogKingsongTest {
             assertEquals("Manufacturer should be KingSong", "KingSong", decoded.manufacturer)
             assertNotNull("Raw data should be preserved", decoded.rawData)
             assertTrue("Timestamp should be set", decoded.timestamp > 0)
-            assertTrue("Voltage should be reasonable", decoded.voltage in 60.0..130.0)
+            assertTrue("Voltage should be reasonable", decoded.voltage in EXPECTED_VOLTAGE_RANGE)
             assertTrue("Speed should be reasonable", decoded.speed in 0.0..60.0)
         }
         
@@ -150,7 +157,7 @@ class WheelLogKingsongTest {
         println("Success rate: ${(decodedCount * 100.0 / telemetryFrames.size).toInt()}%")
         println("Time taken: ${durationMs}ms")
         
-        assertTrue("Should decode at reasonable speed", framesPerSecond > 100)
+        assertTrue("Should decode at reasonable speed", framesPerSecond > MIN_DECODE_FPS)
         assertTrue("Should decode most frames", decodedCount > telemetryFrames.size * 0.7)
     }
 
