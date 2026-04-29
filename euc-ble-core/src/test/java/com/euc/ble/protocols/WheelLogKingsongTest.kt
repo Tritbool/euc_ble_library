@@ -4,6 +4,7 @@ import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -31,9 +32,9 @@ class WheelLogKingsongTest {
         protocol: KingsongProtocol,
         frames: List<BleFrame>,
         timeoutMs: Long = 5000L
-    ): List<EUCData> {
+    ): List<EUCData> = coroutineScope {
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
-        if (telemetryFrames.isEmpty()) return emptyList()
+        if (telemetryFrames.isEmpty()) return@coroutineScope emptyList()
 
         val collector = async {
             withTimeoutOrNull(timeoutMs) {
@@ -48,7 +49,7 @@ class WheelLogKingsongTest {
             }
         }
         delay(300)
-        return collector.await()
+        collector.await()
     }
 
     /**
