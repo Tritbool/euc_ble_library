@@ -7,10 +7,11 @@ import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -38,6 +39,9 @@ class KingsongProtocol : EUCProtocol {
     private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     private val MIN_LENGTH = 20
+    // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
+    private val dataFlowReplaySize = 8
+    private val dataFlowExtraBufferSize = 32
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
@@ -111,15 +115,18 @@ class KingsongProtocol : EUCProtocol {
     })
     private val frameReassembler = FrameReassembler(byteParser)
 
-    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
+    private val _dataFlow = MutableSharedFlow<EUCData>(
+        replay = dataFlowReplaySize,
+        extraBufferCapacity = dataFlowExtraBufferSize
+    )
     val dataFlow: Flow<EUCData> = _dataFlow
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
     init {
         // Start observing frames asynchronously and process them
-        scope.launch {
-            frameReassembler.observeFrames().collectLatest { frame ->
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            frameReassembler.observeFrames().collect { frame ->
                 processFrame(frame)
             }
         }
