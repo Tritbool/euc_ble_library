@@ -63,7 +63,7 @@ class WheelLogInMotionTest {
         val frames = loadFrames("${resourceDir}RAW_inmotion_V8S.csv")
         assertTrue("Expected legacy V8S WheelLog frames", frames.isNotEmpty())
 
-        val decoded = mutableListOf<com.euc.ble.models.EUCData>()
+        val decoded = mutableListOf<EUCData>()
         for (frame in frames) {
             protocol.decode(frame.bleData)?.let(decoded::add)
         }

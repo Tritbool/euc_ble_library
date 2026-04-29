@@ -28,6 +28,22 @@ class InMotionProtocol : EUCProtocol {
 
         private const val MIN_FRAME_SIZE = 5
         private const val MAX_LEN = 240
+
+        private const val LEGACY_CURRENT_OFFSET = 39
+        private const val LEGACY_VOLTAGE_OFFSET = 43
+        private const val LEGACY_TEMP_OFFSET = 51
+        private const val LEGACY_MOTOR_TEMP_OFFSET = 53
+        private const val LEGACY_TOTAL_DISTANCE_OFFSET = 63
+        private const val LEGACY_TRIP_DISTANCE_OFFSET = 83
+        private const val LEGACY_SPEED_OFFSET = 95
+        private const val LEGACY_RIDE_TIME_OFFSET = 103
+        private const val LEGACY_BATTERY_OFFSET = 154
+
+        private const val LEGACY_SPEED_DIVISOR = 820.0
+        private const val LEGACY_SPEED_MIN = -80.0
+        private const val LEGACY_SPEED_MAX = 80.0
+        private const val LEGACY_BATTERY_BASE_VOLTAGE = 55.0
+        private const val LEGACY_BATTERY_VOLTAGE_RANGE = 30.0
     }
 
     override val manufacturer: String = "InMotion"
@@ -292,21 +308,21 @@ class InMotionProtocol : EUCProtocol {
     private fun parseLegacyRealtime(frame: ByteArray): EUCData? {
         if (frame.size < 67) return null
 
-        val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, 43) ?: return null) / 100.0
-        val current = (ByteUtils.tryGetSignedShortLE(frame, 39)?.toInt() ?: 0) / 100.0
-        val speedRaw = ByteUtils.tryGetSignedShortLE(frame, 95)?.toInt() ?: 0
-        val speed = (speedRaw / 820.0).coerceIn(-80.0, 80.0)
-        val tripDistanceKm = (ByteUtils.tryGetUnsignedIntLE(frame, 83)?.toDouble() ?: 0.0) / 1000.0
-        val totalDistance = (ByteUtils.tryGetUnsignedIntLE(frame, 63)?.toDouble() ?: 0.0) / 1000.0
-        val battery = if (frame.size > 154) {
-            (frame[154].toInt() and 0xFF).coerceIn(0, 100)
+        val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, LEGACY_VOLTAGE_OFFSET) ?: return null) / 100.0
+        val current = (ByteUtils.tryGetSignedShortLE(frame, LEGACY_CURRENT_OFFSET)?.toInt() ?: 0) / 100.0
+        val speedRaw = ByteUtils.tryGetSignedShortLE(frame, LEGACY_SPEED_OFFSET)?.toInt() ?: 0
+        val speed = (speedRaw / LEGACY_SPEED_DIVISOR).coerceIn(LEGACY_SPEED_MIN, LEGACY_SPEED_MAX)
+        val tripDistanceKm = (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TRIP_DISTANCE_OFFSET)?.toDouble() ?: 0.0) / 1000.0
+        val totalDistance = (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TOTAL_DISTANCE_OFFSET)?.toDouble() ?: 0.0) / 1000.0
+        val battery = if (frame.size > LEGACY_BATTERY_OFFSET) {
+            (frame[LEGACY_BATTERY_OFFSET].toInt() and 0xFF).coerceIn(0, 100)
         } else {
-            (((voltage - 55.0) / 30.0) * 100.0).roundToInt().coerceIn(0, 100)
+            (((voltage - LEGACY_BATTERY_BASE_VOLTAGE) / LEGACY_BATTERY_VOLTAGE_RANGE) * 100.0).roundToInt().coerceIn(0, 100)
         }
 
-        val temperature = ByteUtils.tryGetSignedByte(frame, 51)?.toDouble() ?: 0.0
-        val motorTemp = ByteUtils.tryGetSignedByte(frame, 53)?.toDouble()
-        val rideTimeSeconds = ByteUtils.tryGetUnsignedIntLE(frame, 103)?.toLong() ?: 0L
+        val temperature = ByteUtils.tryGetSignedByte(frame, LEGACY_TEMP_OFFSET)?.toDouble() ?: 0.0
+        val motorTemp = ByteUtils.tryGetSignedByte(frame, LEGACY_MOTOR_TEMP_OFFSET)?.toDouble()
+        val rideTimeSeconds = ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_RIDE_TIME_OFFSET)?.toLong() ?: 0L
 
         if (totalDistance > 0.0) totalDistanceKm = totalDistance
 
