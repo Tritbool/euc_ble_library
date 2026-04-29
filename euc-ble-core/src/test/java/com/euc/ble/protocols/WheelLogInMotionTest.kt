@@ -1,6 +1,7 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.models.EUCData
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.BufferedReader
@@ -16,7 +17,7 @@ class WheelLogInMotionTest {
         val frames = loadFrames("${resourceDir}RAW_2026_03_11_08_20_23.csv", maxFrames = 2000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
-        val decoded = mutableListOf<com.euc.ble.models.EUCData>()
+        val decoded = mutableListOf<EUCData>()
         for (frame in frames) {
             protocol.decode(frame.bleData)?.let(decoded::add)
         }
@@ -36,6 +37,56 @@ class WheelLogInMotionTest {
 
         val decodedCount = frames.count { protocol.decode(it.bleData) != null }
         assertTrue("Expected at least one decoded realtime frame", decodedCount > 0)
+    }
+
+    @Test
+    fun decodeLegacyV5FWheelLogFrames() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}RAW_inmotion_V5F.csv")
+        assertTrue("Expected legacy V5F WheelLog frames", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        for (frame in frames) {
+            protocol.decode(frame.bleData)?.let(decoded::add)
+        }
+
+        assertTrue("Expected decoded telemetry from legacy V5F frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V5F", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.voltage in 40.0..100.0 })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun decodeLegacyV8SWheelLogFrames() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}RAW_inmotion_V8S.csv")
+        assertTrue("Expected legacy V8S WheelLog frames", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        for (frame in frames) {
+            protocol.decode(frame.bleData)?.let(decoded::add)
+        }
+
+        assertTrue("Expected decoded telemetry from legacy V8S frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.voltage in 40.0..100.0 })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun decodeLegacyAlertCaptureWithoutCrashing() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}RAW_inmotion_alerts.csv")
+        assertTrue("Expected legacy alert WheelLog frames", frames.isNotEmpty())
+
+        var decodedCount = 0
+        for (frame in frames) {
+            if (protocol.decode(frame.bleData) != null) decodedCount++
+        }
+
+        assertTrue("Expected at least one decoded realtime packet from alert capture", decodedCount > 0)
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
