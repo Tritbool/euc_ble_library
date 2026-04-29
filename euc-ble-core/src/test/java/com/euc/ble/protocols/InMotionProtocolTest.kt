@@ -2,6 +2,7 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,12 +23,10 @@ class InMotionProtocolTest {
             "aaaa1457843e1e0c000000000000000000afffc30000000000ffffd7fe000000000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cdc900ceb0cec8ceb03a6400000000004900000000000000000000003f"
         )
 
-        var decoded = packets
+        val decoded = packets
             .map { protocol.decode(ByteUtils.hexToBytes(it)) }
             .lastOrNull { it != null }
-
-        assertNotNull("Expected realtime telemetry frame to decode", decoded)
-        decoded = decoded!!
+            ?: fail("Expected realtime telemetry frame to decode")
 
         assertEquals("InMotion", decoded.manufacturer)
         assertEquals("InMotion V9", decoded.model)
