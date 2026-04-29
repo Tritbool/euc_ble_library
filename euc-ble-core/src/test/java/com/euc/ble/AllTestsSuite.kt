@@ -5,6 +5,7 @@ import com.euc.ble.core.ByteUtilsTest
 import com.euc.ble.frames.GotwayFrameReassemblerTest
 import com.euc.ble.models.EUCDataTest
 import com.euc.ble.protocols.GotwayProtocolTest
+import com.euc.ble.protocols.KingsongProtocolAsyncTest
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogKingsongTest
 import org.junit.runner.RunWith
@@ -21,6 +22,7 @@ import org.junit.runners.Suite
     EUCDataTest::class,            // Data model tests
     GotwayProtocolTest::class,     // Gotway/Begode protocol tests
     GotwayFrameReassemblerTest::class,
+    KingsongProtocolAsyncTest::class,
     WheelLogGotwayTest::class      // Real Gotway BLE frames from WheelLog
 )
 class AllTestsSuite {

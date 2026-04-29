@@ -45,7 +45,7 @@ object BLEConstants {
     const val MAX_MTU_SIZE = 517
 
     // Manufacturer identifiers
-    const val MANUFACTURER_KINGSONG = 0x004E
+    const val MANUFACTURER_KINGSONG = 0x004B
     const val MANUFACTURER_GOTWAY = 0x0047
     const val MANUFACTURER_INMOTION = 0x0049
     const val MANUFACTURER_NINEBOT = 0x004E

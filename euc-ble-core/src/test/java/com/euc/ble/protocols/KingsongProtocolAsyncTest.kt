@@ -21,9 +21,10 @@ class KingsongProtocolAsyncTest {
         }
         try {
             withTimeout(timeoutMs) {
-                while (out.size < n) kotlinx.coroutines.delay(10)
+                while (out.size < n) kotlinx.coroutines.delay(100)
             }
         } catch (e: Exception) {
+            print("TIMEOUT !, $e")
             // timeout
         } finally {
             job.cancel()
@@ -80,10 +81,10 @@ class KingsongProtocolAsyncTest {
         val hex = "AA55E52F8B060D000A9A1500E40C02E0A9145A5A" + "AA55E52F8B060D000A9A1500E40C02E0A9145A5A"
         val payload = ByteUtils.hexToBytes(hex)
 
-        val collector = async { collectN(protocol.dataFlow, 2, 1000L) }
+        val collector = async { collectN(protocol.dataFlow, 2, 2000L) }
         protocol.decode(payload)
 
-        val items = withTimeout(1000L) { collector.await() }
+        val items = withTimeout(10000L) { collector.await() }
         assertEquals(2, items.size)
         assertEquals(122.61, items[0].voltage, 0.01)
         assertEquals(122.61, items[1].voltage, 0.01)

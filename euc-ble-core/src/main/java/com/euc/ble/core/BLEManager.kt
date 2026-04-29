@@ -561,13 +561,13 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
 }
 
 // Callback interfaces
-interface ScanCallback {
+sealed interface ScanCallback {
     fun onScanStarted() {}
     fun onDeviceDiscovered(device: EUCDevice) {}
     fun onScanCompleted(devices: List<EUCDevice>) {}
 }
 
-abstract class ConnectionCallback : com.euc.ble.core.ScanCallback {
+sealed class ConnectionCallback : com.euc.ble.core.ScanCallback {
     fun onConnected() {}
     fun onDisconnected() {}
     fun onConnectionFailed(error: BLEException) {}
