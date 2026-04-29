@@ -37,7 +37,7 @@ class KingsongProtocol : EUCProtocol {
 
     private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
-    private val MIN_LENGTH = 16 // flexible minimal length
+    private val MIN_LENGTH = 20
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
@@ -192,40 +192,34 @@ class KingsongProtocol : EUCProtocol {
             return null
         }
 
-        try {
-            val base = headerIdx
+        val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
+        return when (messageType) {
+            0xA9 -> parseTypeA9(data, headerIdx)
+            else -> null
+        }
+    }
 
+    private fun parseTypeA9(data: ByteArray, base: Int): EUCData? {
+        try {
             val voltage = if (ensureRange(data, base + 2, 2))
-                ByteUtils.getUnsignedShortLE(data, base + 2) / 10.0 else 0.0
+                ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0 else 0.0
 
             val speed = if (ensureRange(data, base + 4, 2))
-                ByteUtils.getUnsignedShortLE(data, base + 4) / 10.0 else 0.0
+                ByteUtils.getUnsignedShortLE(data, base + 4) / 100.0 else 0.0
 
             val distance = if (ensureRange(data, base + 6, 4))
                 ByteUtils.getUnsignedIntLE(data, base + 6).toDouble() else 0.0
 
             val current = if (ensureRange(data, base + 10, 2))
-                ByteUtils.getSignedShortLE(data, base + 10) / 10.0 else 0.0
+                ByteUtils.getSignedShortLE(data, base + 10) / 100.0 else 0.0
 
             val temperature = if (ensureRange(data, base + 12, 2))
-                ByteUtils.getSignedShortLE(data, base + 12) / 10.0 else 0.0
+                ByteUtils.getSignedShortLE(data, base + 12) / 100.0 else 0.0
 
             val statusByte = if (ensureRange(data, base + 14, 1))
                 ByteUtils.getUnsignedByte(data, base + 14) else 0
 
-            val batteryLevel = if (ensureRange(data, base + 15, 1))
-                ByteUtils.getUnsignedByte(data, base + 15).coerceIn(0, 100) else 0
-
             val isCharging = (statusByte and 0x01) != 0
-
-            val cellVoltages = mutableListOf<Double>()
-            var idx = base + 16
-            while (ensureRange(data, idx, 2)) {
-                val raw = ByteUtils.getUnsignedShortLE(data, idx)
-                val volt = if (raw > 2000) raw / 1000.0 else raw / 100.0
-                if (volt > 0.0) cellVoltages.add(volt)
-                idx += 2
-            }
 
             val power = voltage * current
 
@@ -236,7 +230,7 @@ class KingsongProtocol : EUCProtocol {
                 voltage = voltage,
                 current = current,
                 temperature = temperature,
-                batteryLevel = batteryLevel,
+                batteryLevel = 0,
                 distance = distance,
                 power = power,
                 timestamp = System.currentTimeMillis(),
@@ -247,7 +241,7 @@ class KingsongProtocol : EUCProtocol {
                 firmwareVersion = null,
                 isCharging = isCharging,
                 rideTime = 0,
-                cellVoltages = if (cellVoltages.isNotEmpty()) cellVoltages else null,
+                cellVoltages = null,
                 motorTemperature = null,
             )
         } catch (_: Exception) {

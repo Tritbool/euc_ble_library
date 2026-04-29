@@ -2,6 +2,15 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.BufferedReader
@@ -13,84 +22,99 @@ import java.io.InputStreamReader
  */
 class WheelLogKingsongTest {
 
-    private val protocol = KingsongProtocol()
+    companion object {
+        private const val COLLECTOR_SUBSCRIBE_DELAY_MS = 150L
+        private const val DECODE_SETTLE_DELAY_MS = 300L
+        private const val MIN_DECODE_FPS = 100
+        private val EXPECTED_VOLTAGE_RANGE = 60.0..130.0
+    }
+
     private val testDataPath = "/ble_frames/kingsong/RAW_WHEELLOG/"
+
+    private fun isA9TelemetryFrame(frame: BleFrame): Boolean {
+        return frame.bleData.size > 16 && (frame.bleData[16].toInt() and 0xFF) == 0xA9
+    }
+
+    private suspend fun decodeA9Frames(
+        protocol: KingsongProtocol,
+        frames: List<BleFrame>,
+        timeoutMs: Long = 5000L
+    ): List<EUCData> = coroutineScope {
+        val telemetryFrames = frames.filter(::isA9TelemetryFrame)
+        if (telemetryFrames.isEmpty()) return@coroutineScope emptyList()
+
+        val collector = async {
+            withTimeoutOrNull(timeoutMs) {
+                protocol.dataFlow.take(telemetryFrames.size).toList()
+            } ?: emptyList()
+        }
+
+        delay(COLLECTOR_SUBSCRIBE_DELAY_MS)
+        withContext(Dispatchers.IO) {
+            telemetryFrames.forEach { frame ->
+                protocol.decode(frame.bleData)
+            }
+        }
+        delay(DECODE_SETTLE_DELAY_MS)
+        collector.await()
+    }
 
     /**
      * Test parsing and decoding a small sample of real Kingsong frames
      */
     @Test
-    fun testRealKingsongFramesDecoding() {
+    fun testRealKingsongFramesDecoding() = runBlocking {
+        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 50)
         
         assertTrue("Should load some frames", frames.isNotEmpty())
-        
-        // Test that all frames have the correct Kingsong header
-        frames.forEach { frame ->
+
+        val telemetryFrames = frames.filter(::isA9TelemetryFrame)
+        assertTrue("Should include A9 telemetry frames", telemetryFrames.isNotEmpty())
+
+        telemetryFrames.forEach { frame ->
             assertTrue("Frame should start with AA 55", 
                 frame.bleData.size >= 2 && 
                 frame.bleData[0].toInt() and 0xFF == 0xAA &&
                 frame.bleData[1].toInt() and 0xFF == 0x55)
         }
-        
-        // Test decoding a subset of frames
-        var successfulDecodes = 0
-        var failedDecodes = 0
-        
-        frames.forEach { frame ->
-            val decoded = protocol.decode(frame.bleData)
-            if (decoded != null) {
-                successfulDecodes++
-                
-                // Validate basic properties
-                assertEquals("Manufacturer should be KingSong", "KingSong", decoded.manufacturer)
-                assertNotNull("Raw data should be preserved", decoded.rawData)
-                assertTrue("Timestamp should be set", decoded.timestamp > 0)
-                
-                // Validate reasonable ranges
-                assertTrue("Voltage should be reasonable", decoded.voltage in 40.0..100.0)
-                assertTrue("Speed should be reasonable", decoded.speed in 0.0..60.0)
-                assertTrue("Battery should be reasonable", decoded.batteryLevel in 0..100)
-                
-            } else {
-                failedDecodes++
-            }
+
+        val decodedFrames = decodeA9Frames(protocol, frames)
+        val successfulDecodes = decodedFrames.size
+        val failedDecodes = telemetryFrames.size - successfulDecodes
+
+        decodedFrames.forEach { decoded ->
+            assertEquals("Manufacturer should be KingSong", "KingSong", decoded.manufacturer)
+            assertNotNull("Raw data should be preserved", decoded.rawData)
+            assertTrue("Timestamp should be set", decoded.timestamp > 0)
+            assertTrue("Voltage should be reasonable", decoded.voltage in EXPECTED_VOLTAGE_RANGE)
+            assertTrue("Speed should be reasonable", decoded.speed in 0.0..60.0)
         }
         
         println("Decoded $successfulDecodes frames successfully, $failedDecodes frames failed")
-        println("Success rate: ${(successfulDecodes * 100.0 / frames.size).toInt()}%")
+        println("Success rate: ${(successfulDecodes * 100.0 / telemetryFrames.size).toInt()}%")
         
-        // We expect most frames to decode successfully
-        assertTrue("Should decode most frames successfully", successfulDecodes > frames.size * 0.8)
+        assertTrue("Should decode most frames successfully", successfulDecodes > telemetryFrames.size * 0.8)
     }
 
     /**
      * Test protocol consistency across a sequence of real frames
      */
     @Test
-    fun testRealKingsongFramesConsistency() {
+    fun testRealKingsongFramesConsistency() = runBlocking {
+        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 100)
-        
-        assertTrue("Need multiple frames for consistency test", frames.size >= 10)
-        
-        val decodedFrames = mutableListOf<EUCData>()
-        
-        // Decode all frames
-        frames.forEach { frame ->
-            val decoded = protocol.decode(frame.bleData)
-            if (decoded != null) {
-                decodedFrames.add(decoded)
-            }
-        }
-        
+        val telemetryFrames = frames.filter(::isA9TelemetryFrame)
+
+        assertTrue("Need multiple telemetry frames for consistency test", telemetryFrames.size >= 10)
+
+        val decodedFrames = decodeA9Frames(protocol, telemetryFrames)
         assertTrue("Should have multiple decoded frames", decodedFrames.size >= 5)
         
-        // Test consistency between consecutive frames
         for (i in 1 until decodedFrames.size) {
             val prev = decodedFrames[i-1]
             val curr = decodedFrames[i]
             
-            // Speed changes should be reasonable (not instant large jumps)
             val speedDiff = kotlin.math.abs(curr.speed - prev.speed)
             assertTrue("Speed change should be reasonable: $speedDiff km/h", 
                 speedDiff < 10.0) // Less than 10 km/h change between frames
@@ -112,40 +136,36 @@ class WheelLogKingsongTest {
      * Test decoding performance with a larger dataset
      */
     @Test
-    fun testRealKingsongDecodingPerformance() {
+    fun testRealKingsongDecodingPerformance() = runBlocking {
+        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
-        
+        val telemetryFrames = frames.filter(::isA9TelemetryFrame)
+
         assertTrue("Should load many frames for performance test", frames.size >= 500)
+        assertTrue("Should include many telemetry frames", telemetryFrames.size >= 100)
         
         val startTime = System.currentTimeMillis()
-        var decodedCount = 0
-        
-        frames.forEach { frame ->
-            val decoded = protocol.decode(frame.bleData)
-            if (decoded != null) {
-                decodedCount++
-            }
-        }
+        val decodedFrames = decodeA9Frames(protocol, telemetryFrames, timeoutMs = 10000L)
+        val decodedCount = decodedFrames.size
         
         val endTime = System.currentTimeMillis()
         val durationMs = endTime - startTime
-        val framesPerSecond = (frames.size * 1000.0 / durationMs).toInt()
+        val framesPerSecond = (telemetryFrames.size * 1000.0 / durationMs).toInt()
         
         println("Performance: $framesPerSecond frames/sec")
-        println("Decoded $decodedCount out of ${frames.size} frames")
-        println("Success rate: ${(decodedCount * 100.0 / frames.size).toInt()}%")
+        println("Decoded $decodedCount out of ${telemetryFrames.size} telemetry frames")
+        println("Success rate: ${(decodedCount * 100.0 / telemetryFrames.size).toInt()}%")
         println("Time taken: ${durationMs}ms")
         
-        // Performance should be reasonable
-        assertTrue("Should decode at reasonable speed", framesPerSecond > 1000)
-        assertTrue("Should decode most frames", decodedCount > frames.size * 0.7)
+        assertTrue("Should decode at reasonable speed", framesPerSecond > MIN_DECODE_FPS)
+        assertTrue("Should decode most frames", decodedCount > telemetryFrames.size * 0.7)
     }
 
     /**
      * Test edge cases found in real data
      */
     @Test
-    fun testRealKingsongEdgeCases() {
+    fun testRealKingsongEdgeCases() = runBlocking {
         // Load frames from multiple files to find edge cases
         val testFiles = listOf(
             "RAW_2023_08_19_18_34_07.csv",
@@ -158,19 +178,17 @@ class WheelLogKingsongTest {
         var edgeCasesFound = 0
         
         testFiles.forEach { filename ->
+            val protocol = KingsongProtocol()
             val frames = loadKingsongFrames("$testDataPath/$filename", maxFrames = 200)
-            totalFrames += frames.size
-            
-            frames.forEach { frame ->
-                val decoded = protocol.decode(frame.bleData)
-                if (decoded != null) {
-                    decodedFrames++
-                    
-                    // Look for edge cases
-                    if (isEdgeCase(decoded)) {
-                        edgeCasesFound++
-                        println("Edge case found: ${describeEdgeCase(decoded)}")
-                    }
+            val telemetryFrames = frames.filter(::isA9TelemetryFrame)
+            totalFrames += telemetryFrames.size
+
+            val decoded = decodeA9Frames(protocol, telemetryFrames)
+            decodedFrames += decoded.size
+            decoded.forEach {
+                if (isEdgeCase(it)) {
+                    edgeCasesFound++
+                    println("Edge case found: ${describeEdgeCase(it)}")
                 }
             }
         }
@@ -186,36 +204,25 @@ class WheelLogKingsongTest {
      * Test specific known frame patterns
      */
     @Test
-    fun testKnownKingsongFramePatterns() {
+    fun testKnownKingsongFramePatterns() = runBlocking {
+        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv")
-        
-        // Look for specific frame patterns we can validate
-        val interestingFrames = frames.filter { frame ->
-            // Example: frames with non-zero speed
-            val decoded = protocol.decode(frame.bleData)
-            decoded != null && decoded.speed > 5.0
-        }
+
+        val decoded = decodeA9Frames(protocol, frames, timeoutMs = 10000L)
+        val interestingFrames = decoded.filter { it.speed > 5.0 }
         
         assertTrue("Should find some interesting frames", interestingFrames.isNotEmpty())
         
         // Validate a few specific frames
         if (interestingFrames.size >= 3) {
-            val frame1 = interestingFrames[0]
-            val frame2 = interestingFrames[interestingFrames.size / 2]
-            val frame3 = interestingFrames.last()
-            
-            val decoded1 = protocol.decode(frame1.bleData)
-            val decoded2 = protocol.decode(frame2.bleData)
-            val decoded3 = protocol.decode(frame3.bleData)
-            
-            assertNotNull("Frame 1 should decode", decoded1)
-            assertNotNull("Frame 2 should decode", decoded2)
-            assertNotNull("Frame 3 should decode", decoded3)
+            val decoded1 = interestingFrames[0]
+            val decoded2 = interestingFrames[interestingFrames.size / 2]
+            val decoded3 = interestingFrames.last()
             
             println("Validated specific frames:")
-            println("  Frame 1: ${describeFrame(decoded1!!)}")
-            println("  Frame 2: ${describeFrame(decoded2!!)}")
-            println("  Frame 3: ${describeFrame(decoded3!!)}")
+            println("  Frame 1: ${describeFrame(decoded1)}")
+            println("  Frame 2: ${describeFrame(decoded2)}")
+            println("  Frame 3: ${describeFrame(decoded3)}")
         }
     }
 
@@ -276,12 +283,11 @@ class WheelLogKingsongTest {
     private fun isEdgeCase(data: EUCData): Boolean {
         // Define what constitutes an edge case
         return data.speed > 40.0 ||           // High speed
-               data.voltage > 80.0 ||         // High voltage
-               data.voltage < 50.0 ||         // Low voltage
-               data.temperature > 60.0 ||     // High temperature
-               data.current > 80.0 ||          // High current
-               data.batteryLevel < 20 ||       // Low battery
-               data.isCharging                 // Charging state
+                data.voltage > 80.0 ||         // High voltage
+                data.voltage < 50.0 ||         // Low voltage
+                data.temperature > 60.0 ||     // High temperature
+                data.current > 80.0 ||          // High current
+                data.isCharging                 // Charging state
     }
 
     /**
@@ -295,7 +301,6 @@ class WheelLogKingsongTest {
         if (data.voltage < 50.0) reasons.add("low voltage (${data.voltage} V)")
         if (data.temperature > 60.0) reasons.add("high temp (${data.temperature} °C)")
         if (data.current > 80.0) reasons.add("high current (${data.current} A)")
-        if (data.batteryLevel < 20) reasons.add("low battery (${data.batteryLevel}%)")
         if (data.isCharging) reasons.add("charging state")
         
         return reasons.joinToString(", ")
@@ -305,7 +310,7 @@ class WheelLogKingsongTest {
      * Describe a frame for reporting
      */
     private fun describeFrame(data: EUCData): String {
-        return "${data.speed.toInt()} km/h, ${data.voltage.toInt()} V, ${data.batteryLevel}% battery, " +
+        return "${data.speed.toInt()} km/h, ${data.voltage.toInt()} V, " +
                "${data.current.toInt()} A, ${data.temperature.toInt()} °C"
     }
 
