@@ -38,6 +38,56 @@ class WheelLogInMotionTest {
         assertTrue("Expected at least one decoded realtime frame", decodedCount > 0)
     }
 
+    @Test
+    fun decodeLegacyV5FWheelLogFrames() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}RAW_inmotion_V5F.csv")
+        assertTrue("Expected legacy V5F WheelLog frames", frames.isNotEmpty())
+
+        val decoded = mutableListOf<com.euc.ble.models.EUCData>()
+        for (frame in frames) {
+            protocol.decode(frame.bleData)?.let(decoded::add)
+        }
+
+        assertTrue("Expected decoded telemetry from legacy V5F frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V5", ignoreCase = true) || it.model.contains("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.voltage in 40.0..100.0 })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun decodeLegacyV8SWheelLogFrames() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}RAW_inmotion_V8S.csv")
+        assertTrue("Expected legacy V8S WheelLog frames", frames.isNotEmpty())
+
+        val decoded = mutableListOf<com.euc.ble.models.EUCData>()
+        for (frame in frames) {
+            protocol.decode(frame.bleData)?.let(decoded::add)
+        }
+
+        assertTrue("Expected decoded telemetry from legacy V8S frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V8", ignoreCase = true) || it.model.contains("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.voltage in 40.0..100.0 })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun decodeLegacyAlertCaptureWithoutCrashing() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}RAW_inmotion_alerts.csv")
+        assertTrue("Expected legacy alert WheelLog frames", frames.isNotEmpty())
+
+        var decodedCount = 0
+        for (frame in frames) {
+            if (protocol.decode(frame.bleData) != null) decodedCount++
+        }
+
+        assertTrue("Expected at least one decoded realtime packet from alert capture", decodedCount > 0)
+    }
+
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
