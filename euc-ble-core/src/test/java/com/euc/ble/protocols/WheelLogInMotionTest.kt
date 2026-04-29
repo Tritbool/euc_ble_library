@@ -50,7 +50,7 @@ class WheelLogInMotionTest {
         }
 
         assertTrue("Expected decoded telemetry from legacy V5F frames", decoded.isNotEmpty())
-        assertTrue(decoded.any { it.model.contains("V5", ignoreCase = true) || it.model.contains("InMotion", ignoreCase = true) })
+        assertTrue(decoded.any { it.model.contains("V5F", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.voltage in 40.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
@@ -68,7 +68,7 @@ class WheelLogInMotionTest {
         }
 
         assertTrue("Expected decoded telemetry from legacy V8S frames", decoded.isNotEmpty())
-        assertTrue(decoded.any { it.model.contains("V8", ignoreCase = true) || it.model.contains("InMotion", ignoreCase = true) })
+        assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.voltage in 40.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })

@@ -188,7 +188,7 @@ class InMotionProtocol : EUCProtocol {
         if (chunk.size >= 2 && chunk[0] == HEADER[0] && chunk[1] == HEADER[1]) {
             return !isLikelyV2Chunk(chunk)
         }
-        return chunk.size >= 2 && chunk[chunk.lastIndex - 1] == LEGACY_TAIL[0] && chunk.last() == LEGACY_TAIL[1]
+        return chunk.size >= 2 && chunk[chunk.size - 2] == LEGACY_TAIL[0] && chunk[chunk.size - 1] == LEGACY_TAIL[1]
     }
 
     private fun isValidChecksum(frame: ByteArray): Boolean {
@@ -282,7 +282,7 @@ class InMotionProtocol : EUCProtocol {
     }
 
     private fun parseLegacyRealtime(frame: ByteArray): EUCData? {
-        if (frame.size < 60) return null
+        if (frame.size < 67) return null
 
         val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, 43) ?: return null) / 100.0
         val current = (ByteUtils.tryGetSignedShortLE(frame, 39)?.toInt() ?: 0) / 100.0
