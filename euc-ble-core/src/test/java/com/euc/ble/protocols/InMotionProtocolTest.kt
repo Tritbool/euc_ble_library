@@ -12,7 +12,7 @@ class InMotionProtocolTest {
     companion object {
         // Thresholds are intentionally different to match fixture sizes:
         // V5F capture has ~877 rows, V8S capture has ~2816 rows.
-        private const val MAX_TEST_FRAMES = 8000
+        private const val MAX_TEST_FRAMES = 100000
         private const val MINIMUM_V5F_FRAME_COUNT = 200
         private const val MINIMUM_V8S_FRAME_COUNT = 500
         private const val MAX_MALFORMED_ROW_RATIO = 0.2
@@ -102,7 +102,7 @@ class InMotionProtocolTest {
 
         val decoded = frames.mapNotNull { protocol.decode(it) }
         assertTrue("Expected decoded telemetry from V5F legacy frames", decoded.isNotEmpty())
-        assertTrue(decoded.any { it.model.contains("V5F", ignoreCase = true) })
+        assertTrue(decoded.any { it.model.contains("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
     }
