@@ -15,7 +15,7 @@ class InMotionProtocolTest {
         private const val MAX_TEST_FRAMES = 8000
         private const val MINIMUM_V5F_FRAME_COUNT = 200
         private const val MINIMUM_V8S_FRAME_COUNT = 500
-        private const val MAX_MALFORMED_ROW_RATIO = 0.5
+        private const val MAX_MALFORMED_ROW_RATIO = 0.2
     }
 
     @Test
@@ -145,6 +145,7 @@ class InMotionProtocolTest {
                 try {
                     frames.add(ByteUtils.hexToBytes(hex))
                 } catch (_: IllegalArgumentException) {
+                    // Keep malformed data visible via assertion diagnostics below.
                     malformedRows++
                 }
             }
