@@ -10,6 +10,8 @@ import java.io.InputStreamReader
 
 class InMotionProtocolTest {
     companion object {
+        // Thresholds are intentionally different to match fixture sizes:
+        // V5F capture has ~877 rows, V8S capture has ~2816 rows.
         private const val MINIMUM_V5F_FRAME_COUNT = 200
         private const val MINIMUM_V8S_FRAME_COUNT = 500
         private const val MAX_MALFORMED_ROW_RATIO = 0.5
@@ -144,7 +146,10 @@ class InMotionProtocolTest {
         }
         val totalRows = frames.size + malformedRows
         val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
-        assertTrue("Too many malformed rows in $resourcePath", malformedRows <= maxMalformedRows)
+        assertTrue(
+            "Too many malformed rows in $resourcePath: $malformedRows out of $totalRows (max: $maxMalformedRows)",
+            malformedRows <= maxMalformedRows
+        )
         return frames
     }
 }
