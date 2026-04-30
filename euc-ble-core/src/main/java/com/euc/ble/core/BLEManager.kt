@@ -320,6 +320,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             BLEConstants.MANUFACTURER_INMOTION,
             BLEConstants.MANUFACTURER_NINEBOT,
             BLEConstants.MANUFACTURER_VETERAN,
+            BLEConstants.MANUFACTURER_LEAPERKIM,
         ).firstNotNullOfOrNull { id ->
             scanRecord
                 ?.getManufacturerSpecificData(id)

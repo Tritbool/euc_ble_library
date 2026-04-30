@@ -130,3 +130,10 @@ class InmotionNoDropTest: ProtocolNoDropTestBase(){
     override fun createProtocol() = InMotionProtocol()
 
 }
+
+@SlowTest
+class LeaperkimNoDropTest : ProtocolNoDropTestBase() {
+    override val csvResourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv"
+    override val minimumExpectedFrameCount = 200
+    override fun createProtocol() = LeaperkimProtocol()
+}

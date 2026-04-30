@@ -16,7 +16,7 @@ A modular Bluetooth Low Energy library for Electric Unicycles (EUC) that provide
 - **Gotway** (Coming soon)
 - **InMotion** (Coming soon)
 - **Ninebot** (Coming soon)
-- **Veteran** (Coming soon)
+- **Leaperkim / Veteran** (Patton, Patton S, Sherman, Sherman S, Sherman L, Lynx, Lynx S, Abrams, Oryx, Nosfet series)
 
 ## Installation
 
@@ -49,6 +49,7 @@ bleManager.initialize()
 bleManager.registerProtocol(KingsongProtocol())
 // bleManager.registerProtocol(GotwayProtocol())
 // bleManager.registerProtocol(InMotionProtocol())
+// bleManager.registerProtocol(LeaperkimProtocol())
 
 // Set up callbacks
 bleManager.setScanCallback(object : ScanCallback {
@@ -285,7 +286,7 @@ Contributions are welcome! Please follow the existing code style and architectur
 - [ ] Gotway protocol implementation
 - [ ] InMotion protocol implementation
 - [ ] Ninebot protocol implementation
-- [ ] Veteran protocol implementation
+- [x] Leaperkim/Veteran protocol implementation
 - [ ] Comprehensive test suite
 - [ ] Sample application
 - [ ] Documentation improvements
