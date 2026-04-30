@@ -34,7 +34,14 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run unit tests
-        run: ./gradlew :euc-ble-core:test --no-daemon --stacktrace
+        run: >
+          ./gradlew :euc-ble-core:test
+          --no-daemon
+          --stacktrace
+          -Dkotlinx.coroutines.io.parallelism=4
+          -PmaxParallelForks=1
+        env:
+          GRADLE_OPTS: "-Xmx2g -Dfile.encoding=UTF-8"
 
       - name: Upload test reports
         if: always()
