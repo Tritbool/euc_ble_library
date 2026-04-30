@@ -53,7 +53,8 @@ object BLEConstants {
     const val MANUFACTURER_INMOTION = 0x0049
     const val MANUFACTURER_NINEBOT = 0x004E
     const val MANUFACTURER_VETERAN = 0x0056
-    const val MANUFACTURER_LEAPERKIM = 0x0056
+    // Leaperkim (Veteran branding) uses the same manufacturer identifier in WheelLog captures.
+    const val MANUFACTURER_LEAPERKIM = MANUFACTURER_VETERAN
 
     // Helper functions
     fun String.toUUID(): UUID = UUID.fromString(this)
