@@ -139,6 +139,7 @@ class GotwayProtocol : EUCProtocol {
 
     override fun close() {
         scope.cancel()
+        _channel.close()
     }
 
     override fun decode(data: ByteArray): EUCData? {

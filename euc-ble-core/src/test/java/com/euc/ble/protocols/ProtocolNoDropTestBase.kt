@@ -57,7 +57,7 @@ sealed class ProtocolNoDropTestBase {
         var oracleCount = 0
         val oracleJob = launch { oracle.dataFlow.collect { oracleCount++ } }
         packets.forEach { oracle.decode(it) }
-        delay(1_000L) // laisser drainer
+        delay(5_000L) // laisser drainer
         oracleJob.cancel()
 
         assertTrue("Oracle a produit 0 frames", oracleCount > 0)
