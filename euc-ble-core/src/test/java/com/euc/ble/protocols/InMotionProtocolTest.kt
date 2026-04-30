@@ -2,12 +2,21 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
 import org.junit.Assert.assertEquals
-import org.junit.Assert.fail
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class InMotionProtocolTest {
+    companion object {
+        // Thresholds are intentionally different to match fixture sizes:
+        // V5F capture has ~877 rows, V8S capture has ~2816 rows.
+        private const val MAX_TEST_FRAMES = 8000
+        private const val MINIMUM_V5F_FRAME_COUNT = 200
+        private const val MINIMUM_V8S_FRAME_COUNT = 500
+        private const val MAX_MALFORMED_ROW_RATIO = 0.2
+    }
 
     @Test
     fun decodeV9LegacyVectorMatchesExpectedValues() {
@@ -82,5 +91,72 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("A1421950A000465F", data?.serialNumber)
         assertTrue((data?.firmwareVersion ?: "").contains("Main:1.8.38"))
+    }
+
+    @Test
+    fun decodeLegacyV5FCsvFramesProducesTelemetryAndModel() {
+        val protocol = InMotionProtocol()
+        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = MAX_TEST_FRAMES)
+        assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
+        assertTrue("Expected substantial V5F frame sample", frames.size > MINIMUM_V5F_FRAME_COUNT)
+
+        val decoded = frames.mapNotNull { protocol.decode(it) }
+        assertTrue("Expected decoded telemetry from V5F legacy frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V5F", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun decodeLegacyV8SCsvFramesProducesTelemetryAndModel() {
+        val protocol = InMotionProtocol()
+        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = MAX_TEST_FRAMES)
+        assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
+        assertTrue("Expected substantial V8S frame sample", frames.size > MINIMUM_V8S_FRAME_COUNT)
+
+        val decoded = frames.mapNotNull { protocol.decode(it) }
+        assertTrue("Expected decoded telemetry from V8S legacy frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
+        val inputStream = javaClass.getResourceAsStream(resourcePath)
+            ?: throw IllegalArgumentException("Resource not found: $resourcePath")
+
+        val frames = mutableListOf<ByteArray>()
+        var malformedRows = 0
+        var invalidFormatRows = 0
+        BufferedReader(InputStreamReader(inputStream)).use { reader ->
+            reader.lineSequence().forEach { rawLine ->
+                if (frames.size >= maxFrames) return@forEach
+                val line = rawLine.trim()
+                if (line.isEmpty()) return@forEach
+
+                // WheelLog raw CSV rows are expected as: timestamp,hex_data
+                val splitIndex = line.indexOf(',')
+                if (splitIndex <= 0 || splitIndex >= line.length - 1) {
+                    invalidFormatRows++
+                    return@forEach
+                }
+
+                val hex = line.substring(splitIndex + 1).trim().removeSurrounding("\"")
+                try {
+                    frames.add(ByteUtils.hexToBytes(hex))
+                } catch (_: IllegalArgumentException) {
+                    // Keep malformed data visible via assertion diagnostics below.
+                    malformedRows++
+                }
+            }
+        }
+        val totalRows = frames.size + malformedRows + invalidFormatRows
+        assertTrue("No parsable rows found in $resourcePath", totalRows > 0)
+        val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
+        assertTrue(
+            "Too many malformed rows in $resourcePath: $malformedRows out of $totalRows (max: $maxMalformedRows)",
+            malformedRows <= maxMalformedRows
+        )
+        return frames
     }
 }
