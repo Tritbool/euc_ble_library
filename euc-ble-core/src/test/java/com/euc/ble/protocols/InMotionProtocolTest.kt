@@ -2,10 +2,11 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
 import org.junit.Assert.assertEquals
-import org.junit.Assert.fail
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class InMotionProtocolTest {
 
@@ -82,5 +83,55 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("A1421950A000465F", data?.serialNumber)
         assertTrue((data?.firmwareVersion ?: "").contains("Main:1.8.38"))
+    }
+
+    @Test
+    fun decodeLegacyV5FCsvFramesProducesTelemetryAndModel() {
+        val protocol = InMotionProtocol()
+        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = 8000)
+        assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
+
+        val decoded = frames.mapNotNull { protocol.decode(it) }
+        assertTrue("Expected decoded telemetry from V5F legacy frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V5F", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun decodeLegacyV8SCsvFramesProducesTelemetryAndModel() {
+        val protocol = InMotionProtocol()
+        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = 8000)
+        assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
+
+        val decoded = frames.mapNotNull { protocol.decode(it) }
+        assertTrue("Expected decoded telemetry from V8S legacy frames", decoded.isNotEmpty())
+        assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
+        val inputStream = javaClass.getResourceAsStream(resourcePath)
+            ?: throw IllegalArgumentException("Resource not found: $resourcePath")
+
+        val frames = mutableListOf<ByteArray>()
+        BufferedReader(InputStreamReader(inputStream)).use { reader ->
+            reader.lineSequence().forEach { rawLine ->
+                if (frames.size >= maxFrames) return@forEach
+                val line = rawLine.trim()
+                if (line.isEmpty()) return@forEach
+
+                val splitIndex = line.indexOf(',')
+                if (splitIndex <= 0 || splitIndex >= line.length - 1) return@forEach
+
+                val hex = line.substring(splitIndex + 1).trim().trim('"')
+                try {
+                    frames.add(ByteUtils.hexToBytes(hex))
+                } catch (_: Exception) {
+                }
+            }
+        }
+        return frames
     }
 }
