@@ -104,7 +104,7 @@ class GotwayProtocol : EUCProtocol {
     private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
     private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
-    val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+    override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
 

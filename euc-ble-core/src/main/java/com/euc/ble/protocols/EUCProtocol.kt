@@ -2,6 +2,7 @@ package com.euc.ble.protocols
 
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
 /**
@@ -18,7 +19,9 @@ interface EUCProtocol {
      * List of supported models
      */
     val supportedModels: List<String>
-    
+
+    val dataFlow: Flow<EUCData>
+
     /**
      * Check if this protocol can handle the given device
      */

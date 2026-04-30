@@ -56,7 +56,7 @@ class InMotionProtocol : EUCProtocol {
     override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC)
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
-    val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+    override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
 
 

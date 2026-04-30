@@ -23,6 +23,78 @@ import java.util.UUID
  */
 class KingsongProtocol : EUCProtocol {
 
+
+    companion object {
+        protected val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
+        private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
+        private val MIN_LENGTH = 20
+        // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
+
+        internal val unpackBuffer = ArrayList<Byte>()
+
+        // Unpacker: accumule octets et retourne 0..N trames complètes.
+        // Règle heuristique : détecte en-têtes (AA 55 ou 55 AA) et extrait la tranche jusqu'au prochain en-tête.
+        internal val unpacker: (Byte) -> List<ByteArray> = { b: Byte ->
+            val out = mutableListOf<ByteArray>()
+            unpackBuffer.add(b)
+
+            fun findHeaderIndex(from: Int = 0): Int {
+                val bufSize = unpackBuffer.size
+                if (bufSize < 2) return -1
+                var i = maxOf(from, 0)
+                val maxStart = bufSize - 2
+                while (i <= maxStart) {
+                    val a = unpackBuffer[i]
+                    val c = unpackBuffer[i + 1]
+                    if ((a == header1[0] && c == header1[1]) || (a == header2[0] && c == header2[1])) return i
+                    i++
+                }
+                return -1
+            }
+
+            var headerIdx = findHeaderIndex(0)
+            while (headerIdx >= 0) {
+                // chercher l'en-tête suivant
+                val nextHeader = findHeaderIndex(headerIdx + 2)
+                if (nextHeader >= 0) {
+                    // extraire frame [headerIdx, nextHeader)
+                    val len = nextHeader - headerIdx
+                    val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
+                    out.add(frame)
+                    // supprimer les octets émis
+                    repeat(nextHeader) { unpackBuffer.removeAt(0) }
+                    headerIdx = findHeaderIndex(0)
+                    continue
+                }
+
+                // pas d'en-tête suivant
+                // si on a au moins MIN_LENGTH octets après l'en-tête, émettre au moins cela (heuristique de flottement)
+                if (unpackBuffer.size >= headerIdx + MIN_LENGTH) {
+                    // émettre tout le restant comme une trame au lieu d'attendre indéfiniment
+                    val len = unpackBuffer.size - headerIdx
+                    val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
+                    out.add(frame)
+                    // supprimer les octets émis
+                    repeat(headerIdx + len) { unpackBuffer.removeAt(0) }
+                } else {
+                    // pas assez de données pour compléter une trame, attendre plus
+                    break
+                }
+                headerIdx = findHeaderIndex(0)
+            }
+
+            // si pas d'en-tête, garder au plus 1 octet (préserver possibilité de header fractured)
+            if (findHeaderIndex(0) < 0) {
+                val keep = 1
+                while (unpackBuffer.size > keep) unpackBuffer.removeAt(0)
+            }
+
+            out
+        }
+
+
+    }
+
     override val manufacturer: String = "KingSong"
     override val supportedModels: List<String> = listOf(
         "KS-14D", "KS-16", "KS-16S", "KS-16X", "KS-18L", "KS-18XL",
@@ -30,7 +102,8 @@ class KingsongProtocol : EUCProtocol {
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_READ_CHARACTERISTIC)
+    override fun getDataCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.KINGSONG_READ_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
         return device.manufacturerId == BLEConstants.MANUFACTURER_KINGSONG ||
@@ -38,78 +111,12 @@ class KingsongProtocol : EUCProtocol {
                 device.name.contains("KingSong", ignoreCase = true)
     }
 
-    private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
-    private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
-    private val MIN_LENGTH = 20
-    // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
-
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
     }
 
     // Internal buffer used by the unpacker
-    private val unpackBuffer = ArrayList<Byte>()
-
-    // Unpacker: accumule octets et retourne 0..N trames complètes.
-    // Règle heuristique : détecte en-têtes (AA 55 ou 55 AA) et extrait la tranche jusqu'au prochain en-tête.
-    private val unpacker: (Byte) -> List<ByteArray> = { b: Byte ->
-        val out = mutableListOf<ByteArray>()
-        unpackBuffer.add(b)
-
-        fun findHeaderIndex(from: Int = 0): Int {
-            val bufSize = unpackBuffer.size
-            if (bufSize < 2) return -1
-            var i = maxOf(from, 0)
-            val maxStart = bufSize - 2
-            while (i <= maxStart) {
-                val a = unpackBuffer[i]
-                val c = unpackBuffer[i + 1]
-                if ((a == header1[0] && c == header1[1]) || (a == header2[0] && c == header2[1])) return i
-                i++
-            }
-            return -1
-        }
-
-        var headerIdx = findHeaderIndex(0)
-        while (headerIdx >= 0) {
-            // chercher l'en-tête suivant
-            val nextHeader = findHeaderIndex(headerIdx + 2)
-            if (nextHeader >= 0) {
-                // extraire frame [headerIdx, nextHeader)
-                val len = nextHeader - headerIdx
-                val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
-                out.add(frame)
-                // supprimer les octets émis
-                repeat(nextHeader) { unpackBuffer.removeAt(0) }
-                headerIdx = findHeaderIndex(0)
-                continue
-            }
-
-            // pas d'en-tête suivant
-            // si on a au moins MIN_LENGTH octets après l'en-tête, émettre au moins cela (heuristique de flottement)
-            if (unpackBuffer.size >= headerIdx + MIN_LENGTH) {
-                // émettre tout le restant comme une trame au lieu d'attendre indéfiniment
-                val len = unpackBuffer.size - headerIdx
-                val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
-                out.add(frame)
-                // supprimer les octets émis
-                repeat(headerIdx + len) { unpackBuffer.removeAt(0) }
-            } else {
-                // pas assez de données pour compléter une trame, attendre plus
-                break
-            }
-            headerIdx = findHeaderIndex(0)
-        }
-
-        // si pas d'en-tête, garder au plus 1 octet (préserver possibilité de header fractured)
-        if (findHeaderIndex(0) < 0) {
-            val keep = 1
-            while (unpackBuffer.size > keep) unpackBuffer.removeAt(0)
-        }
-
-        out
-    }
 
     private val byteParser = ByteByByteFrameParser(unpacker, resetUnpacker = {
         unpackBuffer.clear()
@@ -117,7 +124,7 @@ class KingsongProtocol : EUCProtocol {
     private val frameReassembler = FrameReassembler(byteParser)
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
-    val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+    override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -257,7 +264,7 @@ class KingsongProtocol : EUCProtocol {
     private fun processFrame(frame: ByteArray) {
         val parsed = parseFrame(frame)
         parsed?.let {
-            scope.launch { _channel.trySend(it)  }
+            scope.launch { _channel.trySend(it) }
         }
     }
 
@@ -284,6 +291,7 @@ class KingsongProtocol : EUCProtocol {
                 val brightness = (clamped * 255 / 100).toByte()
                 byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x04, brightness)
             }
+
             else -> byteArrayOf()
         }
     }
