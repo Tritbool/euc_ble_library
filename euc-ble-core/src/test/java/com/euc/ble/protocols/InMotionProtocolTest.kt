@@ -9,6 +9,11 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 class InMotionProtocolTest {
+    companion object {
+        private const val MINIMUM_V5F_FRAME_COUNT = 200
+        private const val MINIMUM_V8S_FRAME_COUNT = 500
+        private const val MAX_MALFORMED_ROW_RATIO = 0.5
+    }
 
     @Test
     fun decodeV9LegacyVectorMatchesExpectedValues() {
@@ -90,7 +95,7 @@ class InMotionProtocolTest {
         val protocol = InMotionProtocol()
         val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = 8000)
         assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
-        assertTrue("Expected substantial V5F frame sample", frames.size > 200)
+        assertTrue("Expected substantial V5F frame sample", frames.size > MINIMUM_V5F_FRAME_COUNT)
 
         val decoded = frames.mapNotNull { protocol.decode(it) }
         assertTrue("Expected decoded telemetry from V5F legacy frames", decoded.isNotEmpty())
@@ -104,7 +109,7 @@ class InMotionProtocolTest {
         val protocol = InMotionProtocol()
         val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = 8000)
         assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
-        assertTrue("Expected substantial V8S frame sample", frames.size > 500)
+        assertTrue("Expected substantial V8S frame sample", frames.size > MINIMUM_V8S_FRAME_COUNT)
 
         val decoded = frames.mapNotNull { protocol.decode(it) }
         assertTrue("Expected decoded telemetry from V8S legacy frames", decoded.isNotEmpty())
@@ -137,7 +142,8 @@ class InMotionProtocolTest {
                 }
             }
         }
-        assertTrue("Too many malformed rows in $resourcePath", malformedRows < (frames.size / 2))
+        val maxMalformedRows = (frames.size * MAX_MALFORMED_ROW_RATIO).toInt()
+        assertTrue("Too many malformed rows in $resourcePath", malformedRows < maxMalformedRows)
         return frames
     }
 }
