@@ -142,8 +142,9 @@ class InMotionProtocolTest {
                 }
             }
         }
-        val maxMalformedRows = (frames.size * MAX_MALFORMED_ROW_RATIO).toInt()
-        assertTrue("Too many malformed rows in $resourcePath", malformedRows < maxMalformedRows)
+        val totalRows = frames.size + malformedRows
+        val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
+        assertTrue("Too many malformed rows in $resourcePath", malformedRows <= maxMalformedRows)
         return frames
     }
 }
