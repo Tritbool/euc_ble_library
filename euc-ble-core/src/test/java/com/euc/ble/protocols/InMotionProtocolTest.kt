@@ -141,7 +141,7 @@ class InMotionProtocolTest {
                     return@forEach
                 }
 
-                val hex = line.substring(splitIndex + 1).trim().trim('"')
+                val hex = line.substring(splitIndex + 1).trim().removeSurrounding("\"")
                 try {
                     frames.add(ByteUtils.hexToBytes(hex))
                 } catch (_: IllegalArgumentException) {
@@ -151,6 +151,7 @@ class InMotionProtocolTest {
             }
         }
         val totalRows = frames.size + malformedRows + invalidFormatRows
+        assertTrue("No parsable rows found in $resourcePath", totalRows > 0)
         val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
         assertTrue(
             "Too many malformed rows in $resourcePath: $malformedRows out of $totalRows (max: $maxMalformedRows)",
