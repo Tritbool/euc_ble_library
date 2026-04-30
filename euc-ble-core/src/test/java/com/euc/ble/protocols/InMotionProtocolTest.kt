@@ -118,12 +118,14 @@ class InMotionProtocolTest {
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
 
         val frames = mutableListOf<ByteArray>()
+        var malformedRows = 0
         BufferedReader(InputStreamReader(inputStream)).use { reader ->
             reader.lineSequence().forEach { rawLine ->
                 if (frames.size >= maxFrames) return@forEach
                 val line = rawLine.trim()
                 if (line.isEmpty()) return@forEach
 
+                // WheelLog raw CSV rows are expected as: timestamp,hex_data
                 val splitIndex = line.indexOf(',')
                 if (splitIndex <= 0 || splitIndex >= line.length - 1) return@forEach
 
@@ -131,9 +133,11 @@ class InMotionProtocolTest {
                 try {
                     frames.add(ByteUtils.hexToBytes(hex))
                 } catch (_: IllegalArgumentException) {
+                    malformedRows++
                 }
             }
         }
+        assertTrue("Too many malformed rows in $resourcePath", malformedRows < (frames.size / 2))
         return frames
     }
 }
