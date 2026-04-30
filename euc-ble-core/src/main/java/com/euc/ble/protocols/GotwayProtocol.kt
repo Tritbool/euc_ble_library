@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.util.UUID
 
 /**
@@ -144,7 +145,7 @@ class GotwayProtocol : EUCProtocol {
 
     override fun decode(data: ByteArray): EUCData? {
         // Let the reassembler handle the incoming bytes asynchronously
-        scope.launch {
+        runBlocking(Dispatchers.IO) {
             frameReassembler.processIncomingBytes(data)
         }
         // Return null because data is emitted asynchronously via the dataFlow
@@ -158,22 +159,23 @@ class GotwayProtocol : EUCProtocol {
             else -> null // Ignore unknown frame types from the reassembler
         }
 
-        eucData?.let {
-            scope.launch {
-                _channel.trySend(it)
-            }
-        }
+        eucData?.let { _channel.trySend(it) }
     }
     @VisibleForTesting
     private fun parseTypeA(data: ByteArray): EUCData? {
-        val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
+
         val speedRaw = ByteUtils.tryGetUnsignedShortBE(data, 4) ?: return null
+        val speed = (speedRaw * 3.6) / 100.0
+        if (speed > 200.0) return null  // frame corrompue ou sentinel
+
+        val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
+        val voltage = voltageRaw / 100.0
+        if (voltage > 300.0) return null  // pareil pour voltage
+
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 6) ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
-        val voltage = voltageRaw / 100.0
-        val speed = (speedRaw * 3.6) / 100.0 // Convert to km/h
         val distanceMeters = distanceRaw.toDouble()
         val current = currentRaw / 100.0
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale

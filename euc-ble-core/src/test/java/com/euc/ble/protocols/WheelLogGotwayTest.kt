@@ -96,6 +96,7 @@ class WheelLogGotwayTest {
                 vendorMismatch <= decodedCount / 4
             )
         }
+        protocol.close()
     }
 
     @Test
@@ -143,6 +144,7 @@ class WheelLogGotwayTest {
                 )
             }
         }
+        protocol.close()
     }
 
     @Test
@@ -219,6 +221,7 @@ class WheelLogGotwayTest {
         val results = collector.await()
         assertEquals("Should decode one reassembled frame", 1, results.size)
         assertEquals(67.2, results[0].voltage, 0.01)
+        protocol.close()
     }
 
     /**

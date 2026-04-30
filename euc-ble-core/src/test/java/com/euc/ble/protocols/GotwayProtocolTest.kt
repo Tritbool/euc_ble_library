@@ -242,8 +242,8 @@ class GotwayProtocolTest {
         // Max unsigned short = 65535
         // Max unsigned int = 0xFFFFFFFF = 4294967295
         val frame = createGotwayFrame(
-            voltageRaw = 65535,    // 655.35V
-            speedRaw = 65535,      // 65535*3.6/100 = 2359.26 km/h
+            voltageRaw = 30000,    // 300.00V
+            speedRaw = 5555,      // 5555*3.6/100 = 200.0 km/h
             distanceRaw = 4294967295L,
             currentRaw = 32767,    // Max signed short -> 327.67A
             tempRaw = 32767        // 327.67°C
@@ -255,8 +255,8 @@ class GotwayProtocolTest {
             protocol.dataFlow.first()
         }
 
-        assertEquals(655.35, result.voltage, 0.01)
-        assertEquals(2359.26, result.speed, 0.1)
+        assertEquals(300.0, result.voltage, 0.01)
+        assertEquals(200.0, result.speed, 0.1)
         assertEquals(4294967295.0, result.distance, 1.0)
         assertEquals(327.67, result.current, 0.01)
         assertEquals(327.67, result.temperature, 0.01)

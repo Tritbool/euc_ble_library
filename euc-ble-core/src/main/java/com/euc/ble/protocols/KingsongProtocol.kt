@@ -261,9 +261,8 @@ class KingsongProtocol : EUCProtocol {
 
     private fun processFrame(frame: ByteArray) {
         val parsed = parseFrame(frame)
-        parsed?.let {
-            scope.launch { _channel.trySend(it) }
-        }
+        parsed?.let { _channel.trySend(it) }
+
     }
 
     override fun close() {

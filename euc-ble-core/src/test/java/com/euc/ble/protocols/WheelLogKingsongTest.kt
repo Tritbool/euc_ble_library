@@ -95,6 +95,7 @@ class WheelLogKingsongTest {
         println("Success rate: ${(successfulDecodes * 100.0 / telemetryFrames.size).toInt()}%")
         
         assertTrue("Should decode most frames successfully", successfulDecodes > telemetryFrames.size * 0.8)
+        protocol.close()
     }
 
     /**
@@ -130,6 +131,7 @@ class WheelLogKingsongTest {
         }
         
         println("Consistency test passed for ${decodedFrames.size} frames")
+        protocol.close()
     }
 
     /**
@@ -159,6 +161,7 @@ class WheelLogKingsongTest {
         
         assertTrue("Should decode at reasonable speed", framesPerSecond > MIN_DECODE_FPS)
         assertTrue("Should decode most frames", decodedCount > telemetryFrames.size * 0.7)
+        protocol.close()
     }
 
     /**
@@ -224,6 +227,7 @@ class WheelLogKingsongTest {
             println("  Frame 2: ${describeFrame(decoded2)}")
             println("  Frame 3: ${describeFrame(decoded3)}")
         }
+        protocol.close()
     }
 
     /**

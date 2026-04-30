@@ -35,8 +35,13 @@ android {
     }
 
     testOptions {
-        unitTests.all {
-            it.useJUnitPlatform()
+        unitTests.all { testTask ->
+            testTask.useJUnitPlatform()
+            // Sérialisé en CI, parallèle en local
+            testTask.maxParallelForks =
+                (project.findProperty("maxParallelForks") as String?)?.toInt() ?:
+                        Runtime.getRuntime().availableProcessors()
+            testTask.jvmArgs("-Xmx1g")
         }
     }
 }
