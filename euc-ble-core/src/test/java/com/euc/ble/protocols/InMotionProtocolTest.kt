@@ -90,6 +90,7 @@ class InMotionProtocolTest {
         val protocol = InMotionProtocol()
         val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = 8000)
         assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
+        assertTrue("Expected substantial V5F frame sample", frames.size > 200)
 
         val decoded = frames.mapNotNull { protocol.decode(it) }
         assertTrue("Expected decoded telemetry from V5F legacy frames", decoded.isNotEmpty())
@@ -103,6 +104,7 @@ class InMotionProtocolTest {
         val protocol = InMotionProtocol()
         val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = 8000)
         assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
+        assertTrue("Expected substantial V8S frame sample", frames.size > 500)
 
         val decoded = frames.mapNotNull { protocol.decode(it) }
         assertTrue("Expected decoded telemetry from V8S legacy frames", decoded.isNotEmpty())
@@ -128,7 +130,7 @@ class InMotionProtocolTest {
                 val hex = line.substring(splitIndex + 1).trim().trim('"')
                 try {
                     frames.add(ByteUtils.hexToBytes(hex))
-                } catch (_: Exception) {
+                } catch (_: IllegalArgumentException) {
                 }
             }
         }
