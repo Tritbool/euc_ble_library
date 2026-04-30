@@ -26,6 +26,7 @@ import org.junit.runners.Suite
     InMotionProtocolTest::class,   // InMotion V2 protocol (V9-first) tests
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
+    WheelLogKingsongTest::class,   // Real Kingsong BLE frames from WheelLog
     WheelLogGotwayTest::class,     // Real Gotway BLE frames from WheelLog
     WheelLogInMotionTest::class    // Real InMotion BLE frames from WheelLog
 )
