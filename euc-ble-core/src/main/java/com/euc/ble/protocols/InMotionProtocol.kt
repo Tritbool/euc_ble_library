@@ -81,6 +81,7 @@ class InMotionProtocol : EUCProtocol {
             name.startsWith("P6", ignoreCase = true)
     }
 
+
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
         var lastDecoded: EUCData? = null

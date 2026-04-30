@@ -5,6 +5,7 @@ import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -17,6 +18,11 @@ class GotwayProtocolTest {
     fun setUp() {
         protocol = GotwayProtocol()
         MockBLEUtils.createMockProtocolTestEnvironment()
+    }
+
+    @After
+    fun tearDown() {
+        protocol.close()
     }
 
     /**

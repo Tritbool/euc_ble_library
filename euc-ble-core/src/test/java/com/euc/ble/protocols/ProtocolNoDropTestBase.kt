@@ -1,22 +1,18 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
-import com.euc.ble.frames.ByteByByteFrameParser
-import com.euc.ble.frames.FixedSizeFrameParser
-import com.euc.ble.frames.FrameParser
-import com.euc.ble.frames.FrameReassembler
-import com.euc.ble.models.EUCData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -36,13 +32,28 @@ sealed class ProtocolNoDropTestBase {
     abstract val minimumExpectedFrameCount: Int
     abstract fun createProtocol(): EUCProtocol
 
+    private lateinit var oracle: EUCProtocol
+    private lateinit var sut: EUCProtocol
+
+    @Before
+    fun setUp(){
+        // Oracle : compter les émissions dataFlow sur une instance fraîche
+        oracle = createProtocol()
+        // SUT : rejouer sur une nouvelle instance, collecter exactement oracleCount
+        sut = createProtocol()
+    }
+
+    @After
+    fun tearDown() {
+        oracle.close()
+        sut.close()
+    }
+
     @Test
     fun `no frame is dropped between decode and dataFlow`() = runBlocking {
         val packets = loadCsvFrames(csvResourcePath)
         assertTrue(packets.size >= minimumExpectedFrameCount)
 
-        // Oracle : compter les émissions dataFlow sur une instance fraîche
-        val oracle = createProtocol()
         var oracleCount = 0
         val oracleJob = launch { oracle.dataFlow.collect { oracleCount++ } }
         packets.forEach { oracle.decode(it) }
@@ -51,8 +62,6 @@ sealed class ProtocolNoDropTestBase {
 
         assertTrue("Oracle a produit 0 frames", oracleCount > 0)
 
-        // SUT : rejouer sur une nouvelle instance, collecter exactement oracleCount
-        val sut = createProtocol()
         val collectJob = async(Dispatchers.Default) {
             withTimeout(15_000L) { sut.dataFlow.take(oracleCount).toList() }
         }

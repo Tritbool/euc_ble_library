@@ -53,6 +53,7 @@ class KingsongProtocolAsyncTest {
         assertFalse(d.isCharging)
         assertEquals(0, d.batteryLevel)
         assertNull(d.cellVoltages)
+        protocol.close()
     }
 
     @Test
@@ -73,6 +74,7 @@ class KingsongProtocolAsyncTest {
         assertEquals(122.61, d.voltage, 0.01)
         assertEquals(16.75, d.speed, 0.01)
         assertTrue(d.distance > 0.0)
+        protocol.close()
     }
 
     @Test
@@ -88,6 +90,7 @@ class KingsongProtocolAsyncTest {
         assertEquals(2, items.size)
         assertEquals(122.61, items[0].voltage, 0.01)
         assertEquals(122.61, items[1].voltage, 0.01)
+        protocol.close()
     }
 
     @Test
@@ -103,6 +106,7 @@ class KingsongProtocolAsyncTest {
         assertEquals(1, items.size)
         val d = items[0]
         assertEquals(122.61, d.voltage, 0.01)
+        protocol.close()
     }
 
     @Test
@@ -121,6 +125,7 @@ class KingsongProtocolAsyncTest {
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(1, items.size)
         assertEquals(122.61, items[0].voltage, 0.01)
+        protocol.close()
     }
 
     @Test
@@ -135,5 +140,6 @@ class KingsongProtocolAsyncTest {
         val items = withTimeout(1000L) { collector.await() }
         assertEquals(1, items.size)
         assertEquals(122.61, items[0].voltage, 0.01)
+        protocol.close()
     }
 }

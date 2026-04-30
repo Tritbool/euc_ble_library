@@ -3,18 +3,19 @@ package com.euc.ble.protocols
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.Flow
+import java.io.Closeable
 import java.util.UUID
 
 /**
  * Base interface for EUC manufacturer protocols
  */
-interface EUCProtocol {
-    
+interface EUCProtocol : Closeable {
+
     /**
      * Manufacturer name
      */
     val manufacturer: String
-    
+
     /**
      * List of supported models
      */
@@ -22,36 +23,39 @@ interface EUCProtocol {
 
     val dataFlow: Flow<EUCData>
 
+    override fun close() {
+    }
+
     /**
      * Check if this protocol can handle the given device
      */
     fun canHandle(device: EUCDevice): Boolean
-    
+
     /**
      * Decode raw BLE data into EUCData
      */
     fun decode(data: ByteArray): EUCData?
-    
+
     /**
      * Get the UUID for the data characteristic
      */
     fun getDataCharacteristicUUID(): UUID
-    
+
     /**
      * Get the UUID for the service
      */
     fun getServiceUUID(): UUID
-    
+
     /**
      * Create a command for the EUC
      */
     fun createCommand(commandType: CommandType, value: Any): ByteArray
-    
+
     /**
      * Get the UUID for the write characteristic (if different from data characteristic)
      */
     fun getWriteCharacteristicUUID(): UUID = getDataCharacteristicUUID()
-    
+
     /**
      * Check if the device is ready for operation
      */

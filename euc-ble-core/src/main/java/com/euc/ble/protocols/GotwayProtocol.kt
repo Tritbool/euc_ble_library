@@ -10,6 +10,7 @@ import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -134,6 +135,10 @@ class GotwayProtocol : EUCProtocol {
                 device.name.contains("Mten", ignoreCase = true) ||
                 device.name.contains("MSX", ignoreCase = true) ||
                 device.name.contains("Nikola", ignoreCase = true)
+    }
+
+    override fun close() {
+        scope.cancel()
     }
 
     override fun decode(data: ByteArray): EUCData? {

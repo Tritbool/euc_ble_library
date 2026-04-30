@@ -9,6 +9,7 @@ import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -263,6 +264,10 @@ class KingsongProtocol : EUCProtocol {
         parsed?.let {
             scope.launch { _channel.trySend(it) }
         }
+    }
+
+    override fun close() {
+        scope.cancel()
     }
 
     override fun decode(data: ByteArray): EUCData? {
