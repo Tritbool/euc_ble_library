@@ -12,6 +12,7 @@ class InMotionProtocolTest {
     companion object {
         // Thresholds are intentionally different to match fixture sizes:
         // V5F capture has ~877 rows, V8S capture has ~2816 rows.
+        private const val MAX_TEST_FRAMES = 8000
         private const val MINIMUM_V5F_FRAME_COUNT = 200
         private const val MINIMUM_V8S_FRAME_COUNT = 500
         private const val MAX_MALFORMED_ROW_RATIO = 0.5
@@ -95,7 +96,7 @@ class InMotionProtocolTest {
     @Test
     fun decodeLegacyV5FCsvFramesProducesTelemetryAndModel() {
         val protocol = InMotionProtocol()
-        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = 8000)
+        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = MAX_TEST_FRAMES)
         assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
         assertTrue("Expected substantial V5F frame sample", frames.size > MINIMUM_V5F_FRAME_COUNT)
 
@@ -109,7 +110,7 @@ class InMotionProtocolTest {
     @Test
     fun decodeLegacyV8SCsvFramesProducesTelemetryAndModel() {
         val protocol = InMotionProtocol()
-        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = 8000)
+        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = MAX_TEST_FRAMES)
         assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
         assertTrue("Expected substantial V8S frame sample", frames.size > MINIMUM_V8S_FRAME_COUNT)
 
@@ -126,6 +127,7 @@ class InMotionProtocolTest {
 
         val frames = mutableListOf<ByteArray>()
         var malformedRows = 0
+        var invalidFormatRows = 0
         BufferedReader(InputStreamReader(inputStream)).use { reader ->
             reader.lineSequence().forEach { rawLine ->
                 if (frames.size >= maxFrames) return@forEach
@@ -134,7 +136,10 @@ class InMotionProtocolTest {
 
                 // WheelLog raw CSV rows are expected as: timestamp,hex_data
                 val splitIndex = line.indexOf(',')
-                if (splitIndex <= 0 || splitIndex >= line.length - 1) return@forEach
+                if (splitIndex <= 0 || splitIndex >= line.length - 1) {
+                    invalidFormatRows++
+                    return@forEach
+                }
 
                 val hex = line.substring(splitIndex + 1).trim().trim('"')
                 try {
@@ -144,7 +149,7 @@ class InMotionProtocolTest {
                 }
             }
         }
-        val totalRows = frames.size + malformedRows
+        val totalRows = frames.size + malformedRows + invalidFormatRows
         val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
         assertTrue(
             "Too many malformed rows in $resourcePath: $malformedRows out of $totalRows (max: $maxMalformedRows)",
