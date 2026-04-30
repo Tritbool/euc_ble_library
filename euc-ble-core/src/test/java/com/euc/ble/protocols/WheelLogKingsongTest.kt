@@ -1,5 +1,6 @@
 package com.euc.ble.protocols
 
+import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,7 @@ import java.io.InputStreamReader
  * Test class for validating Kingsong protocol implementation using real WheelLog RAW data
  * Uses actual BLE frames captured from Kingsong wheels
  */
+@SlowTest
 class WheelLogKingsongTest {
 
     companion object {
@@ -104,7 +106,7 @@ class WheelLogKingsongTest {
     @Test
     fun testRealKingsongFramesConsistency() = runBlocking {
         val protocol = KingsongProtocol()
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 100)
+        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 200)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
         assertTrue("Need multiple telemetry frames for consistency test", telemetryFrames.size >= 10)
@@ -209,7 +211,7 @@ class WheelLogKingsongTest {
     @Test
     fun testKnownKingsongFramePatterns() = runBlocking {
         val protocol = KingsongProtocol()
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv")
+        val frames = loadKingsongFrames("$testDataPath/RAW_2023_09_01_18_32_03.csv", maxFrames = 200)
 
         val decoded = decodeA9Frames(protocol, frames, timeoutMs = 10000L)
         val interestingFrames = decoded.filter { it.speed > 5.0 }

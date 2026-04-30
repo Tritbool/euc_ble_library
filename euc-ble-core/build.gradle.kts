@@ -34,6 +34,14 @@ android {
         }
     }
 
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform {
+            if (System.getenv("CI") == "true") {
+                excludeTags("SlowTest")
+            }
+        }
+    }
+
     testOptions {
         unitTests.all { testTask ->
             testTask.useJUnitPlatform()

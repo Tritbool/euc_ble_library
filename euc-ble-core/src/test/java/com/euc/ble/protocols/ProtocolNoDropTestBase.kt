@@ -1,5 +1,6 @@
 package com.euc.ble.protocols
 
+import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -107,13 +108,14 @@ sealed class ProtocolNoDropTestBase {
     }
 }
 
+@SlowTest
 class GotwayNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"
     override val minimumExpectedFrameCount = 200
     override fun createProtocol() = GotwayProtocol()
 
 }
-
+@SlowTest
 class KingsongNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv"
     override val minimumExpectedFrameCount = 200
@@ -121,7 +123,7 @@ class KingsongNoDropTest : ProtocolNoDropTestBase() {
 
 
 }
-
+@SlowTest
 class InmotionNoDropTest: ProtocolNoDropTestBase(){
     override val csvResourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv"
     override val minimumExpectedFrameCount = 200

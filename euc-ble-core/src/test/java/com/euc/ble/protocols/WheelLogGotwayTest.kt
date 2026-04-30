@@ -1,6 +1,7 @@
 // File: `euc-ble-core/src/test/java/com/euc/ble/protocols/WheelLogGotwayTest.kt`
 package com.euc.ble.protocols
 
+import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.frames.FixedSizeFrameParser
 import com.euc.ble.frames.FrameReassembler
@@ -20,7 +21,7 @@ import org.junit.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
-
+@SlowTest
 class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"

@@ -229,6 +229,13 @@ class KingsongProtocol : EUCProtocol {
             val statusByte = if (ensureRange(data, base + 14, 1))
                 ByteUtils.getUnsignedByte(data, base + 14) else 0
 
+            // === Filtres de plage "raisonnable" pour Kingsong ===
+
+            if (voltage !in 40.0..150.0) return null
+            if (speed !in 0.0..80.0) return null
+            if (temperature !in -40.0..100.0) return null
+            if (current !in -200.0..200.0) return null
+
             val isCharging = (statusByte and 0x01) != 0
 
             val power = voltage * current
