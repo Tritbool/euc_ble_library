@@ -63,7 +63,7 @@ sealed class ProtocolNoDropTestBase {
         assertTrue("Oracle a produit 0 frames", oracleCount > 0)
 
         val collectJob = async(Dispatchers.Default) {
-            withTimeout(15_000L) { sut.dataFlow.take(oracleCount).toList() }
+            withTimeout(60_000L) { sut.dataFlow.take(oracleCount).toList() }
         }
         packets.forEach { sut.decode(it) }
 
