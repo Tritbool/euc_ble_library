@@ -5,6 +5,7 @@ import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -235,6 +236,25 @@ class GotwayProtocolTest {
         assertEquals(0.0, result.distance, 0.01)
         assertEquals(0.0, result.current, 0.01)
         assertEquals(0.0, result.temperature, 0.01)
+    }
+
+    @Test
+    fun testDecodeOutOfRangeFrameIsDropped() {
+        // Frame avec speedRaw=65535 (2359 km/h) doit être silencieusement ignorée
+        val frame = createGotwayFrame(
+            voltageRaw = 65535,
+            speedRaw = 65535,
+            distanceRaw = 4294967295L,
+            currentRaw = 32767,
+            tempRaw = 32767
+        )
+        // decode() retourne null (asynchrone)
+        assertNull(protocol.decode(frame))
+        // dataFlow ne doit rien émettre — vérification via timeout
+        val result = runBlocking {
+            withTimeoutOrNull(500) { protocol.dataFlow.first() }
+        }
+        assertNull("Frame hors plage ne doit pas être émise", result)
     }
 
     @Test
