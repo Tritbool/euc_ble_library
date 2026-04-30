@@ -4,8 +4,10 @@ import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import java.util.UUID
 import kotlin.math.roundToInt
 
@@ -53,8 +55,10 @@ class InMotionProtocol : EUCProtocol {
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)
     override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC)
 
-    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1, extraBufferCapacity = 32)
-    val dataFlow: Flow<EUCData> = _dataFlow
+    private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
+    val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+
+
 
     private val parseLock = Any()
     private val v2Buffer = ArrayList<Byte>()
@@ -86,7 +90,7 @@ class InMotionProtocol : EUCProtocol {
             val decoded = parseV2Frame(frame) ?: continue
             lastDetectedDialect = Dialect.V2
             lastDecoded = decoded
-            _dataFlow.tryEmit(decoded)
+            _channel.trySend(decoded)
         }
 
         val legacyFrames = extractLegacyFrames(data)
@@ -94,7 +98,7 @@ class InMotionProtocol : EUCProtocol {
             val decoded = parseLegacyFrame(frame) ?: continue
             lastDetectedDialect = Dialect.LEGACY_V1
             lastDecoded = decoded
-            _dataFlow.tryEmit(decoded)
+            _channel.trySend(decoded)
         }
         return lastDecoded
     }

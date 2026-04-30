@@ -10,9 +10,11 @@ import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -101,8 +103,8 @@ class GotwayProtocol : EUCProtocol {
     }
     private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
     private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
-    private val _dataFlow = MutableSharedFlow<EUCData>(replay = 1)
-    val dataFlow: Flow<EUCData> = _dataFlow
+    private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
+    val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -152,7 +154,7 @@ class GotwayProtocol : EUCProtocol {
 
         eucData?.let {
             scope.launch {
-                _dataFlow.emit(it)
+                _channel.trySend(it)
             }
         }
     }

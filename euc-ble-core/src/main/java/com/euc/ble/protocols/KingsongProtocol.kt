@@ -9,9 +9,11 @@ import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -40,8 +42,7 @@ class KingsongProtocol : EUCProtocol {
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     private val MIN_LENGTH = 20
     // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
-    private val dataFlowReplaySize = 8
-    private val dataFlowExtraBufferSize = 32
+
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
@@ -115,11 +116,8 @@ class KingsongProtocol : EUCProtocol {
     })
     private val frameReassembler = FrameReassembler(byteParser)
 
-    private val _dataFlow = MutableSharedFlow<EUCData>(
-        replay = dataFlowReplaySize,
-        extraBufferCapacity = dataFlowExtraBufferSize
-    )
-    val dataFlow: Flow<EUCData> = _dataFlow
+    private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
+    val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -259,7 +257,7 @@ class KingsongProtocol : EUCProtocol {
     private fun processFrame(frame: ByteArray) {
         val parsed = parseFrame(frame)
         parsed?.let {
-            scope.launch { _dataFlow.emit(it) }
+            scope.launch { _channel.trySend(it)  }
         }
     }
 
