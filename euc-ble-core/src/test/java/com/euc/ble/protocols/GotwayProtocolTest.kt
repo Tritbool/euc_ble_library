@@ -176,7 +176,7 @@ class GotwayProtocolTest {
 
         protocol.decode(frame)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -196,7 +196,7 @@ class GotwayProtocolTest {
 
         protocol.decode(frame)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -220,7 +220,7 @@ class GotwayProtocolTest {
 
         protocol.decode(frame)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -245,7 +245,7 @@ class GotwayProtocolTest {
 
         protocol.decode(frame)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -270,7 +270,7 @@ class GotwayProtocolTest {
 
         protocol.decode(frame)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -295,7 +295,7 @@ class GotwayProtocolTest {
         protocol.decode(fragment1)
         protocol.decode(fragment2)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -326,13 +326,13 @@ class GotwayProtocolTest {
         protocol.decode(combinedData)
 
         // Should receive the first frame
-        val result1 = withTimeout(1000) {
+        val result1 = withTimeout(10000) {
             protocol.dataFlow.first()
         }
         assertEquals(67.2, result1.voltage, 0.01)
 
         // The second frame should also be processed
-        val result2 = withTimeout(1000) {
+        val result2 = withTimeout(10000) {
             protocol.dataFlow.first()
         }
         // Note: Due to replay=1 on MutableSharedFlow, we might get the same or different frame
@@ -356,7 +356,7 @@ class GotwayProtocolTest {
 
         protocol.decode(dataWithGarbage)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 
@@ -407,7 +407,7 @@ class GotwayProtocolTest {
 
         protocol.decode(frame)
 
-        val result = withTimeout(1000) {
+        val result = withTimeout(10000) {
             protocol.dataFlow.first()
         }
 

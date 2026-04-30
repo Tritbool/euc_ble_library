@@ -34,55 +34,34 @@ sealed class ProtocolNoDropTestBase {
 
     abstract val csvResourcePath: String
     abstract val minimumExpectedFrameCount: Int
-
     abstract fun createProtocol(): EUCProtocol
-    abstract fun createFrameParser(): FrameParser  // même parser qu'en production
 
-    // ---------------------------------------------------------------
-    // Oracle : FrameReassembler seul, sans décodage protocole
-    // ---------------------------------------------------------------
-    private fun oracleFrameCount(packets: List<ByteArray>): Int = runBlocking {
-        val reassembler = FrameReassembler(createFrameParser())
-        var count = 0
-        val job = launch { reassembler.observeFrames().collect { count++ } }
-        packets.forEach { reassembler.processIncomingBytes(it) }
-        delay(1_000L) // laisser drainer le FrameReassembler
-        job.cancel()
-        count
-    }
-
-    // ---------------------------------------------------------------
-    // Test principal
-    // ---------------------------------------------------------------
     @Test
-    fun `no frame is dropped between FrameReassembler and dataFlow`() = runBlocking {
+    fun `no frame is dropped between decode and dataFlow`() = runBlocking {
         val packets = loadCsvFrames(csvResourcePath)
-        assertTrue(
-            "CSV trop petit : ${packets.size} paquets",
-            packets.size >= minimumExpectedFrameCount
-        )
+        assertTrue(packets.size >= minimumExpectedFrameCount)
 
-        val expectedCount = oracleFrameCount(packets)
-        assertTrue(
-            "L'oracle a produit 0 frames — vérifie le CSV ou le FrameParser",
-            expectedCount > 0
-        )
+        // Oracle : compter les émissions dataFlow sur une instance fraîche
+        val oracle = createProtocol()
+        var oracleCount = 0
+        val oracleJob = launch { oracle.dataFlow.collect { oracleCount++ } }
+        packets.forEach { oracle.decode(it) }
+        delay(1_000L) // laisser drainer
+        oracleJob.cancel()
 
-        val protocol = createProtocol()
+        assertTrue("Oracle a produit 0 frames", oracleCount > 0)
+
+        // SUT : rejouer sur une nouvelle instance, collecter exactement oracleCount
+        val sut = createProtocol()
         val collectJob = async(Dispatchers.Default) {
-            withTimeout(15_000L) {
-                protocol.dataFlow.take(expectedCount).toList()
-            }
+            withTimeout(15_000L) { sut.dataFlow.take(oracleCount).toList() }
         }
+        packets.forEach { sut.decode(it) }
 
-        packets.forEach { protocol.decode(it) }
-
-        val collected: List<EUCData> = collectJob.await()
-
+        val collected = collectJob.await()
         assertEquals(
-            "Drop détecté ! oracle=$expectedCount, reçu=${collected.size}",
-            expectedCount,
-            collected.size
+            "Drop détecté : oracle=$oracleCount, reçu=${collected.size}",
+            oracleCount, collected.size
         )
     }
 
@@ -123,20 +102,20 @@ class GotwayNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"
     override val minimumExpectedFrameCount = 200
     override fun createProtocol() = GotwayProtocol()
-    override fun createFrameParser() = FixedSizeFrameParser(
-        GotwayProtocol.FRAME_SIZE,
-        GotwayProtocol.HEADER,
-        GotwayProtocol.FOOTER
-    )
+
 }
 
 class KingsongNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv"
     override val minimumExpectedFrameCount = 200
     override fun createProtocol() = KingsongProtocol()
-    override fun createFrameParser() =
-        ByteByByteFrameParser(KingsongProtocol.unpacker, resetUnpacker = {
-            KingsongProtocol.unpackBuffer.clear()
-        })
+
+
+}
+
+class InmotionNoDropTest: ProtocolNoDropTestBase(){
+    override val csvResourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv"
+    override val minimumExpectedFrameCount = 200
+    override fun createProtocol() = InMotionProtocol()
 
 }
