@@ -102,6 +102,8 @@ class GotwayProtocol : EUCProtocol {
         const val FRAME_SIZE=24
         val HEADER: ByteArray=byteArrayOf(0x55.toByte(),0xAA.toByte())
         val FOOTER: ByteArray=byteArrayOf(0x5A.toByte(),0x5A.toByte(),0x5A.toByte(),0x5A.toByte())
+        private const val LEGACY_PAYLOAD_START = 2
+        private const val LEGACY_PAYLOAD_END = 17
     }
     private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
     private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
@@ -233,7 +235,7 @@ class GotwayProtocol : EUCProtocol {
             rideTime = last?.rideTime ?: 0,
             cellVoltages = last?.cellVoltages,
             motorTemperature = last?.motorTemperature,
-            totalDistance = distanceRaw.toDouble()
+            totalDistance = distanceRaw.toDouble() // Mirror distance for consumers using totalDistance.
         )
     }
 
@@ -261,15 +263,20 @@ class GotwayProtocol : EUCProtocol {
             rideTime = last?.rideTime ?: 0,
             cellVoltages = last?.cellVoltages,
             motorTemperature = last?.motorTemperature,
-            totalDistance = totalDistanceRaw.toDouble()
+            totalDistance = totalDistanceRaw.toDouble() // Mirror distance for consumers using totalDistance.
         )
     }
 
     @VisibleForTesting
     private fun parseLegacyType02(data: ByteArray): EUCData? {
-        val hasPayload = data.sliceArray(2..17).any { it.toInt() != 0 }
-        if (!hasPayload) return null
-        return parseLegacyType01(data)?.copy(model = "Gotway (Legacy Type 0x02)")
+        // Type 0x02 often appears as an all-zero keep-alive page in bytes 2..17.
+        // We only emit when this payload area contains meaningful data.
+        for (index in LEGACY_PAYLOAD_START..LEGACY_PAYLOAD_END) {
+            if (data[index].toInt() != 0) {
+                return parseLegacyType01(data)?.copy(model = "Gotway (Legacy Type 0x02)")
+            }
+        }
+        return null
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {

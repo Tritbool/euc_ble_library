@@ -267,7 +267,9 @@ class GotwayProtocolTest {
         assertEquals("Gotway (Legacy Type 0x01)", result.model)
         assertEquals(80, result.batteryLevel)
         assertEquals(1234.0, result.distance, 0.01)
+        // Reuses latest Type A telemetry (6720/100 = 67.2V).
         assertEquals(67.2, result.voltage, 0.01)
+        // speedRaw=833 => 833 * 3.6 / 100 = 29.988 km/h.
         assertEquals(29.988, result.speed, 0.1)
     }
 
