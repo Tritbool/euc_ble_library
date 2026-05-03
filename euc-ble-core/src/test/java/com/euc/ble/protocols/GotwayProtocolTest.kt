@@ -120,6 +120,29 @@ class GotwayProtocolTest {
         return frame
     }
 
+    private fun createGotwayLegacyFrame(
+        frameType: Byte,
+        batteryRaw: Int = 0,
+        totalDistanceRaw: Int = 0,
+        hasPayload: Boolean = true
+    ): ByteArray {
+        val frame = ByteArray(24)
+        frame[0] = 0x55.toByte()
+        frame[1] = 0xAA.toByte()
+        if (hasPayload) {
+            frame[3] = (batteryRaw and 0xFF).toByte()
+            frame[6] = ((totalDistanceRaw shr 8) and 0xFF).toByte()
+            frame[7] = (totalDistanceRaw and 0xFF).toByte()
+        }
+        frame[18] = frameType
+        frame[19] = 0x18
+        frame[20] = 0x5A.toByte()
+        frame[21] = 0x5A.toByte()
+        frame[22] = 0x5A.toByte()
+        frame[23] = 0x5A.toByte()
+        return frame
+    }
+
     @Test
     fun testCanHandle() {
         val gotwayDevice = MockBLEUtils.createMockDevice(
@@ -218,6 +241,46 @@ class GotwayProtocolTest {
         // Type B doesn't provide other values, they should be 0
         assertEquals(0.0, result.voltage, 0.01)
         assertEquals(0.0, result.speed, 0.01)
+    }
+
+    @Test
+    fun testDecodeLegacyType01MergesWithLatestTypeA() = runBlocking {
+        val typeA = createGotwayFrame(
+            voltageRaw = 6720,
+            speedRaw = 833,
+            distanceRaw = 1000,
+            currentRaw = 250,
+            tempRaw = 2500,
+            frameType = 0x00
+        )
+        protocol.decode(typeA)
+        withTimeout(10000) { protocol.dataFlow.first() }
+
+        val legacy = createGotwayLegacyFrame(
+            frameType = 0x01,
+            batteryRaw = 80,
+            totalDistanceRaw = 1234
+        )
+        protocol.decode(legacy)
+        val result = withTimeout(10000) { protocol.dataFlow.first() }
+
+        assertEquals("Gotway (Legacy Type 0x01)", result.model)
+        assertEquals(80, result.batteryLevel)
+        assertEquals(1234.0, result.distance, 0.01)
+        assertEquals(67.2, result.voltage, 0.01)
+        assertEquals(29.988, result.speed, 0.1)
+    }
+
+    @Test
+    fun testDecodeLegacyType02ZeroPayloadIsIgnored() = runBlocking {
+        val legacyZeroPayload = createGotwayLegacyFrame(
+            frameType = 0x02,
+            hasPayload = false
+        )
+        protocol.decode(legacyZeroPayload)
+
+        val result = withTimeoutOrNull(500) { protocol.dataFlow.first() }
+        assertNull(result)
     }
 
     @Test

@@ -107,6 +107,7 @@ class GotwayProtocol : EUCProtocol {
     private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+    private var lastRealtimeTelemetry: EUCData? = null
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -155,11 +156,17 @@ class GotwayProtocol : EUCProtocol {
     private fun processFrame(frame: ByteArray) {
         val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {
             0x00 -> parseTypeA(frame)
+            0x01 -> parseLegacyType01(frame)
+            0x02 -> parseLegacyType02(frame)
             0x04 -> parseTypeB(frame)
             else -> null // Ignore unknown frame types from the reassembler
         }
-
-        eucData?.let { _channel.trySend(it) }
+        eucData?.let {
+            if (it.model == "Gotway (Type A)") {
+                lastRealtimeTelemetry = it
+            }
+            _channel.trySend(it)
+        }
     }
     @VisibleForTesting
     private fun parseTypeA(data: ByteArray): EUCData? {
@@ -206,27 +213,63 @@ class GotwayProtocol : EUCProtocol {
         // Frame B primarily provides total distance. Other fields are not documented
         // and may not be present.
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
+        val last = lastRealtimeTelemetry
 
         return EUCData(
-            // The following are placeholders as they are not in this frame type
-            speed = 0.0,
-            voltage = 0.0,
-            current = 0.0,
-            temperature = 0.0,
-            batteryLevel = 0,
+            speed = last?.speed ?: 0.0,
+            voltage = last?.voltage ?: 0.0,
+            current = last?.current ?: 0.0,
+            temperature = last?.temperature ?: 0.0,
+            batteryLevel = last?.batteryLevel ?: 0,
             distance = distanceRaw.toDouble(),
-            power = 0.0,
+            power = last?.power ?: 0.0,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
             model = "Gotway (Type B)",
-            serialNumber = null,
-            firmwareVersion = null,
-            isCharging = false,
-            rideTime = 0,
-            cellVoltages = null,
-            motorTemperature = null
+            serialNumber = last?.serialNumber,
+            firmwareVersion = last?.firmwareVersion,
+            isCharging = last?.isCharging ?: false,
+            rideTime = last?.rideTime ?: 0,
+            cellVoltages = last?.cellVoltages,
+            motorTemperature = last?.motorTemperature,
+            totalDistance = distanceRaw.toDouble()
         )
+    }
+
+    @VisibleForTesting
+    private fun parseLegacyType01(data: ByteArray): EUCData? {
+        val batteryRaw = ByteUtils.tryGetUnsignedByte(data, 3) ?: return null
+        val totalDistanceRaw = ByteUtils.tryGetUnsignedShortBE(data, 6) ?: return null
+        val last = lastRealtimeTelemetry
+
+        return EUCData(
+            speed = last?.speed ?: 0.0,
+            voltage = last?.voltage ?: 0.0,
+            current = last?.current ?: 0.0,
+            temperature = last?.temperature ?: 0.0,
+            batteryLevel = batteryRaw.coerceIn(0, 100),
+            distance = totalDistanceRaw.toDouble(),
+            power = last?.power ?: 0.0,
+            timestamp = System.currentTimeMillis(),
+            rawData = data,
+            manufacturer = manufacturer,
+            model = "Gotway (Legacy Type 0x01)",
+            serialNumber = last?.serialNumber,
+            firmwareVersion = last?.firmwareVersion,
+            isCharging = last?.isCharging ?: false,
+            rideTime = last?.rideTime ?: 0,
+            cellVoltages = last?.cellVoltages,
+            motorTemperature = last?.motorTemperature,
+            totalDistance = totalDistanceRaw.toDouble()
+        )
+    }
+
+    @VisibleForTesting
+    private fun parseLegacyType02(data: ByteArray): EUCData? {
+        val hasPayload = data.sliceArray(2..17).any { it.toInt() != 0 }
+        if (!hasPayload) return null
+        return parseLegacyType01(data)?.copy(model = "Gotway (Legacy Type 0x02)")
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
