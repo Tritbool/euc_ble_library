@@ -18,6 +18,7 @@ import org.junit.Test
 
 class LeaperkimProtocolTest {
 
+    private val beepCommandPayload = "b".encodeToByteArray()
     private lateinit var protocol: LeaperkimProtocol
 
     @Before
@@ -92,7 +93,7 @@ class LeaperkimProtocolTest {
     fun createCommandMapsKnownActions() {
         assertArrayEquals("SetLightON".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_ON, Unit))
         assertArrayEquals("SetLightOFF".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_OFF, Unit))
-        assertArrayEquals("b".encodeToByteArray(), protocol.createCommand(CommandType.BEEP, Unit))
+        assertArrayEquals(beepCommandPayload, protocol.createCommand(CommandType.BEEP, Unit))
     }
 
     private fun createLeaperkimFrame(

@@ -23,6 +23,9 @@ import kotlin.math.abs
 class WheelLogLeaperkimTest {
 
     private val resourceDir = "/ble_frames/leaperkim/RAW_WHEELLOG/"
+    private val minDistanceBeforeReset = 5.0
+    private val maxDistanceAfterReset = 1.0
+    private val minResetDropDistance = 10.0
 
     @Test
     fun decodeRealLeaperkimWheelLogFrames() = runBlocking {
@@ -94,9 +97,9 @@ class WheelLogLeaperkimTest {
     }
 
     private fun isLikelyTripResetToZero(previousDistance: Double, currentDistance: Double): Boolean {
-        return previousDistance >= 5.0 &&
-                currentDistance <= 1.0 &&
-                previousDistance - currentDistance >= 10.0
+        return previousDistance >= minDistanceBeforeReset &&
+                currentDistance <= maxDistanceAfterReset &&
+                previousDistance - currentDistance >= minResetDropDistance
     }
 
     @Test
