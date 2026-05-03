@@ -1,6 +1,9 @@
 package com.euc.ble.core
 
-import com.euc.ble.test.JUnit4AssertionsCompat.*
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.Test
 
 /**

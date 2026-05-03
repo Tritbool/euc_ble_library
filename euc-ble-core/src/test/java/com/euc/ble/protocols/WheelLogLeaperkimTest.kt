@@ -76,21 +76,21 @@ class WheelLogLeaperkimTest {
             assertTrue("Voltage jump too large", abs(cur.voltage - prev.voltage) < 6.0)
             assertTrue("Speed jump too large", abs(cur.speed - prev.speed) < 25.0)
         }
-
+        /*
         val hasTripResetToZero = decoded.zipWithNext().any { (prev, cur) ->
             isLikelyTripResetToZero(prev.distance, cur.distance)
         }
         assumeTrue(
             "Trip distance resets to near zero in this capture (kickstand/firmware behavior), monotonic trip check is not applicable",
             !hasTripResetToZero
-        )
+        )*/
 
         for (i in 1 until decoded.size) {
             val prev = decoded[i - 1]
             val cur = decoded[i]
             assertTrue(
                 "Trip distance should not sharply decrease",
-                cur.distance >= prev.distance - 1.0
+                isLikelyTripResetToZero(prev.distance, cur.distance) || (cur.distance >= prev.distance - 1.0)
             )
         }
         protocol.close()

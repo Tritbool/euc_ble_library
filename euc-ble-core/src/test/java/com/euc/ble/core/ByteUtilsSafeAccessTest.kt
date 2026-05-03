@@ -1,7 +1,8 @@
 // kotlin
 package com.euc.ble.core
 
-import com.euc.ble.test.JUnit4AssertionsCompat.*
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import org.junit.jupiter.api.Test
 
 class ByteUtilsSafeAccessTest {

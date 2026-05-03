@@ -1,6 +1,11 @@
 package com.euc.ble.models
 
-import com.euc.ble.test.JUnit4AssertionsCompat.*
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 
 /**
@@ -45,7 +50,7 @@ class EUCDataTest {
         assertEquals("KS12345678", data.serialNumber)
         assertEquals("1.2.3", data.firmwareVersion)
         assertFalse(data.isCharging)
-        assertEquals(1800, data.rideTime)
+        assertEquals(1800L, data.rideTime)
         assertEquals(listOf(4.1, 4.2, 4.15, 4.18), data.cellVoltages)
         //assertEquals(35.0, data.motorTemperature?:0, 0.01)
     }
@@ -68,7 +73,7 @@ class EUCDataTest {
             serialNumber = null,
             firmwareVersion = null,
             isCharging = false,
-            rideTime = 0,
+            rideTime = 0L,
             cellVoltages = null,
             motorTemperature = null,
         )
@@ -87,7 +92,7 @@ class EUCDataTest {
         assertNull(data.serialNumber)
         assertNull(data.firmwareVersion)
         assertFalse(data.isCharging)
-        assertEquals(0, data.rideTime)
+        assertEquals(0L, data.rideTime)
         assertNull(data.cellVoltages)
         assertNull(data.motorTemperature)
     }
@@ -267,14 +272,14 @@ class EUCDataTest {
         assertEquals(0, minData.batteryLevel)
         assertEquals(0.0, minData.distance, 0.01)
         assertEquals(0.0, minData.power, 0.01)
-        assertEquals(0, minData.timestamp)
+        assertEquals(0L, minData.timestamp)
         assertEquals(0, minData.rawData.size)
         assertEquals("", minData.manufacturer)
         assertEquals("", minData.model)
         assertNull(minData.serialNumber)
         assertNull(minData.firmwareVersion)
         assertFalse(minData.isCharging)
-        assertEquals(0, minData.rideTime)
+        assertEquals(0L, minData.rideTime)
         assertEquals(0, minData.cellVoltages?.size)
         assertNull(minData.motorTemperature)
     }
