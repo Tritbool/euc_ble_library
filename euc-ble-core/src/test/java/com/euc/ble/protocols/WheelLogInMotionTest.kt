@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.math.abs
 @SlowTest
 class WheelLogInMotionTest {
 
@@ -29,7 +30,7 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.voltage in 60.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.any { it.rideTime > 0 })
-        assertTrue(decoded.any { kotlin.math.abs(it.power - (it.voltage * it.current)) < 0.5 })
+        assertTrue(decoded.any { abs(it.power - (it.voltage * it.current)) < 0.5 })
     }
 
     @Test

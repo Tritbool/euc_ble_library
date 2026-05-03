@@ -51,7 +51,7 @@ class WheelLogLeaperkimTest {
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.any { it.model.contains("Patton", ignoreCase = true) })
         assertTrue(decoded.any { it.rideTime > 0 })
-        assertTrue(decoded.any { kotlin.math.abs(it.power - (it.voltage * it.current)) < 0.5 })
+        assertTrue(decoded.any { abs(it.power - (it.voltage * it.current)) < 0.5 })
         protocol.close()
     }
 
