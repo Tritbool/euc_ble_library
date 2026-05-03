@@ -23,8 +23,8 @@ import kotlin.math.abs
 class WheelLogLeaperkimTest {
 
     private val resourceDir = "/ble_frames/leaperkim/RAW_WHEELLOG/"
-    private val tripResetMinDistanceBefore = 5.0
-    private val tripResetMaxDistanceAfter = 1.0
+    private val tripResetMinDistanceBeforeReset = 5.0
+    private val tripResetMaxDistanceAfterReset = 1.0
     private val tripResetMinDropDistance = 10.0
 
     @Test
@@ -97,8 +97,8 @@ class WheelLogLeaperkimTest {
     }
 
     private fun isLikelyTripResetToZero(previousDistance: Double, currentDistance: Double): Boolean {
-        return previousDistance >= tripResetMinDistanceBefore &&
-                currentDistance <= tripResetMaxDistanceAfter &&
+        return previousDistance >= tripResetMinDistanceBeforeReset &&
+                currentDistance <= tripResetMaxDistanceAfterReset &&
                 previousDistance - currentDistance >= tripResetMinDropDistance
     }
 

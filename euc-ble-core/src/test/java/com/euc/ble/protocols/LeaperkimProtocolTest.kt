@@ -22,6 +22,8 @@ class LeaperkimProtocolTest {
     private val defaultVoltageRaw = 10000
     private val defaultTemperatureRaw = 2500
     private val defaultVersionRaw = 4000
+    private val telemetryEmissionTimeoutMs = 5_000L
+    private val invalidFrameCheckTimeoutMs = 500L
     private val beepCommandPayload = "b".encodeToByteArray()
     private lateinit var protocol: LeaperkimProtocol
 
@@ -70,7 +72,7 @@ class LeaperkimProtocolTest {
         val decodeResult = protocol.decode(frame)
         assertNull(decodeResult)
 
-        val telemetry = withTimeout(5_000) { protocol.dataFlow.first() }
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
         assertNotNull(telemetry)
         assertEquals("Leaperkim", telemetry.manufacturer)
         assertEquals("Patton S", telemetry.model)
@@ -89,7 +91,7 @@ class LeaperkimProtocolTest {
     fun decodeOutOfRangeVoltageFrameIsDropped() = runBlocking {
         val invalidFrame = createLeaperkimFrame(voltageRaw = 19000)
         protocol.decode(invalidFrame)
-        val emitted = withTimeoutOrNull(500) { protocol.dataFlow.first() }
+        val emitted = withTimeoutOrNull(invalidFrameCheckTimeoutMs) { protocol.dataFlow.first() }
         assertNull("Out-of-range frame should not be emitted", emitted)
     }
 
