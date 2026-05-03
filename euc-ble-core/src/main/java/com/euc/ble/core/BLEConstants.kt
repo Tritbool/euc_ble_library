@@ -11,6 +11,7 @@ object BLEConstants {
     const val NINEBOT_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
     const val NINEBOT_Z_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
     const val VETERAN_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
+    const val LEAPERKIM_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
 
     // BLE Characteristic UUIDs
     const val KINGSONG_READ_CHARACTERISTIC = "0000ffe1-0000-1000-8000-00805f9b34fb"
@@ -23,6 +24,8 @@ object BLEConstants {
     const val NINEBOT_Z_WRITE_CHARACTERISTIC = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
     const val VETERAN_READ_CHARACTERISTIC = "0000ffe1-0000-1000-8000-00805f9b34fb"
     const val VETERAN_WRITE_CHARACTERISTIC = "0000ffe1-0000-1000-8000-00805f9b34fb"
+    const val LEAPERKIM_READ_CHARACTERISTIC = "0000ffe1-0000-1000-8000-00805f9b34fb"
+    const val LEAPERKIM_WRITE_CHARACTERISTIC = "0000ffe1-0000-1000-8000-00805f9b34fb"
 
     const val INMOTION_V2_READ_CHARACTERISTIC = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
@@ -50,6 +53,8 @@ object BLEConstants {
     const val MANUFACTURER_INMOTION = 0x0049
     const val MANUFACTURER_NINEBOT = 0x004E
     const val MANUFACTURER_VETERAN = 0x0056
+    // Leaperkim (Veteran branding) uses the same manufacturer identifier in WheelLog captures.
+    const val MANUFACTURER_LEAPERKIM = MANUFACTURER_VETERAN
 
     // Helper functions
     fun String.toUUID(): UUID = UUID.fromString(this)
