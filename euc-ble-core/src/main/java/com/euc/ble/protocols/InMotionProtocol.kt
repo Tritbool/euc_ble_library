@@ -71,6 +71,7 @@ class InMotionProtocol : EUCProtocol {
     @Volatile private var serialNumber: String? = null
     @Volatile private var firmwareVersion: String? = null
     @Volatile private var totalDistanceKm: Double? = null
+    @Volatile private var v2SessionStartTimestampMs: Long? = null
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
@@ -407,6 +408,10 @@ class InMotionProtocol : EUCProtocol {
         val boardTemp = decodeTemperature(payload[59])
         val stateByte = payload[74].toInt() and 0xFF
         val isCharging = ((stateByte shr 7) and 0x01) == 1
+        val now = System.currentTimeMillis()
+        val rideTimeFromPayload = ByteUtils.tryGetUnsignedIntLE(payload, 24)?.toLong()
+            ?.takeIf { it in 0L..604_800L }
+        val rideTimeSeconds = rideTimeFromPayload ?: deriveV2RideTimeSeconds(now)
 
         return EUCData(
             speed = speed,
@@ -416,18 +421,23 @@ class InMotionProtocol : EUCProtocol {
             batteryLevel = battery,
             distance = distanceKm,
             power = voltage * current,
-            timestamp = System.currentTimeMillis(),
+            timestamp = now,
             rawData = rawFrame,
             manufacturer = manufacturer,
             model = modelName,
             serialNumber = serialNumber,
             firmwareVersion = firmwareVersion,
             isCharging = isCharging,
-            rideTime = 0,
+            rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = boardTemp.toDouble(),
             totalDistance = totalDistanceKm
         )
+    }
+
+    private fun deriveV2RideTimeSeconds(nowMs: Long): Long {
+        val start = v2SessionStartTimestampMs ?: nowMs.also { v2SessionStartTimestampMs = it }
+        return ((nowMs - start) / 1000L).coerceAtLeast(0L)
     }
 
     private fun decodeTemperature(raw: Byte): Int = (raw.toInt() and 0xFF) + 80 - 256

@@ -85,6 +85,10 @@ class WheelLogGotwayTest {
 
         val decodedCount = decoded.size
         println("Decoded $decodedCount frames from ${frames.size} BLE packets")
+        assertTrue(
+            "Expected non-placeholder telemetry from Type A frames",
+            decoded.any { it.model.contains("Type A") && it.voltage > 0.0 && kotlin.math.abs(it.current) > 0.0 }
+        )
 
         // With FrameReassembler, we expect to decode reassembled frames
         // The success rate depends on the data quality and fragmentation

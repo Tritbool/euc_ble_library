@@ -124,6 +124,7 @@ class LeaperkimProtocol : EUCProtocol {
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var sessionStartTimestampMs: Long? = null
 
     init {
         scope.launch {
@@ -178,6 +179,8 @@ class LeaperkimProtocol : EUCProtocol {
 
         val tripDistanceKm = decodeDistanceKm(distanceRaw)
         val totalDistanceKm = decodeDistanceKm(totalDistanceRaw)
+        val now = System.currentTimeMillis()
+        val rideTimeSeconds = deriveRideTimeSeconds(now)
 
         return EUCData(
             speed = speed,
@@ -187,14 +190,14 @@ class LeaperkimProtocol : EUCProtocol {
             batteryLevel = battery,
             distance = tripDistanceKm,
             power = voltage * current,
-            timestamp = System.currentTimeMillis(),
+            timestamp = now,
             rawData = frame,
             manufacturer = manufacturer,
             model = model,
             serialNumber = null,
             firmwareVersion = if (versionRaw > 0) formatVersion(versionRaw) else null,
             isCharging = chargeMode > 0,
-            rideTime = 0,
+            rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = null,
             totalDistance = totalDistanceKm
@@ -248,6 +251,11 @@ class LeaperkimProtocol : EUCProtocol {
         val minor = (versionRaw % 1000) / 100
         val patch = versionRaw % 100
         return "%03d.%01d.%02d".format(major, minor, patch)
+    }
+
+    private fun deriveRideTimeSeconds(nowMs: Long): Long {
+        val start = sessionStartTimestampMs ?: nowMs.also { sessionStartTimestampMs = it }
+        return ((nowMs - start) / 1000L).coerceAtLeast(0L)
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
