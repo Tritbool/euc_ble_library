@@ -17,6 +17,12 @@ class NinebotProtocol : EUCProtocol {
     companion object {
         private const val FRAME_HEADER = 0x55
         private const val MIN_FRAME_SIZE = 18
+        private const val WHEELLOG_HEADER_FIRST = 0x5A
+        private const val WHEELLOG_HEADER_SECOND = 0xA5
+        private const val WHEELLOG_MIN_FRAME_SIZE = 9
+        private const val WHEELLOG_MAX_FRAME_SIZE = 128
+        private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
+        private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
         private const val BATTERY_OFFSET = 16
         private const val STATUS_OFFSET = 17
         private const val RIDE_TIME_OFFSET = 18
@@ -31,6 +37,7 @@ class NinebotProtocol : EUCProtocol {
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private var sessionStartTimestampMs: Long? = null
+    private val wheelLogBuffer = mutableListOf<Byte>()
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_READ_CHARACTERISTIC)
@@ -47,12 +54,20 @@ class NinebotProtocol : EUCProtocol {
     }
 
     override fun decode(data: ByteArray): EUCData? {
-        val decoded = parseFrame(data) ?: return null
-        _channel.trySend(decoded)
-        return decoded
+        parseLegacyFrame(data)?.let { decoded ->
+            _channel.trySend(decoded)
+            return decoded
+        }
+
+        var lastDecoded: EUCData? = null
+        parseWheelLogFrames(data).forEach { decoded ->
+            _channel.trySend(decoded)
+            lastDecoded = decoded
+        }
+        return lastDecoded
     }
 
-    private fun parseFrame(data: ByteArray): EUCData? {
+    private fun parseLegacyFrame(data: ByteArray): EUCData? {
         if (data.size < MIN_FRAME_SIZE) return null
         if ((data[0].toInt() and 0xFF) != FRAME_HEADER) return null
 
@@ -92,6 +107,107 @@ class NinebotProtocol : EUCProtocol {
             serialNumber = null,
             firmwareVersion = null,
             isCharging = isCharging,
+            rideTime = rideTime,
+            cellVoltages = null,
+            motorTemperature = null,
+            totalDistance = null
+        )
+    }
+
+    private fun parseWheelLogFrames(chunk: ByteArray): List<EUCData> {
+        if (chunk.isEmpty()) return emptyList()
+        wheelLogBuffer.addAll(chunk.toList())
+
+        val decodedFrames = mutableListOf<EUCData>()
+
+        while (true) {
+            if (wheelLogBuffer.size < 3) break
+
+            val headerIndex = findWheelLogHeaderIndex()
+            if (headerIndex < 0) {
+                // Keep the last byte to preserve a possible partial header (0x5A) across BLE chunks.
+                if (wheelLogBuffer.size > WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP) {
+                    wheelLogBuffer.subList(
+                        0,
+                        wheelLogBuffer.size - WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP
+                    ).clear()
+                }
+                break
+            }
+
+            if (headerIndex > 0) {
+                wheelLogBuffer.subList(0, headerIndex).clear()
+            }
+
+            if (wheelLogBuffer.size < 3) break
+
+            val payloadLength = wheelLogBuffer[2].toInt() and 0xFF
+            val expectedFrameLength = payloadLength + WHEELLOG_MIN_FRAME_SIZE
+            if (expectedFrameLength !in WHEELLOG_MIN_FRAME_SIZE..WHEELLOG_MAX_FRAME_SIZE) {
+                wheelLogBuffer.removeAt(0)
+                continue
+            }
+
+            if (wheelLogBuffer.size < expectedFrameLength) break
+
+            val frame = wheelLogBuffer.subList(0, expectedFrameLength).toByteArray()
+            wheelLogBuffer.subList(0, expectedFrameLength).clear()
+
+            parseWheelLogTelemetryFrame(frame)?.let(decodedFrames::add)
+        }
+
+        return decodedFrames
+    }
+
+    private fun findWheelLogHeaderIndex(): Int {
+        if (wheelLogBuffer.size < 2) return -1
+        for (index in 0 until wheelLogBuffer.size - 1) {
+            val first = wheelLogBuffer[index].toInt() and 0xFF
+            val second = wheelLogBuffer[index + 1].toInt() and 0xFF
+            if (first == WHEELLOG_HEADER_FIRST && second == WHEELLOG_HEADER_SECOND) {
+                return index
+            }
+        }
+        return -1
+    }
+
+    private fun parseWheelLogTelemetryFrame(frame: ByteArray): EUCData? {
+        if (frame.size < 41) return null
+        if ((frame[0].toInt() and 0xFF) != WHEELLOG_HEADER_FIRST) return null
+        if ((frame[1].toInt() and 0xFF) != WHEELLOG_HEADER_SECOND) return null
+        if ((frame[6].toInt() and 0xFF) != WHEELLOG_TELEMETRY_TYPE) return null
+
+        val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, 31) ?: return null) / 100.0
+        val speed = (ByteUtils.tryGetUnsignedShortLE(frame, 17) ?: return null) / 100.0
+        val current = (ByteUtils.tryGetSignedShortLE(frame, 25)?.toInt() ?: return null) / 100.0
+        val temperature = (ByteUtils.tryGetUnsignedShortLE(frame, 29) ?: return null) / 10.0
+        val battery = ByteUtils.tryGetUnsignedByte(frame, 15) ?: return null
+
+        if (voltage !in 20.0..150.0) return null
+        if (speed !in -120.0..120.0) return null
+        if (current !in -300.0..300.0) return null
+        if (temperature !in -30.0..120.0) return null
+        if (battery !in 0..100) return null
+
+        val now = System.currentTimeMillis()
+        val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 7) ?: return null).toDouble() / 1000.0
+        val rideTime = ByteUtils.tryGetUnsignedShortLE(frame, 27)?.toLong() ?: deriveRideTimeSeconds(now)
+
+        return EUCData(
+            speed = speed,
+            voltage = voltage,
+            current = current,
+            temperature = temperature,
+            batteryLevel = battery,
+            distance = distance,
+            power = voltage * current,
+            timestamp = now,
+            rawData = frame,
+            manufacturer = manufacturer,
+            model = inferModel(frame),
+            serialNumber = null,
+            firmwareVersion = null,
+            isCharging = current > 0.5,
             rideTime = rideTime,
             cellVoltages = null,
             motorTemperature = null,
@@ -144,6 +260,7 @@ class NinebotProtocol : EUCProtocol {
     }
 
     override fun close() {
+        wheelLogBuffer.clear()
         _channel.close()
     }
 }
