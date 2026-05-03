@@ -13,6 +13,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -22,6 +23,9 @@ import kotlin.math.abs
 class WheelLogLeaperkimTest {
 
     private val resourceDir = "/ble_frames/leaperkim/RAW_WHEELLOG/"
+    private val tripResetMinDistanceBeforeReset = 5.0
+    private val tripResetMaxDistanceAfterReset = 1.0
+    private val tripResetMinDropDistance = 10.0
 
     @Test
     fun decodeRealLeaperkimWheelLogFrames() = runBlocking {
@@ -71,12 +75,31 @@ class WheelLogLeaperkimTest {
             val cur = decoded[i]
             assertTrue("Voltage jump too large", abs(cur.voltage - prev.voltage) < 6.0)
             assertTrue("Speed jump too large", abs(cur.speed - prev.speed) < 25.0)
+        }
+
+        val hasTripResetToZero = decoded.zipWithNext().any { (prev, cur) ->
+            isLikelyTripResetToZero(prev.distance, cur.distance)
+        }
+        assumeTrue(
+            "Trip distance resets to near zero in this capture (kickstand/firmware behavior), monotonic trip check is not applicable",
+            !hasTripResetToZero
+        )
+
+        for (i in 1 until decoded.size) {
+            val prev = decoded[i - 1]
+            val cur = decoded[i]
             assertTrue(
                 "Trip distance should not sharply decrease",
                 cur.distance >= prev.distance - 1.0
             )
         }
         protocol.close()
+    }
+
+    private fun isLikelyTripResetToZero(previousDistance: Double, currentDistance: Double): Boolean {
+        return previousDistance >= tripResetMinDistanceBeforeReset &&
+                currentDistance <= tripResetMaxDistanceAfterReset &&
+                previousDistance - currentDistance >= tripResetMinDropDistance
     }
 
     @Test

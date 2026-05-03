@@ -11,6 +11,7 @@ import com.euc.ble.protocols.InmotionNoDropTest
 import com.euc.ble.protocols.KingsongNoDropTest
 import com.euc.ble.protocols.KingsongProtocolAsyncTest
 import com.euc.ble.protocols.LeaperkimNoDropTest
+import com.euc.ble.protocols.LeaperkimProtocolTest
 import com.euc.ble.protocols.ProtocolNoDropTestBase
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogInMotionTest
@@ -35,6 +36,7 @@ import org.junit.runners.Suite
     WheelLogGotwayTest::class,     // Real Gotway BLE frames from WheelLog
     WheelLogInMotionTest::class,    // Real InMotion BLE frames from WheelLog
     WheelLogLeaperkimTest::class,   // Real Leaperkim BLE frames from WheelLog
+    LeaperkimProtocolTest::class,
     GotwayNoDropTest::class,
     InmotionNoDropTest::class,
     KingsongNoDropTest::class,
