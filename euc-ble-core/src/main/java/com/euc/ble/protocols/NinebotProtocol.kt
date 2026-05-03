@@ -22,6 +22,7 @@ class NinebotProtocol : EUCProtocol {
         private const val WHEELLOG_MIN_FRAME_SIZE = 9
         private const val WHEELLOG_MAX_FRAME_SIZE = 128
         private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
+        private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
         private const val BATTERY_OFFSET = 16
         private const val STATUS_OFFSET = 17
         private const val RIDE_TIME_OFFSET = 18
@@ -124,8 +125,12 @@ class NinebotProtocol : EUCProtocol {
 
             val headerIndex = findWheelLogHeaderIndex()
             if (headerIndex < 0) {
-                if (wheelLogBuffer.size > 1) {
-                    wheelLogBuffer.subList(0, wheelLogBuffer.size - 1).clear()
+                // Keep the last byte to preserve a possible partial header (0x5A) across BLE chunks.
+                if (wheelLogBuffer.size > WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP) {
+                    wheelLogBuffer.subList(
+                        0,
+                        wheelLogBuffer.size - WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP
+                    ).clear()
                 }
                 break
             }
@@ -185,7 +190,7 @@ class NinebotProtocol : EUCProtocol {
         if (battery !in 0..100) return null
 
         val now = System.currentTimeMillis()
-        val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 7) ?: 0L).toDouble() / 1000.0
+        val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 7) ?: return null).toDouble() / 1000.0
         val rideTime = ByteUtils.tryGetUnsignedShortLE(frame, 27)?.toLong() ?: deriveRideTimeSeconds(now)
 
         return EUCData(
