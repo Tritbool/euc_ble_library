@@ -93,7 +93,9 @@ class WheelLogKingsongTest {
             assertTrue("Timestamp should be set", decoded.timestamp > 0)
             assertTrue("Voltage should be reasonable", decoded.voltage in EXPECTED_VOLTAGE_RANGE)
             assertTrue("Speed should be reasonable", decoded.speed in 0.0..60.0)
+            assertTrue("Battery should be in range", decoded.batteryLevel in 0..100)
         }
+        assertTrue("Expected at least one frame with ride time progression", decodedFrames.any { it.rideTime > 0 })
         
         println("Decoded $successfulDecodes frames successfully, $failedDecodes frames failed")
         println("Success rate: ${(successfulDecodes * 100.0 / telemetryFrames.size).toInt()}%")
@@ -128,6 +130,7 @@ class WheelLogKingsongTest {
             val voltageDiff = kotlin.math.abs(curr.voltage - prev.voltage)
             assertTrue("Voltage change should be reasonable: $voltageDiff V", 
                 voltageDiff < 5.0) // Less than 5V change between frames
+            assertTrue("Ride time should be non-decreasing", curr.rideTime >= prev.rideTime)
             
             // Distance should be non-decreasing
             assertTrue("Distance should not decrease", 

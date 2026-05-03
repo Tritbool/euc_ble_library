@@ -7,6 +7,7 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.math.abs
 @SlowTest
 class WheelLogInMotionTest {
 
@@ -28,6 +29,8 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.voltage in 60.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
+        assertTrue(decoded.any { it.rideTime > 0 })
+        assertTrue(decoded.any { abs(it.power - (it.voltage * it.current)) < 0.5 })
     }
 
     @Test
@@ -56,6 +59,7 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.voltage in 40.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
+        assertTrue(decoded.any { it.rideTime > 0 })
     }
 
     @Test
@@ -74,6 +78,7 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.voltage in 40.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
+        assertTrue(decoded.any { it.rideTime > 0 })
     }
 
     @Test

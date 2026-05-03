@@ -125,6 +125,7 @@ class KingsongProtocol : EUCProtocol {
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var sessionStartTimestampMs: Long? = null
 
     init {
         // Start observing frames asynchronously and process them
@@ -228,6 +229,11 @@ class KingsongProtocol : EUCProtocol {
 
             val statusByte = if (ensureRange(data, base + 14, 1))
                 ByteUtils.getUnsignedByte(data, base + 14) else 0
+            val batteryLevel = if (ensureRange(data, base + 15, 1)) {
+                ByteUtils.getUnsignedByte(data, base + 15).coerceIn(0, 100)
+            } else {
+                estimateBatteryPercent(voltage)
+            }
 
             // === Filtres de plage "raisonnable" pour Kingsong ===
 
@@ -239,6 +245,8 @@ class KingsongProtocol : EUCProtocol {
             val isCharging = (statusByte and 0x01) != 0
 
             val power = voltage * current
+            val now = System.currentTimeMillis()
+            val rideTimeSeconds = deriveRideTimeSeconds(now)
 
             val model = "KingSong"
 
@@ -247,23 +255,32 @@ class KingsongProtocol : EUCProtocol {
                 voltage = voltage,
                 current = current,
                 temperature = temperature,
-                batteryLevel = 0,
+                batteryLevel = batteryLevel,
                 distance = distance,
                 power = power,
-                timestamp = System.currentTimeMillis(),
+                timestamp = now,
                 rawData = data,
                 manufacturer = manufacturer,
                 model = model,
                 serialNumber = null,
                 firmwareVersion = null,
                 isCharging = isCharging,
-                rideTime = 0,
+                rideTime = rideTimeSeconds,
                 cellVoltages = null,
                 motorTemperature = null,
             )
         } catch (_: Exception) {
             return null
         }
+    }
+
+    private fun deriveRideTimeSeconds(nowMs: Long): Long {
+        val start = sessionStartTimestampMs ?: nowMs.also { sessionStartTimestampMs = it }
+        return ((nowMs - start) / 1000L).coerceAtLeast(0L)
+    }
+
+    private fun estimateBatteryPercent(voltage: Double): Int {
+        return (((voltage - 50.0) / (100.0 - 50.0)) * 100.0).toInt().coerceIn(0, 100)
     }
 
     private fun processFrame(frame: ByteArray) {

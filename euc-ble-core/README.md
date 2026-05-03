@@ -13,10 +13,20 @@ A modular Bluetooth Low Energy library for Electric Unicycles (EUC) that provide
 ## Supported Manufacturers
 
 - **KingSong** (KS-14D, KS-16, KS-16S, KS-16X, KS-18L, KS-18XL, KS-19, KS-S18, KS-S19, KS-S20, KS-S22, KS-F22)
-- **Gotway** (Coming soon)
-- **InMotion** (Coming soon)
-- **Ninebot** (Coming soon)
+- **Gotway / Begode** (MSuper, MSX, Mten, Nikola, Tesla, Monster, RS, Master, Hero series)
+- **InMotion** (V9, V5F, V8S and related legacy/V2 variants)
+- **Ninebot** (S-series, A-series, Z-series MVP support)
 - **Leaperkim / Veteran** (Patton, Patton S, Sherman, Sherman S, Sherman L, Lynx, Lynx S, Abrams, Oryx, Nosfet series)
+
+### Protocol Coverage Matrix
+
+| Manufacturer | Protocol class | WheelLog test coverage | Command support | Telemetry completeness |
+| --- | --- | --- | --- | --- |
+| KingSong | `KingsongProtocol` | `WheelLogKingsongTest` | Light/BEEP/Power/Brightness | Core telemetry + battery and session ride time fallback |
+| Gotway/Begode | `GotwayProtocol` | `WheelLogGotwayTest` | Light/BEEP/Power/Brightness | Type A: rich telemetry, Type B: distance-focused placeholder fields by design |
+| InMotion | `InMotionProtocol` | `WheelLogInMotionTest` | V2 control commands (legacy read-only) | Legacy: rich telemetry + ride time, V2: rich telemetry + ride time fallback |
+| Ninebot | `NinebotProtocol` | `NinebotProtocolTest` (synthetic MVP frames) | Light/BEEP/Lock/Unlock | MVP parser with core telemetry and ride time support |
+| Leaperkim/Veteran | `LeaperkimProtocol` | `WheelLogLeaperkimTest` | Light/BEEP + custom payload | Rich telemetry + session ride time fallback |
 
 ## Installation
 
@@ -47,9 +57,10 @@ bleManager.initialize()
 
 // Register protocols
 bleManager.registerProtocol(KingsongProtocol())
-// bleManager.registerProtocol(GotwayProtocol())
-// bleManager.registerProtocol(InMotionProtocol())
-// bleManager.registerProtocol(LeaperkimProtocol())
+bleManager.registerProtocol(GotwayProtocol())
+bleManager.registerProtocol(InMotionProtocol())
+bleManager.registerProtocol(NinebotProtocol())
+bleManager.registerProtocol(LeaperkimProtocol())
 
 // Set up callbacks
 bleManager.setScanCallback(object : ScanCallback {
@@ -283,9 +294,9 @@ Contributions are welcome! Please follow the existing code style and architectur
 
 - [x] Core BLE functionality
 - [x] Kingsong protocol implementation
-- [ ] Gotway protocol implementation
-- [ ] InMotion protocol implementation
-- [ ] Ninebot protocol implementation
+- [x] Gotway protocol implementation
+- [x] InMotion protocol implementation
+- [x] Ninebot protocol MVP implementation
 - [x] Leaperkim/Veteran protocol implementation
 - [ ] Comprehensive test suite
 - [ ] Sample application
