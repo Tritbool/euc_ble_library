@@ -145,7 +145,7 @@ class NinebotProtocol : EUCProtocol {
 
             if (wheelLogBuffer.size < expectedFrameLength) break
 
-            val frame = ByteArray(expectedFrameLength) { index -> wheelLogBuffer[index] }
+            val frame = wheelLogBuffer.subList(0, expectedFrameLength).toByteArray()
             wheelLogBuffer.subList(0, expectedFrameLength).clear()
 
             parseWheelLogTelemetryFrame(frame)?.let(decodedFrames::add)
@@ -199,7 +199,7 @@ class NinebotProtocol : EUCProtocol {
             timestamp = now,
             rawData = frame,
             manufacturer = manufacturer,
-            model = "Ninebot Z-series",
+            model = inferModel(frame),
             serialNumber = null,
             firmwareVersion = null,
             isCharging = current > 0.5,

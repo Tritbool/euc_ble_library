@@ -10,6 +10,9 @@ import kotlin.math.abs
 
 @SlowTest
 class WheelLogNinebotTest {
+    companion object {
+        private const val MAX_MALFORMED_ROW_RATIO = 0.2
+    }
 
     private val resourceDir = "/ble_frames/ninebot/RAW_WHEELLOG/"
 
@@ -93,7 +96,11 @@ class WheelLogNinebotTest {
         }
         val totalRows = frames.size + malformedRows
         assertTrue("No parsable rows found in $resourcePath", totalRows > 0)
-        assertTrue("Too many malformed rows in $resourcePath", malformedRows <= totalRows / 5)
+        val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
+        assertTrue(
+            "Too many malformed rows in $resourcePath: $malformedRows out of $totalRows (max: $maxMalformedRows)",
+            malformedRows <= maxMalformedRows
+        )
         return frames
     }
 }
