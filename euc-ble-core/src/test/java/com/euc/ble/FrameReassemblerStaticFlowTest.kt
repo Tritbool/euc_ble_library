@@ -1,7 +1,7 @@
 package com.euc.ble
 
-import org.junit.Assert
-import org.junit.Test
+import com.euc.ble.test.JUnit4AssertionsCompat
+import org.junit.jupiter.api.Test
 import java.lang.reflect.Modifier
 
 class FrameReassemblerStaticFlowTest {
@@ -11,7 +11,7 @@ class FrameReassemblerStaticFlowTest {
         val cls = try {
             Class.forName(target)
         } catch (e: ClassNotFoundException) {
-            Assert.fail("Classe non trouvée: $target")
+            JUnit4AssertionsCompat.fail("Classe non trouvée: $target")
             return
         }
 
@@ -33,7 +33,7 @@ class FrameReassemblerStaticFlowTest {
 
         if (staticFields.isNotEmpty() || companionStaticFields.isNotEmpty()) {
             val names = (staticFields + companionStaticFields).joinToString(", ") { it.name }
-            Assert.fail("MutableSharedFlow static trouvé(s) dans $target : $names")
+            JUnit4AssertionsCompat.fail("MutableSharedFlow static trouvé(s) dans $target : $names")
         }
     }
 }
