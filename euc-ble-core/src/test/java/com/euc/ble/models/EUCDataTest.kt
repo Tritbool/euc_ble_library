@@ -1,7 +1,7 @@
 package com.euc.ble.models
 
-import org.junit.Assert.*
-import org.junit.Test
+import com.euc.ble.test.JUnit4AssertionsCompat.*
+import org.junit.jupiter.api.Test
 
 /**
  * Unit tests for EUCData model

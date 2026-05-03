@@ -10,11 +10,11 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -36,7 +36,7 @@ sealed class ProtocolNoDropTestBase {
     private lateinit var oracle: EUCProtocol
     private lateinit var sut: EUCProtocol
 
-    @Before
+    @BeforeEach
     fun setUp(){
         // Oracle : compter les émissions dataFlow sur une instance fraîche
         oracle = createProtocol()
@@ -44,7 +44,7 @@ sealed class ProtocolNoDropTestBase {
         sut = createProtocol()
     }
 
-    @After
+    @AfterEach
     fun tearDown() {
         oracle.close()
         sut.close()

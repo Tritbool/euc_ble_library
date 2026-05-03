@@ -180,7 +180,7 @@ Potential areas for future test expansion:
 
 - **JVM**: Java 17+
 - **Kotlin**: 1.7+
-- **Test Framework**: JUnit 4
+- **Test Framework**: JUnit 5 (Jupiter)
 - **Build System**: Gradle
 - **Dependencies**: JUnit, Kotlinx Coroutines Test, Mockito Kotlin
 

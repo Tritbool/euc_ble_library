@@ -12,36 +12,30 @@ import com.euc.ble.protocols.KingsongNoDropTest
 import com.euc.ble.protocols.KingsongProtocolAsyncTest
 import com.euc.ble.protocols.LeaperkimNoDropTest
 import com.euc.ble.protocols.LeaperkimProtocolTest
-import com.euc.ble.protocols.ProtocolNoDropTestBase
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogInMotionTest
 import com.euc.ble.protocols.WheelLogKingsongTest
 import com.euc.ble.protocols.WheelLogLeaperkimTest
-import org.junit.runner.RunWith
-import org.junit.runners.Suite
+import org.junit.platform.suite.api.SelectClasses
+import org.junit.platform.suite.api.Suite
 
-/**
- * Test suite that runs all unit tests for the EUC BLE library
- */
-@RunWith(Suite::class)
-@Suite.SuiteClasses(
+@Suite
+@SelectClasses(
     FrameReassemblerStaticFlowTest::class,
-    ByteUtilsTest::class,           // Core byte manipulation utilities
+    ByteUtilsTest::class,
     ByteUtilsSafeAccessTest::class,
-    EUCDataTest::class,            // Data model tests
-    GotwayProtocolTest::class,     // Gotway/Begode protocol tests
-    InMotionProtocolTest::class,   // InMotion V2 protocol (V9-first) tests
+    EUCDataTest::class,
+    GotwayProtocolTest::class,
+    InMotionProtocolTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
-    WheelLogGotwayTest::class,     // Real Gotway BLE frames from WheelLog
-    WheelLogInMotionTest::class,    // Real InMotion BLE frames from WheelLog
-    WheelLogLeaperkimTest::class,   // Real Leaperkim BLE frames from WheelLog
+    WheelLogGotwayTest::class,
+    WheelLogInMotionTest::class,
+    WheelLogLeaperkimTest::class,
     LeaperkimProtocolTest::class,
     GotwayNoDropTest::class,
     InmotionNoDropTest::class,
     KingsongNoDropTest::class,
     LeaperkimNoDropTest::class
 )
-class AllTestsSuite {
-    // This class remains empty, it is used only as a holder for the above annotations
-}
+class AllTestsSuite

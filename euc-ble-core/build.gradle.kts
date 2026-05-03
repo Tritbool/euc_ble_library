@@ -37,7 +37,7 @@ android {
     tasks.withType<Test>().configureEach {
         useJUnitPlatform {
             if (System.getenv("CI") == "true") {
-                excludeTags("SlowTest")
+                excludeTags("slow")
             }
         }
     }
@@ -59,19 +59,10 @@ dependencies {
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     
-    // Test dependencies
-// JUnit 4 (reste inchangé, 4.13.2 est déjà la dernière)
-    testImplementation("junit:junit:4.13.2") // latest stable [web:17][web:22]
-
-// JUnit Jupiter (JUnit 5) – API + Engine
-    testImplementation("org.junit.jupiter:junit-jupiter-api:6.0.3")    // latest stable 6.0.x [web:21][web:23]
-    testImplementation("org.junit.jupiter:junit-jupiter-engine:6.0.3") // aligné sur l'API 6.0.1 [web:21][web:29]
-
-// JUnit Vintage Engine - permet d'exécuter les tests JUnit 4 sur JUnit Platform
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:6.0.3")
-
-// JUnit Platform Launcher
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.0.3") // dernière version GA 6.0.1 [web:2][web:8]
+    // Test dependencies (single JUnit 5 line)
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.junit.platform:junit-platform-suite")
 
 // Coroutines Test
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2") // dernière 1.10.x [web:6][web:9][web:15]
