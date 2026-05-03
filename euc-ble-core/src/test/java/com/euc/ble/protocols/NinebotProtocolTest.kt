@@ -2,11 +2,10 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
-
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Test
 class NinebotProtocolTest {
 
     @Test
