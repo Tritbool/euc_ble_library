@@ -18,6 +18,10 @@ import org.junit.Test
 
 class LeaperkimProtocolTest {
 
+    private val defaultFrameLength = 36
+    private val defaultVoltageRaw = 10000
+    private val defaultTemperatureRaw = 2500
+    private val defaultVersionRaw = 4000
     private val beepCommandPayload = "b".encodeToByteArray()
     private lateinit var protocol: LeaperkimProtocol
 
@@ -97,15 +101,15 @@ class LeaperkimProtocolTest {
     }
 
     private fun createLeaperkimFrame(
-        len: Int = 36,
-        voltageRaw: Int = 10000,
+        len: Int = defaultFrameLength,
+        voltageRaw: Int = defaultVoltageRaw,
         speedRaw: Int = 0,
         distanceRaw: Long = 0,
         totalDistanceRaw: Long = 0,
         currentRaw: Int = 0,
-        temperatureRaw: Int = 2500,
+        temperatureRaw: Int = defaultTemperatureRaw,
         chargeMode: Int = 0,
-        versionRaw: Int = 4000
+        versionRaw: Int = defaultVersionRaw
     ): ByteArray {
         val frame = ByteArray(len + 4)
         frame[0] = 0xDC.toByte()
