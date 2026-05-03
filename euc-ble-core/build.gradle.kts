@@ -59,7 +59,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     
-    // Test dependencies (single JUnit 5 LTS line)
+    // Test dependencies (single JUnit 5 line)
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.platform:junit-platform-suite")
