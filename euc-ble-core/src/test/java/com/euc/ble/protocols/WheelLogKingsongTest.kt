@@ -3,6 +3,9 @@ package com.euc.ble.protocols
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -12,8 +15,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 

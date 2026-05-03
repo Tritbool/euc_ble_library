@@ -6,22 +6,27 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.After
-import org.junit.Assert.*
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Assertions.assertNotEquals
 
 class GotwayProtocolTest {
 
     private lateinit var protocol: GotwayProtocol
 
-    @Before
+    @BeforeEach
     fun setUp() {
         protocol = GotwayProtocol()
         MockBLEUtils.createMockProtocolTestEnvironment()
     }
 
-    @After
+    @AfterEach
     fun tearDown() {
         protocol.close()
     }

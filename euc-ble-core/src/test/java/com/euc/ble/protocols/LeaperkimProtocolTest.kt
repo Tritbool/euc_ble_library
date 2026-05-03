@@ -6,15 +6,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.After
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 class LeaperkimProtocolTest {
 
@@ -27,12 +27,12 @@ class LeaperkimProtocolTest {
     private val beepCommandPayload = "b".encodeToByteArray()
     private lateinit var protocol: LeaperkimProtocol
 
-    @Before
+    @BeforeEach
     fun setUp() {
         protocol = LeaperkimProtocol()
     }
 
-    @After
+    @AfterEach
     fun tearDown() {
         protocol.close()
     }

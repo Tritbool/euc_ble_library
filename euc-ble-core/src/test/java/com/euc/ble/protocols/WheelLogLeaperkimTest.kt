@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
-import org.junit.Test
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import com.euc.ble.test.JUnit4AssertionsCompat.assumeTrue
+import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
@@ -79,21 +79,21 @@ class WheelLogLeaperkimTest {
             assertTrue("Speed jump too large", abs(cur.speed - prev.speed) < 25.0)
             assertTrue("Ride time should be non-decreasing", cur.rideTime >= prev.rideTime)
         }
-
+        /*
         val hasTripResetToZero = decoded.zipWithNext().any { (prev, cur) ->
             isLikelyTripResetToZero(prev.distance, cur.distance)
         }
         assumeTrue(
             "Trip distance resets to near zero in this capture (kickstand/firmware behavior), monotonic trip check is not applicable",
             !hasTripResetToZero
-        )
+        )*/
 
         for (i in 1 until decoded.size) {
             val prev = decoded[i - 1]
             val cur = decoded[i]
             assertTrue(
                 "Trip distance should not sharply decrease",
-                cur.distance >= prev.distance - 1.0
+                isLikelyTripResetToZero(prev.distance, cur.distance) || (cur.distance >= prev.distance - 1.0)
             )
         }
         protocol.close()

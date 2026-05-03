@@ -3,8 +3,8 @@ package com.euc.ble.protocols
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs

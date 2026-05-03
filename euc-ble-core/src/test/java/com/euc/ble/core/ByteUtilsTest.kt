@@ -1,7 +1,10 @@
 package com.euc.ble.core
 
-import org.junit.Assert.*
-import org.junit.Test
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Test
 
 /**
  * Unit tests for ByteUtils - the core byte manipulation utility

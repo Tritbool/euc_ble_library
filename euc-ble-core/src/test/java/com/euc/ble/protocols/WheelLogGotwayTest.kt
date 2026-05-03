@@ -6,21 +6,23 @@ import com.euc.ble.core.ByteUtils
 import com.euc.ble.frames.FixedSizeFrameParser
 import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
+
 @SlowTest
 class WheelLogGotwayTest {
 

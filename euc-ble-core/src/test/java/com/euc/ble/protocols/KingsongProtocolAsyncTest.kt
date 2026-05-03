@@ -6,11 +6,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Test
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Assertions.assertNotEquals
 
 class KingsongProtocolAsyncTest {
 
