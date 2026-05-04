@@ -15,6 +15,7 @@ import com.euc.ble.protocols.LeaperkimProtocolTest
 import com.euc.ble.protocols.NinebotNoDropTest
 import com.euc.ble.protocols.NinebotProtocolTest
 import com.euc.ble.protocols.ProtocolNoDropTestBase
+import com.euc.ble.analysis.BleFrequencyAnalysisTest
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogInMotionTest
 import com.euc.ble.protocols.WheelLogKingsongTest
@@ -33,6 +34,7 @@ import org.junit.platform.suite.api.Suite
     InMotionProtocolTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
+    BleFrequencyAnalysisTest::class,
     WheelLogGotwayTest::class,
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,

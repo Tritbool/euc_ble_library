@@ -3,6 +3,7 @@ package com.euc.ble.protocols
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import java.io.Closeable
 import java.util.UUID
 
@@ -22,6 +23,16 @@ interface EUCProtocol : Closeable {
     val supportedModels: List<String>
 
     val dataFlow: Flow<EUCData>
+
+    /**
+     * Flow that emits every raw BLE characteristic notification received by this protocol,
+     * as a defensive copy of the original byte array. Collectors can use this to write raw
+     * logs or perform any custom processing on the unmodified BLE data.
+     *
+     * The default implementation emits nothing; concrete protocols override this to provide
+     * a live stream of incoming bytes.
+     */
+    val rawFrameFlow: Flow<ByteArray> get() = emptyFlow()
 
     override fun close() {
     }

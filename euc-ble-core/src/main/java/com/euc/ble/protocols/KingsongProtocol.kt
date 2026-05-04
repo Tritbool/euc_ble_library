@@ -10,9 +10,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -123,6 +125,12 @@ class KingsongProtocol : EUCProtocol {
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+
+    private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
@@ -296,6 +304,7 @@ class KingsongProtocol : EUCProtocol {
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
+        _rawFrameFlow.tryEmit(data.clone())
 
         // Let the reassembler handle the incoming bytes asynchronously
         runBlocking(Dispatchers.IO) {
