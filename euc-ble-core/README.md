@@ -126,6 +126,90 @@ bleManager.sendCommand(lightOnCommand, device.getDataCharacteristicUUID())
 bleManager.disconnect()
 ```
 
+### Client Example: Save Raw + Decoded Frames to Two CSV Files
+
+```kotlin
+import com.euc.ble.core.BLEManager
+import com.euc.ble.core.DataCallback
+import com.euc.ble.models.EUCData
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import java.io.File
+
+class CsvBleLoggerClient(
+    private val bleManager: BLEManager,
+    private val appFilesDir: File
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var rawJob: Job? = null
+
+    private val rawCsv = File(appFilesDir, "raw_frames.csv")
+    private val decodedCsv = File(appFilesDir, "decoded_frames.csv")
+
+    fun start() {
+        ensureHeaders()
+
+        // 1) Raw BLE chunks exactly as they arrive from notifications
+        rawJob = bleManager.rawFrameFlow
+            .onEach { raw ->
+                rawCsv.appendText("${System.currentTimeMillis()},${raw.toHexString()}\n")
+            }
+            .launchIn(scope)
+
+        // 2) Decoded telemetry frames from protocol parsing
+        bleManager.setDataCallback(object : DataCallback {
+            override fun onDataReceived(data: EUCData) {
+                scope.launch {
+                    decodedCsv.appendText(
+                        listOf(
+                            data.timestamp,
+                            data.manufacturer.csvSafe(),
+                            data.model.csvSafe(),
+                            data.speed,
+                            data.voltage,
+                            data.current,
+                            data.temperature,
+                            data.batteryLevel,
+                            data.distance,
+                            data.power,
+                            data.isCharging,
+                            data.rideTime
+                        ).joinToString(",") + "\n"
+                    )
+                }
+            }
+        })
+    }
+
+    fun stop() {
+        rawJob?.cancel()
+        scope.cancel()
+    }
+
+    private fun ensureHeaders() {
+        if (!rawCsv.exists()) {
+            rawCsv.writeText("timestamp_ms,raw_hex\n")
+        }
+        if (!decodedCsv.exists()) {
+            decodedCsv.writeText(
+                "timestamp_ms,manufacturer,model,speed_kmh,voltage_v,current_a,temperature_c,battery_pct,distance_km,power_w,is_charging,ride_time_s\n"
+            )
+        }
+    }
+
+    private fun ByteArray.toHexString(): String =
+        joinToString(separator = "") { byte -> "%02X".format(byte.toInt() and 0xFF) }
+
+    private fun String.csvSafe(): String = "\"${replace("\"", "\"\"")}\""
+}
+```
+
 ## Architecture
 
 ### Core Components
@@ -144,12 +228,15 @@ Each manufacturer has its own protocol implementation:
 interface EUCProtocol {
     val manufacturer: String
     val supportedModels: List<String>
+    val dataFlow: Flow<EUCData>
+    val rawFrameFlow: Flow<ByteArray>
     
     fun canHandle(device: EUCDevice): Boolean
     fun decode(data: ByteArray): EUCData?
     fun createCommand(commandType: CommandType, value: Any): ByteArray
     fun getServiceUUID(): UUID
     fun getDataCharacteristicUUID(): UUID
+    fun getWriteCharacteristicUUID(): UUID
     fun isDeviceReady(data: EUCData): Boolean
 }
 ```
