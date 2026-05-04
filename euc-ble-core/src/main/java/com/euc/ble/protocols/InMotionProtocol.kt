@@ -4,9 +4,11 @@ import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -58,6 +60,12 @@ class InMotionProtocol : EUCProtocol {
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
+    private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
+
 
 
     private val parseLock = Any()
@@ -85,6 +93,7 @@ class InMotionProtocol : EUCProtocol {
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
+        _rawFrameFlow.tryEmit(data.clone())
         var lastDecoded: EUCData? = null
 
         val v2Frames = extractV2Frames(data)

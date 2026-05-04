@@ -26,6 +26,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -66,6 +70,29 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     private var connectionCallback: ConnectionCallback? = null
     private var dataCallback: DataCallback? = null
     private var errorCallback: ErrorCallback? = null
+
+    // Raw frame capture: every raw BLE characteristic notification is emitted here
+    private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    /**
+     * Flow that emits every raw BLE characteristic notification received from the connected
+     * device, as a defensive copy of the original byte array.
+     *
+     * Collectors can use this to write WheelLog-style raw logs or to perform any custom
+     * processing on the unmodified BLE data, independently of the decoding pipeline.
+     *
+     * Example (Kotlin coroutines):
+     * ```kotlin
+     * bleManager.rawFrameFlow
+     *     .collect { bytes ->
+     *         outputStream.write(bytes)
+     *     }
+     * ```
+     */
+    val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
     
     // Coroutine management
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
@@ -497,6 +524,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     }
 
     private fun handleIncomingBytes(data: ByteArray) {
+        _rawFrameFlow.tryEmit(data.clone())
         currentProtocol?.let { protocol ->
             try {
                 val eucData = protocol.decode(data)
