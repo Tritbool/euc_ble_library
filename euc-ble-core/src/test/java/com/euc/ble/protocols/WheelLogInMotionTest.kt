@@ -102,49 +102,56 @@ class WheelLogInMotionTest {
     @Test
     fun decodeP6WheelLogFramesUsesExpectedVoltageAndTotalDistance() {
         val protocol = InMotionProtocol()
-        val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
-        assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
+        try {
+            val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
+            assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
 
-        val decoded = mutableListOf<EUCData>()
-        for (frame in frames) {
-            protocol.decode(frame.bleData)?.let(decoded::add)
+            val decoded = mutableListOf<EUCData>()
+            for (frame in frames) {
+                protocol.decode(frame.bleData)?.let(decoded::add)
+            }
+            assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
+
+            val first = decoded.first()
+            assertTrue(first.model.contains("P6", ignoreCase = true))
+            assertEquals(223.95, first.voltage, 0.2)
+            assertEquals(587.89, first.totalDistance ?: -1.0, 0.02)
+        } finally {
+            protocol.close()
         }
-        assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
-
-        val first = decoded.first()
-        assertTrue(first.model.contains("P6", ignoreCase = true))
-        assertEquals(223.95, first.voltage, 0.2)
-        assertEquals(587.89, first.totalDistance ?: -1.0, 0.02)
     }
 
     @Test
     fun exportDecodedP6WheelLogFramesToHumanReadableCsv() {
         val protocol = InMotionProtocol()
-        val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
-        assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
+        try {
+            val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
+            assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
 
-        val decoded = mutableListOf<EUCData>()
-        for (frame in frames) {
-            protocol.decode(frame.bleData)?.let(decoded::add)
-        }
-        assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
-
-        val outputDir = Path.of("build", "reports", "decoded-wheellog")
-        Files.createDirectories(outputDir)
-        val outputFile = outputDir.resolve("P6_2026_05_11_14_05_18.decoded.csv")
-
-        Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8).use { writer ->
-            writer.appendLine(
-                "index,timestamp_ms,manufacturer,model,speed_kmh,voltage_v,current_a,power_w,temperature_c,motor_temperature_c,battery_level,distance_km,total_distance_km,ride_time_s,is_charging,raw_hex"
-            )
-            decoded.forEachIndexed { index, data ->
-                writer.appendLine(data.toCsvRow(index))
+            val decoded = mutableListOf<EUCData>()
+            for (frame in frames) {
+                protocol.decode(frame.bleData)?.let(decoded::add)
             }
-        }
+            assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
 
-        assertTrue("Decoded CSV should be generated", Files.exists(outputFile))
-        assertTrue("Decoded CSV should contain data rows", Files.size(outputFile) > 300)
-        protocol.close()
+            val outputDir = Path.of("build", "reports", "decoded-wheellog")
+            Files.createDirectories(outputDir)
+            val outputFile = outputDir.resolve("P6_2026_05_11_14_05_18.decoded.csv")
+
+            Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8).use { writer ->
+                writer.appendLine(
+                    "index,timestamp_ms,manufacturer,model,speed_kmh,voltage_v,current_a,power_w,temperature_c,motor_temperature_c,battery_level,distance_km,total_distance_km,ride_time_s,is_charging,raw_hex"
+                )
+                decoded.forEachIndexed { index, data ->
+                    writer.appendLine(data.toCsvRow(index))
+                }
+            }
+
+            assertTrue("Decoded CSV should be generated", Files.exists(outputFile))
+            assertTrue("Decoded CSV should contain data rows", Files.size(outputFile) > 300)
+        } finally {
+            protocol.close()
+        }
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
