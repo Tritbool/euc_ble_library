@@ -217,10 +217,10 @@ class WheelLogInMotionTest {
             current.toString(),
             power.toString(),
             temperature.toString(),
-            motorTemperature?.toString().orEmpty(),
+            motorTemperature?.toString() ?: "null",
             batteryLevel.toString(),
             distance.toString(),
-            totalDistance?.toString().orEmpty(),
+            totalDistance?.toString() ?: "null",
             rideTime.toString(),
             isCharging.toString(),
             ByteUtils.bytesToHex(rawData)
