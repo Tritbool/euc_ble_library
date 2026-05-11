@@ -8,6 +8,9 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.math.abs
 @SlowTest
 class WheelLogInMotionTest {
@@ -114,6 +117,36 @@ class WheelLogInMotionTest {
         assertEquals(587.89, first.totalDistance ?: -1.0, 0.02)
     }
 
+    @Test
+    fun exportDecodedP6WheelLogFramesToHumanReadableCsv() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
+        assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        for (frame in frames) {
+            protocol.decode(frame.bleData)?.let(decoded::add)
+        }
+        assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
+
+        val outputDir = Path.of("build", "reports", "decoded-wheellog")
+        Files.createDirectories(outputDir)
+        val outputFile = outputDir.resolve("P6_2026_05_11_14_05_18.decoded.csv")
+
+        Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8).use { writer ->
+            writer.appendLine(
+                "index,timestamp_ms,manufacturer,model,speed_kmh,voltage_v,current_a,power_w,temperature_c,motor_temperature_c,battery_level,distance_km,total_distance_km,ride_time_s,is_charging,raw_hex"
+            )
+            decoded.forEachIndexed { index, data ->
+                writer.appendLine(data.toCsvRow(index))
+            }
+        }
+
+        assertTrue("Decoded CSV should be generated", Files.exists(outputFile))
+        assertTrue("Decoded CSV should contain data rows", Files.size(outputFile) > 300)
+        protocol.close()
+    }
+
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
@@ -172,4 +205,33 @@ class WheelLogInMotionTest {
         val bleData: ByteArray,
         val metadata: String
     )
+
+    private fun EUCData.toCsvRow(index: Int): String {
+        val columns = listOf(
+            index.toString(),
+            timestamp.toString(),
+            manufacturer,
+            model,
+            speed.toString(),
+            voltage.toString(),
+            current.toString(),
+            power.toString(),
+            temperature.toString(),
+            motorTemperature?.toString().orEmpty(),
+            batteryLevel.toString(),
+            distance.toString(),
+            totalDistance?.toString().orEmpty(),
+            rideTime.toString(),
+            isCharging.toString(),
+            ByteUtils.bytesToHex(rawData)
+        )
+        return columns.joinToString(",") { csvEscape(it) }
+    }
+
+    private fun csvEscape(value: String): String {
+        if (!value.contains(',') && !value.contains('"') && !value.contains('\n') && !value.contains('\r')) {
+            return value
+        }
+        return "\"${value.replace("\"", "\"\"")}\""
+    }
 }
