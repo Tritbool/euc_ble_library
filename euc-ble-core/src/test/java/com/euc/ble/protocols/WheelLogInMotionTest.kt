@@ -3,6 +3,7 @@ package com.euc.ble.protocols
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
@@ -93,6 +94,24 @@ class WheelLogInMotionTest {
         }
 
         assertTrue("Expected at least one decoded realtime packet from alert capture", decodedCount > 0)
+    }
+
+    @Test
+    fun decodeP6WheelLogFramesUsesExpectedVoltageAndTotalDistance() {
+        val protocol = InMotionProtocol()
+        val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
+        assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        for (frame in frames) {
+            protocol.decode(frame.bleData)?.let(decoded::add)
+        }
+        assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
+
+        val first = decoded.first()
+        assertTrue(first.model.contains("P6", ignoreCase = true))
+        assertEquals(223.95, first.voltage, 0.2)
+        assertEquals(587.89, first.totalDistance ?: -1.0, 0.02)
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {

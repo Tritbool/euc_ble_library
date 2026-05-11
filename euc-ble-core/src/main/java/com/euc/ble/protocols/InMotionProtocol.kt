@@ -51,7 +51,7 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override val manufacturer: String = "InMotion"
-    override val supportedModels: List<String> = listOf("V9")
+    override val supportedModels: List<String> = listOf("V9", "P6")
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)
@@ -370,7 +370,11 @@ class InMotionProtocol : EUCProtocol {
                 if (payload.size >= 4) {
                     val series = payload[2].toInt() and 0xFF
                     val type = payload[3].toInt() and 0xFF
-                    modelName = if (series == 12 && type == 1) "InMotion V9" else "InMotion $series.$type"
+                    modelName = when {
+                        series == 12 && type == 1 -> "InMotion V9"
+                        series == 13 && type == 1 -> "InMotion P6"
+                        else -> "InMotion $series.$type"
+                    }
                 }
             }
             0x02 -> { // serial
@@ -396,9 +400,21 @@ class InMotionProtocol : EUCProtocol {
     }
 
     private fun parseTotalStats(payload: ByteArray) {
-        if (payload.size < 4) return
-        val totalMeters = ByteUtils.getSignedIntLE(payload, 0).toLong() * 10L
+        val totalMeters = decodeTotalMeters(payload) ?: return
         if (totalMeters >= 0) totalDistanceKm = totalMeters / 1000.0
+    }
+
+    private fun decodeTotalMeters(payload: ByteArray): Long? {
+        if (payload.size < 4) return null
+        return if (isPrefixedTotalStatsEncoding(payload)) {
+            ByteUtils.tryGetUnsignedIntLE(payload, 1)?.times(10L)
+        } else {
+            ByteUtils.tryGetSignedIntLE(payload, 0)?.toLong()?.times(10L)
+        }
+    }
+
+    private fun isPrefixedTotalStatsEncoding(payload: ByteArray): Boolean {
+        return payload.size >= 5 && payload[0] == payload[1]
     }
 
     private fun parseRealTime(payload: ByteArray, rawFrame: ByteArray): EUCData? {
