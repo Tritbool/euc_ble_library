@@ -121,8 +121,8 @@ class GotwayProtocol : EUCProtocol {
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
-    private var lastKnownVoltage = 0.0
-    private var lastKnownCurrent = 0.0
+    private var lastKnownVoltage: Double? = null
+    private var lastKnownCurrent: Double? = null
     private var lastKnownTripDistance = 0.0
     private var lastKnownTotalDistance: Double? = null
     private var lastKnownMotorTemperature: Double? = null
@@ -202,7 +202,7 @@ class GotwayProtocol : EUCProtocol {
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
         val fallbackVoltage = voltageRaw / 100.0
-        val voltage = if (lastKnownVoltage > 0.0) lastKnownVoltage else fallbackVoltage
+        val voltage = lastKnownVoltage ?: fallbackVoltage
         if (voltage > 300.0) return null  // pareil pour voltage
 
         val shortTripDistanceKm = ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
@@ -212,10 +212,10 @@ class GotwayProtocol : EUCProtocol {
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
         val currentFromTypeA = currentRaw / 100.0
-        val current = if (lastKnownCurrent != 0.0) lastKnownCurrent else currentFromTypeA
+        val current = lastKnownCurrent ?: currentFromTypeA
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
         val power = voltage * current
-        val battery = estimateBatteryLevel(voltage)
+        val batteryLevel = estimateBatteryLevel(voltage)
         lastKnownTripDistance = tripDistanceKm
 
         return EUCData(
@@ -223,7 +223,7 @@ class GotwayProtocol : EUCProtocol {
             voltage = voltage,
             current = current,
             temperature = temperature,
-            batteryLevel = battery,
+            batteryLevel = batteryLevel,
             distance = tripDistanceKm,
             power = power,
             timestamp = System.currentTimeMillis(),
@@ -295,8 +295,8 @@ class GotwayProtocol : EUCProtocol {
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
 
-        val voltage = lastKnownVoltage
-        val current = lastKnownCurrent
+        val voltage = lastKnownVoltage ?: 0.0
+        val current = lastKnownCurrent ?: 0.0
         val power = voltage * current
 
         return EUCData(
