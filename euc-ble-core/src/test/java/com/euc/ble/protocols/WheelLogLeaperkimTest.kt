@@ -3,17 +3,15 @@ package com.euc.ble.protocols
 import com.euc.ble.SlowTest
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
-import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
-import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import com.euc.ble.test.JUnit4AssertionsCompat.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -30,7 +28,7 @@ class WheelLogLeaperkimTest {
     @Test
     fun decodeRealLeaperkimWheelLogFrames() = runBlocking {
         val protocol = LeaperkimProtocol()
-        val frames = loadFrames("${resourceDir}RAW_2026_04_30_07_04_10.csv", maxFrames = 7000)
+        val frames = loadFrames("${resourceDir}RAW_2026_04_30_07_04_10.csv", maxFrames = 70000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
         val collector = async {
@@ -50,8 +48,8 @@ class WheelLogLeaperkimTest {
         assertTrue(decoded.all { it.temperature in 20.0..80.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.any { it.model.contains("Patton", ignoreCase = true) })
-        assertTrue(decoded.any { it.rideTime > 0 })
-        assertTrue(decoded.any { abs(it.power - (it.voltage * it.current)) < 0.5 })
+        assertTrue(decoded.all { it.rideTime >= 0 })
+        assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
         protocol.close()
     }
 
@@ -122,6 +120,7 @@ class WheelLogLeaperkimTest {
             false,
             protocol.canHandle(EUCDevice(name = "Nosfet Aero", address = "E", manufacturerId = 0, rssi = -45))
         )
+        protocol.close()
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {

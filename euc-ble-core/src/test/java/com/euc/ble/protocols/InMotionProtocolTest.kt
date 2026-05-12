@@ -50,6 +50,7 @@ class InMotionProtocolTest {
         assertEquals(58, decoded.first().batteryLevel)
         assertEquals(0.06, decoded.first().distance, 0.01)
         assertEquals(252.33, decoded.first().totalDistance ?: -1.0, 0.01)
+        protocol.close()
     }
 
     @Test
@@ -68,6 +69,7 @@ class InMotionProtocolTest {
         // then valid packet should be accepted
         val second = protocol.decode(valid)
         assertEquals(null, second) // main-info packet only updates state
+        protocol.close()
     }
 
     @Test
@@ -91,6 +93,7 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("A1421950A000465F", data?.serialNumber)
         assertTrue((data?.firmwareVersion ?: "").contains("Main:1.8.38"))
+        protocol.close()
     }
 
     @Test
@@ -105,6 +108,7 @@ class InMotionProtocolTest {
         assertTrue(decoded.any { it.model.contains("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
+        protocol.close()
     }
 
     @Test
@@ -119,6 +123,7 @@ class InMotionProtocolTest {
         assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
+        protocol.close()
     }
 
     private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {

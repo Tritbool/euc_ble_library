@@ -20,6 +20,7 @@ class NinebotProtocolTest {
         assertTrue(protocol.canHandle(byName))
         assertTrue(protocol.canHandle(bySegwayName))
         assertEquals(false, protocol.canHandle(other))
+        protocol.close()
     }
 
     @Test
@@ -49,6 +50,7 @@ class NinebotProtocolTest {
         assertEquals(72, decoded?.batteryLevel)
         assertEquals(true, decoded?.isCharging)
         assertEquals(200L, decoded?.rideTime)
+        protocol.close()
     }
 
     @Test
@@ -61,5 +63,6 @@ class NinebotProtocolTest {
         assertTrue(lightOn.isNotEmpty())
         assertTrue(lock.isNotEmpty())
         assertEquals(true, unsupported.isEmpty())
+        protocol.close()
     }
 }

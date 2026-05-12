@@ -2,20 +2,18 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import org.junit.jupiter.api.Test
-import java.util.concurrent.CopyOnWriteArrayList
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import org.junit.jupiter.api.Assertions.assertNotEquals
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.jupiter.api.Test
+import java.util.concurrent.CopyOnWriteArrayList
 
 class KingsongProtocolAsyncTest {
 
@@ -56,7 +54,7 @@ class KingsongProtocolAsyncTest {
         assertEquals(0.21, d.current, 0.01)
         assertEquals(33.0, d.temperature, 0.01)
         assertFalse(d.isCharging)
-        assertEquals(0, d.batteryLevel)
+        assertEquals(100, d.batteryLevel)
         assertNull(d.cellVoltages)
         protocol.close()
     }

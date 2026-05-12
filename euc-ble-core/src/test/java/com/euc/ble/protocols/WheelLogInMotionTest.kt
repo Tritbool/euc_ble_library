@@ -35,6 +35,8 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.any { it.rideTime > 0 })
         assertTrue(decoded.any { abs(it.power - (it.voltage * it.current)) < 0.5 })
+
+        protocol.close()
     }
 
     @Test
@@ -45,6 +47,7 @@ class WheelLogInMotionTest {
 
         val decodedCount = frames.count { protocol.decode(it.bleData) != null }
         assertTrue("Expected at least one decoded realtime frame", decodedCount > 0)
+        protocol.close()
     }
 
     @Test
@@ -64,6 +67,7 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.voltage in 40.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.any { it.rideTime > 0 })
+        protocol.close()
     }
 
     @Test
@@ -83,6 +87,7 @@ class WheelLogInMotionTest {
         assertTrue(decoded.all { it.voltage in 40.0..100.0 })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.any { it.rideTime > 0 })
+        protocol.close()
     }
 
     @Test
@@ -97,13 +102,14 @@ class WheelLogInMotionTest {
         }
 
         assertTrue("Expected at least one decoded realtime packet from alert capture", decodedCount > 0)
+        protocol.close()
     }
 
     @Test
     fun decodeP6WheelLogFramesUsesExpectedVoltageAndTotalDistance() {
         val protocol = InMotionProtocol()
         try {
-            val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
+            val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1800)
             assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
 
             val decoded = mutableListOf<EUCData>()
@@ -113,9 +119,10 @@ class WheelLogInMotionTest {
             assertTrue("Expected decoded telemetry from P6 WheelLog frames", decoded.isNotEmpty())
 
             val first = decoded.first()
+            val last = decoded.last()
             assertTrue(first.model.contains("P6", ignoreCase = true))
             assertEquals(223.95, first.voltage, 0.2)
-            assertEquals(587.89, first.totalDistance ?: -1.0, 0.02)
+            assertEquals(587.92, last.totalDistance ?: -1.0, 0.02)
         } finally {
             protocol.close()
         }

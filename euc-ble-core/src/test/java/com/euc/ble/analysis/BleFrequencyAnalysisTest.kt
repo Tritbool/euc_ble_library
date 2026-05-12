@@ -134,20 +134,15 @@ class BleFrequencyAnalysisTest {
 
     private fun printStats(manufacturer: String, stats: FrequencyStats) {
         println(
-            "  [%-10s] %-40s  count=%5d  dur=%6dms  " +
-            "avgDt=%5.1fms  medDt=%5.1fms  p95Dt=%5.1fms  " +
-            "avg=%.1f msg/s  med=%.1f msg/s  p95=%.1f msg/s".format(
-                manufacturer,
-                stats.fileName,
-                stats.count,
-                stats.durationMs,
-                stats.avgDtMs,
-                stats.medianDtMs,
-                stats.p95DtMs,
-                stats.avgMsgPerSec,
-                stats.medianMsgPerSec,
-                stats.p95MsgPerSec
-            )
+            "  [${manufacturer.padEnd(10)}] ${stats.fileName.padEnd(40)}  " +
+                    "count=${stats.count.toString().padStart(5)}  " +
+                    "dur=${stats.durationMs.toString().padStart(6)}ms  " +
+                    "avgDt=${"%.1f".format(stats.avgDtMs)}ms  " +
+                    "medDt=${"%.1f".format(stats.medianDtMs)}ms  " +
+                    "p95Dt=${"%.1f".format(stats.p95DtMs)}ms  " +
+                    "avg=${"%.1f".format(stats.avgMsgPerSec)} msg/s  " +
+                    "med=${"%.1f".format(stats.medianMsgPerSec)} msg/s  " +
+                    "p95=${"%.1f".format(stats.p95MsgPerSec)} msg/s"
         )
     }
 

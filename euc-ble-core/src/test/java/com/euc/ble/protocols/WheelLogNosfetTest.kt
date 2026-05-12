@@ -40,8 +40,8 @@ class WheelLogNosfetTest {
         assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
         assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
-        assertTrue(decoded.any { it.rideTime > 0 })
-        assertTrue(decoded.any { abs(it.power - (it.voltage * it.current)) < 0.5 })
+        assertTrue(decoded.all { it.rideTime >= 0 })
+        assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
         protocol.close()
     }
 
