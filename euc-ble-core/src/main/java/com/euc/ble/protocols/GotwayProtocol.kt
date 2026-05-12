@@ -105,6 +105,9 @@ class GotwayProtocol : EUCProtocol {
         const val FRAME_SIZE=24
         val HEADER: ByteArray=byteArrayOf(0x55.toByte(),0xAA.toByte())
         val FOOTER: ByteArray=byteArrayOf(0x5A.toByte(),0x5A.toByte(),0x5A.toByte(),0x5A.toByte())
+        private const val MIN_BATTERY_VOLTAGE = 52.0
+        private const val MAX_BATTERY_VOLTAGE = 134.4
+        private const val MAX_BMS_CELL_SLOTS = 56
     }
     private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
     private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
@@ -202,8 +205,9 @@ class GotwayProtocol : EUCProtocol {
         val voltage = if (lastKnownVoltage > 0.0) lastKnownVoltage else fallbackVoltage
         if (voltage > 300.0) return null  // pareil pour voltage
 
-        val tripDistanceKm = (ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0))
-            ?: ((ByteUtils.tryGetUnsignedIntBE(data, 6) ?: 0L).toDouble() / 1000.0)
+        val shortTripDistanceKm = ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
+        val fallbackTripDistanceKm = (ByteUtils.tryGetUnsignedIntBE(data, 6) ?: 0L).toDouble() / 1000.0
+        val tripDistanceKm = shortTripDistanceKm ?: fallbackTripDistanceKm
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
@@ -273,7 +277,7 @@ class GotwayProtocol : EUCProtocol {
     @VisibleForTesting
     private fun parseType2or3(data: ByteArray, bmsIndex: Int) {
         val page = ByteUtils.tryGetUnsignedByte(data, 19) ?: return
-        val cells = smartBmsCellPages.getOrPut(bmsIndex) { DoubleArray(56) }
+        val cells = smartBmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELL_SLOTS) }
         for (i in 0 until 8) {
             val cellRaw = ByteUtils.tryGetUnsignedShortBE(data, (i + 1) * 2) ?: continue
             val cellIndex = page * 8 + i
@@ -319,7 +323,9 @@ class GotwayProtocol : EUCProtocol {
 
     private fun estimateBatteryLevel(voltage: Double): Int {
         if (voltage <= 0.0) return 0
-        return (((voltage - 52.0) / (134.4 - 52.0)) * 100.0).toInt().coerceIn(0, 100)
+        return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
+            .toInt()
+            .coerceIn(0, 100)
     }
 
     private fun getCombinedCellVoltages(): List<Double>? {
