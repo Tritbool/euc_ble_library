@@ -125,7 +125,7 @@ class WheelLogInMotionTest {
     fun exportDecodedP6WheelLogFramesToHumanReadableCsv() {
         val protocol = InMotionProtocol()
         try {
-            val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 1200)
+            val frames = loadFrames("${resourceDir}P6_RAW_2026_05_11_14_05_18.csv", maxFrames = 12000)
             assertTrue("Expected P6 WheelLog frames", frames.isNotEmpty())
 
             val decoded = mutableListOf<EUCData>()
