@@ -35,13 +35,14 @@ jobs:
 
       - name: Run unit tests
         run: >
-          ./gradlew :euc-ble-core:test
+          ./gradlew :euc-ble-core:testDebugUnitTest
           --no-daemon
           --stacktrace
           -Dkotlinx.coroutines.io.parallelism=4
           -PmaxParallelForks=1
         env:
           GRADLE_OPTS: "-Xmx2g -Dfile.encoding=UTF-8"
+          CI: "true"
 
       - name: Upload test reports
         if: always()

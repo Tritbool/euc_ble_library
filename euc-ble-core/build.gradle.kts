@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.euc.ble"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 21
@@ -34,21 +34,22 @@ android {
         }
     }
 
-    tasks.withType<Test>().configureEach {
-        useJUnitPlatform {
-            if (System.getenv("CI") == "true") {
-                excludeTags("slow")
-            }
-        }
-    }
 
     testOptions {
         unitTests.all { testTask ->
-            testTask.useJUnitPlatform()
-            // Sérialisé en CI, parallèle en local
+            val isCi = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
+
+            testTask.useJUnitPlatform {
+                if (isCi) {
+                    excludeTags("slow") // NoDrop exclus en CI
+                }
+            }
+
             testTask.maxParallelForks =
-                (project.findProperty("maxParallelForks") as String?)?.toInt() ?:
-                        Runtime.getRuntime().availableProcessors()
+                if (isCi) 1
+                else (project.findProperty("maxParallelForks") as String?)?.toInt()
+                    ?: Runtime.getRuntime().availableProcessors()
+
             testTask.jvmArgs("-Xmx1g")
         }
     }
