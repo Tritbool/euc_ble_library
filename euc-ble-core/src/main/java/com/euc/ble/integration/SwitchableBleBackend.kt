@@ -48,40 +48,36 @@ class SwitchableBleBackend(
         activeBackend.setListener(listener)
     }
 
+    @Synchronized
     override fun startScan() {
-        val backend = activeBackend
-        backend.startScan()
+        activeBackend.startScan()
     }
 
+    @Synchronized
     override fun stopScan() {
-        val backend = activeBackend
-        backend.stopScan()
+        activeBackend.stopScan()
     }
 
+    @Synchronized
     override fun connect(device: EUCDevice) {
-        val backend = activeBackend
-        backend.connect(device)
+        activeBackend.connect(device)
     }
 
+    @Synchronized
     override fun disconnect() {
-        val backend = activeBackend
-        backend.disconnect()
+        activeBackend.disconnect()
     }
 
+    @Synchronized
     override fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
-        val backend = activeBackend
-        backend.sendCommand(command, characteristicUuid)
+        activeBackend.sendCommand(command, characteristicUuid)
     }
 
-    override fun getConnectionState(): BLEConstants.ConnectionState {
-        val backend = activeBackend
-        return backend.getConnectionState()
-    }
+    @Synchronized
+    override fun getConnectionState(): BLEConstants.ConnectionState = activeBackend.getConnectionState()
 
-    override fun getConnectedDevice(): EUCDevice? {
-        val backend = activeBackend
-        return backend.getConnectedDevice()
-    }
+    @Synchronized
+    override fun getConnectedDevice(): EUCDevice? = activeBackend.getConnectedDevice()
 
     override fun cleanup() {
         frameworkBackend.cleanup()

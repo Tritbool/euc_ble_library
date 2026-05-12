@@ -74,10 +74,10 @@ class FrameworkBleBackend(
     override fun cleanup() {
         rawFrameJob?.cancel()
         rawFrameJob = null
-        bleManager.cleanup()
         if (ownsScope) {
             scope.cancel()
         }
+        bleManager.cleanup()
     }
 
     private fun installCallbacks() {
