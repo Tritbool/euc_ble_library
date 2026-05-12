@@ -139,6 +139,13 @@ class LeaperkimNoDropTest : ProtocolNoDropTestBase() {
 }
 
 @SlowTest
+class NosfetNoDropTest : ProtocolNoDropTestBase() {
+    override val csvResourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv"
+    override val minimumExpectedFrameCount = 200
+    override fun createProtocol() = NosfetProtocol()
+}
+
+@SlowTest
 class NinebotNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_09_07_11_29_37.csv"
     override val minimumExpectedFrameCount = 200

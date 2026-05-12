@@ -31,19 +31,19 @@ import kotlin.math.roundToInt
  * - Full frame size: len + 4 bytes
  * - For long frames (len > 38), trailing CRC32 is expected
  */
-class LeaperkimProtocol : EUCProtocol {
+open class LeaperkimProtocol : EUCProtocol {
 
     override val manufacturer: String = "Leaperkim"
     override val supportedModels: List<String> = listOf(
         "Patton", "Patton S", "Sherman", "Sherman S", "Sherman L",
-        "Lynx", "Lynx S", "Abrams", "Oryx", "Nosfet Apex", "Nosfet Aero", "Nosfet Aeon"
+        "Lynx", "Lynx S", "Abrams", "Oryx"
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_READ_CHARACTERISTIC)
     override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)
 
-    override fun canHandle(device: EUCDevice): Boolean {
+    override open fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
                 device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN ||
@@ -51,8 +51,7 @@ class LeaperkimProtocol : EUCProtocol {
                 name.contains("Veteran", ignoreCase = true) ||
                 name.contains("Patton", ignoreCase = true) ||
                 name.contains("Sherman", ignoreCase = true) ||
-                name.contains("Lynx", ignoreCase = true) ||
-                name.contains("Nosfet", ignoreCase = true)
+                name.contains("Lynx", ignoreCase = true)
     }
 
     private enum class ParseState {
@@ -228,7 +227,7 @@ class LeaperkimProtocol : EUCProtocol {
         return masked / 1000.0
     }
 
-    private fun modelByMajorVersion(version: Int): String {
+    protected open fun modelByMajorVersion(version: Int): String {
         return when (version) {
             0, 1 -> "Sherman"
             2 -> "Abrams"
@@ -239,17 +238,14 @@ class LeaperkimProtocol : EUCProtocol {
             7 -> "Patton S"
             8 -> "Oryx"
             9 -> "Lynx S"
-            42 -> "Nosfet Apex"
-            43 -> "Nosfet Aero"
-            44 -> "Nosfet Aeon"
             else -> "Leaperkim"
         }
     }
 
-    private fun estimateBatteryPercent(voltageRaw: Int, majorVersion: Int): Int {
+    protected open fun estimateBatteryPercent(voltageRaw: Int, majorVersion: Int): Int {
         val battery = when (majorVersion) {
-            4, 7, 43 -> ((voltageRaw - 9600) / (12525.0 - 9600.0) * 100.0)
-            5, 6, 9, 42, 44 -> ((voltageRaw - 11520) / (15030.0 - 11520.0) * 100.0)
+            4, 7 -> ((voltageRaw - 9600) / (12525.0 - 9600.0) * 100.0)
+            5, 6, 9 -> ((voltageRaw - 11520) / (15030.0 - 11520.0) * 100.0)
             8 -> ((voltageRaw - 13886) / (17535.0 - 13886.0) * 100.0)
             else -> ((voltageRaw - 7935) / (10020.0 - 7935.0) * 100.0)
         }

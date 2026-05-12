@@ -12,6 +12,8 @@ import com.euc.ble.protocols.KingsongNoDropTest
 import com.euc.ble.protocols.KingsongProtocolAsyncTest
 import com.euc.ble.protocols.LeaperkimNoDropTest
 import com.euc.ble.protocols.LeaperkimProtocolTest
+import com.euc.ble.protocols.NosfetNoDropTest
+import com.euc.ble.protocols.NosfetProtocolTest
 import com.euc.ble.protocols.NinebotNoDropTest
 import com.euc.ble.protocols.NinebotProtocolTest
 import com.euc.ble.protocols.ProtocolNoDropTestBase
@@ -20,6 +22,7 @@ import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogInMotionTest
 import com.euc.ble.protocols.WheelLogKingsongTest
 import com.euc.ble.protocols.WheelLogLeaperkimTest
+import com.euc.ble.protocols.WheelLogNosfetTest
 import com.euc.ble.protocols.WheelLogNinebotTest
 import org.junit.platform.suite.api.SelectClasses
 import org.junit.platform.suite.api.Suite
@@ -39,12 +42,15 @@ import org.junit.platform.suite.api.Suite
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,
     WheelLogLeaperkimTest::class,
+    WheelLogNosfetTest::class,
     LeaperkimProtocolTest::class,
+    NosfetProtocolTest::class,
     NinebotProtocolTest::class,
     GotwayNoDropTest::class,
     InmotionNoDropTest::class,
     KingsongNoDropTest::class,
     LeaperkimNoDropTest::class,
+    NosfetNoDropTest::class,
     NinebotNoDropTest::class
 )
 class AllTestsSuite

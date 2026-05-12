@@ -300,4 +300,14 @@ class BleFrequencyAnalysisTest {
         val files = listCsvResources(dir, fallback)
         analyseManufacturer("Leaperkim", dir, files)
     }
+
+    @Test
+    fun analyseBleFrequencyNosfet() {
+        val dir = "/ble_frames/nosfet/RAW_WHEELLOG/"
+        val fallback = listOf(
+            "RAW_2026_05_08_18_55_45.csv"
+        )
+        val files = listCsvResources(dir, fallback)
+        analyseManufacturer("Nosfet", dir, files)
+    }
 }

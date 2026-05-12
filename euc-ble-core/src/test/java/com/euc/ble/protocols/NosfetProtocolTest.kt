@@ -5,31 +5,23 @@ import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
-import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-class LeaperkimProtocolTest {
+class NosfetProtocolTest {
 
     private val defaultFrameLength = 36
-    private val defaultVoltageRaw = 10000
-    private val defaultTemperatureRaw = 2500
-    private val defaultVersionRaw = 4000
-    private val telemetryEmissionTimeoutMs = 5_000L
-    private val invalidFrameCheckTimeoutMs = 500L
-    private val beepCommandPayload = "b".encodeToByteArray()
-    private lateinit var protocol: LeaperkimProtocol
+    private lateinit var protocol: NosfetProtocol
 
     @BeforeEach
     fun setUp() {
-        protocol = LeaperkimProtocol()
+        protocol = NosfetProtocol()
     }
 
     @AfterEach
@@ -38,32 +30,27 @@ class LeaperkimProtocolTest {
     }
 
     @Test
-    fun canHandleLeaperkimAndVeteranDevicesOnly() {
+    fun canHandleNosfetDevicesOnly() {
         assertTrue(
             protocol.canHandle(
-                EUCDevice(name = "Veteran Patton", address = "A", manufacturerId = 0, rssi = -50)
+                EUCDevice(name = "Nosfet Aero", address = "A", manufacturerId = 0, rssi = -50)
             )
         )
         assertTrue(
             protocol.canHandle(
-                EUCDevice(name = "Unknown", address = "B", manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM, rssi = -55)
+                EUCDevice(name = "Apex", address = "B", manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM, rssi = -55)
             )
         )
         assertFalse(
             protocol.canHandle(
-                EUCDevice(name = "KS-16X", address = "C", manufacturerId = BLEConstants.MANUFACTURER_KINGSONG, rssi = -60)
-            )
-        )
-        assertFalse(
-            protocol.canHandle(
-                EUCDevice(name = "Nosfet Aero", address = "D", manufacturerId = 0, rssi = -61)
+                EUCDevice(name = "Veteran Patton", address = "C", manufacturerId = 0, rssi = -60)
             )
         )
     }
 
     @Test
-    fun decodeValidFrameEmitsTelemetry() = runBlocking {
-        val frame = createLeaperkimFrame(
+    fun decodeValidNosfetFrameEmitsTelemetry() = runBlocking {
+        val frame = createFrame(
             voltageRaw = 12525,
             speedRaw = 1234,
             distanceRaw = 54321,
@@ -71,52 +58,37 @@ class LeaperkimProtocolTest {
             currentRaw = -250,
             temperatureRaw = 3500,
             chargeMode = 1,
-            versionRaw = 7001
+            versionRaw = 4301
         )
 
         val decodeResult = protocol.decode(frame)
         assertNull(decodeResult)
 
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
-        assertNotNull(telemetry)
-        assertEquals("Leaperkim", telemetry.manufacturer)
-        assertEquals("Patton S", telemetry.model)
-        assertEquals(125.25, telemetry.voltage, 0.01)
-        assertEquals(12.34, telemetry.speed, 0.01)
-        assertEquals(-2.50, telemetry.current, 0.01)
-        assertEquals(35.00, telemetry.temperature, 0.01)
-        assertEquals(54.321, telemetry.distance, 0.001)
-        assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.001)
-        assertEquals("007.0.01", telemetry.firmwareVersion)
+        val telemetry = withTimeout(5_000L) { protocol.dataFlow.first() }
+        assertEquals("Nosfet", telemetry.manufacturer)
+        assertEquals("Nosfet Aero", telemetry.model)
+        assertEquals("043.0.01", telemetry.firmwareVersion)
         assertEquals(100, telemetry.batteryLevel)
         assertTrue(telemetry.isCharging)
-    }
-
-    @Test
-    fun decodeOutOfRangeVoltageFrameIsDropped() = runBlocking {
-        val invalidFrame = createLeaperkimFrame(voltageRaw = 19000)
-        protocol.decode(invalidFrame)
-        val emitted = withTimeoutOrNull(invalidFrameCheckTimeoutMs) { protocol.dataFlow.first() }
-        assertNull("Out-of-range frame should not be emitted", emitted)
     }
 
     @Test
     fun createCommandMapsKnownActions() {
         assertArrayEquals("SetLightON".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_ON, Unit))
         assertArrayEquals("SetLightOFF".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_OFF, Unit))
-        assertArrayEquals(beepCommandPayload, protocol.createCommand(CommandType.BEEP, Unit))
+        assertArrayEquals("b".encodeToByteArray(), protocol.createCommand(CommandType.BEEP, Unit))
     }
 
-    private fun createLeaperkimFrame(
+    private fun createFrame(
         len: Int = defaultFrameLength,
-        voltageRaw: Int = defaultVoltageRaw,
+        voltageRaw: Int = 10000,
         speedRaw: Int = 0,
         distanceRaw: Long = 0,
         totalDistanceRaw: Long = 0,
         currentRaw: Int = 0,
-        temperatureRaw: Int = defaultTemperatureRaw,
+        temperatureRaw: Int = 2500,
         chargeMode: Int = 0,
-        versionRaw: Int = defaultVersionRaw
+        versionRaw: Int = 4300
     ): ByteArray {
         val frame = ByteArray(len + 4)
         frame[0] = 0xDC.toByte()
@@ -145,8 +117,6 @@ class LeaperkimProtocolTest {
         frame[23] = (chargeMode and 0xFF).toByte()
         frame[28] = ((versionRaw shr 8) and 0xFF).toByte()
         frame[29] = (versionRaw and 0xFF).toByte()
-
-        // Keep parser-sensitive bytes valid.
         frame[30] = 0x00
         return frame
     }
