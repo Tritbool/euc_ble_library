@@ -26,19 +26,25 @@ class FrameworkBleBackend(
     override val type: BleBackendType = BleBackendType.FRAMEWORK
     private var listener: BleBackendListener? = null
     private var rawFrameJob: Job? = null
+    private var isInitialized: Boolean = false
 
     override fun initialize() {
         bleManager.initialize()
         installCallbacks()
         installRawFrameForwarder()
+        isInitialized = true
     }
 
     override fun registerProtocol(protocol: EUCProtocol) {
         bleManager.registerProtocol(protocol)
     }
 
+    @Synchronized
     override fun setListener(listener: BleBackendListener?) {
         this.listener = listener
+        if (isInitialized) {
+            installRawFrameForwarder()
+        }
     }
 
     override fun startScan() {
@@ -122,11 +128,12 @@ class FrameworkBleBackend(
         })
     }
 
+    @Synchronized
     private fun installRawFrameForwarder() {
         rawFrameJob?.cancel()
         rawFrameJob = bleManager.rawFrameFlow
             .onEach { payload ->
-                listener?.onEvent(BleBackendEvent.RawFrameReceived(payload.clone()))
+                listener?.onEvent(BleBackendEvent.RawFrameReceived(payload))
             }
             .launchIn(scope)
     }

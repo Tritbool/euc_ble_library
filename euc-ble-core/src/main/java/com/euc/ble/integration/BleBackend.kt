@@ -21,7 +21,18 @@ sealed interface BleBackendEvent {
     data class ServicesDiscovered(val serviceUuids: List<UUID>) : BleBackendEvent
     data class MtuChanged(val mtu: Int) : BleBackendEvent
     data class DataReceived(val data: EUCData) : BleBackendEvent
-    data class RawFrameReceived(val payload: ByteArray) : BleBackendEvent
+    class RawFrameReceived(payload: ByteArray) : BleBackendEvent {
+        // Defensive copy keeps event payload immutable for consumers.
+        val payload: ByteArray = payload.clone()
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is RawFrameReceived) return false
+            return payload.contentEquals(other.payload)
+        }
+
+        override fun hashCode(): Int = payload.contentHashCode()
+    }
     data class Error(val error: BLEException) : BleBackendEvent
 }
 

@@ -15,12 +15,10 @@ class SwitchableBleBackend(
         get() = activeBackend.type
 
     private var listener: BleBackendListener? = null
+    @Volatile
     private var activeBackend: BleBackend = resolve(initialType)
 
-    init {
-        activeBackend.setListener(listener)
-    }
-
+    @Synchronized
     fun switchTo(type: BleBackendType, cleanupPrevious: Boolean = false) {
         if (activeBackend.type == type) return
         val previous = activeBackend
@@ -44,34 +42,46 @@ class SwitchableBleBackend(
         legacyBackend.registerProtocol(protocol)
     }
 
+    @Synchronized
     override fun setListener(listener: BleBackendListener?) {
         this.listener = listener
         activeBackend.setListener(listener)
     }
 
     override fun startScan() {
-        activeBackend.startScan()
+        val backend = activeBackend
+        backend.startScan()
     }
 
     override fun stopScan() {
-        activeBackend.stopScan()
+        val backend = activeBackend
+        backend.stopScan()
     }
 
     override fun connect(device: EUCDevice) {
-        activeBackend.connect(device)
+        val backend = activeBackend
+        backend.connect(device)
     }
 
     override fun disconnect() {
-        activeBackend.disconnect()
+        val backend = activeBackend
+        backend.disconnect()
     }
 
     override fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
-        activeBackend.sendCommand(command, characteristicUuid)
+        val backend = activeBackend
+        backend.sendCommand(command, characteristicUuid)
     }
 
-    override fun getConnectionState(): BLEConstants.ConnectionState = activeBackend.getConnectionState()
+    override fun getConnectionState(): BLEConstants.ConnectionState {
+        val backend = activeBackend
+        return backend.getConnectionState()
+    }
 
-    override fun getConnectedDevice(): EUCDevice? = activeBackend.getConnectedDevice()
+    override fun getConnectedDevice(): EUCDevice? {
+        val backend = activeBackend
+        return backend.getConnectedDevice()
+    }
 
     override fun cleanup() {
         frameworkBackend.cleanup()
