@@ -182,7 +182,7 @@ open class LeaperkimProtocol : EUCProtocol {
         if (current !in -300.0..300.0) return null
         if (temperature !in -50.0..130.0) return null
 
-        val majorVersion = versionRaw / 1000
+        val majorVersion = extractMajorVersion(versionRaw)
         val model = modelByMajorVersion(majorVersion)
         val battery = estimateBatteryPercent(voltageRaw, majorVersion)
 
@@ -252,7 +252,9 @@ open class LeaperkimProtocol : EUCProtocol {
         return battery.roundToInt().coerceIn(0, 100)
     }
 
-    private fun formatVersion(versionRaw: Int): String {
+    protected open fun extractMajorVersion(versionRaw: Int): Int = versionRaw / 1000
+
+    protected open fun formatVersion(versionRaw: Int): String {
         val major = versionRaw / 1000
         val minor = (versionRaw % 1000) / 100
         val patch = versionRaw % 100
