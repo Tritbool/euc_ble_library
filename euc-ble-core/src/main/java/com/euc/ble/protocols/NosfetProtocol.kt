@@ -30,6 +30,15 @@ class NosfetProtocol : LeaperkimProtocol() {
         }
     }
 
+    override fun extractMajorVersion(versionRaw: Int): Int = versionRaw / 100
+
+    override fun formatVersion(versionRaw: Int): String {
+        val major = versionRaw / 100
+        val minor = (versionRaw % 100) / 10
+        val patch = versionRaw % 10
+        return "%03d.%01d.%02d".format(major, minor, patch)
+    }
+
     override fun estimateBatteryPercent(voltageRaw: Int, majorVersion: Int): Int {
         val battery = when (majorVersion) {
             43 -> ((voltageRaw - 9600) / (12525.0 - 9600.0) * 100.0)
