@@ -118,6 +118,10 @@ class WheelLogLeaperkimTest {
             false,
             protocol.canHandle(EUCDevice(name = "KS-16X", address = "D", manufacturerId = BLEConstants.MANUFACTURER_KINGSONG, rssi = -45))
         )
+        assertEquals(
+            false,
+            protocol.canHandle(EUCDevice(name = "Nosfet Aero", address = "E", manufacturerId = 0, rssi = -45))
+        )
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
