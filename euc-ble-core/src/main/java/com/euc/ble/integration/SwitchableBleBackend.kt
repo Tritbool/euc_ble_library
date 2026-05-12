@@ -15,7 +15,6 @@ class SwitchableBleBackend(
         get() = activeBackend.type
 
     private var listener: BleBackendListener? = null
-    @Volatile
     private var activeBackend: BleBackend = resolve(initialType)
 
     @Synchronized
