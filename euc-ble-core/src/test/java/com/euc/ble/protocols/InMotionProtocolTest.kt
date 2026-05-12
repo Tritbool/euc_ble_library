@@ -4,6 +4,8 @@ import com.euc.ble.core.ByteUtils
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -18,9 +20,18 @@ class InMotionProtocolTest {
         private const val MAX_MALFORMED_ROW_RATIO = 0.2
     }
 
+    private lateinit var protocol:InMotionProtocol
+    @BeforeEach
+    fun setUp() {
+        protocol = InMotionProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
     @Test
     fun decodeV9LegacyVectorMatchesExpectedValues() {
-        val protocol = InMotionProtocol()
 
         val packets = listOf(
             "aaaa11088201020c0101010095",
@@ -50,12 +61,10 @@ class InMotionProtocolTest {
         assertEquals(58, decoded.first().batteryLevel)
         assertEquals(0.06, decoded.first().distance, 0.01)
         assertEquals(252.33, decoded.first().totalDistance ?: -1.0, 0.01)
-        protocol.close()
     }
 
     @Test
     fun decodeSkipsBadChecksumAndResyncsOnNextValidFrame() {
-        val protocol = InMotionProtocol()
 
         val valid = ByteUtils.hexToBytes("aaaa11088201020c0101010095")
         val invalid = valid.copyOf().also { bytes ->
@@ -69,12 +78,10 @@ class InMotionProtocolTest {
         // then valid packet should be accepted
         val second = protocol.decode(valid)
         assertEquals(null, second) // main-info packet only updates state
-        protocol.close()
     }
 
     @Test
     fun decodeCanExtractMultipleFramesFromSingleChunk() {
-        val protocol = InMotionProtocol()
 
         val chunk = ByteUtils.hexToBytes(
             "aaaa11088201020c0101010095aaaa11178202413134323139353041303030343635460000000000fd"
@@ -93,12 +100,10 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("A1421950A000465F", data?.serialNumber)
         assertTrue((data?.firmwareVersion ?: "").contains("Main:1.8.38"))
-        protocol.close()
     }
 
     @Test
     fun decodeLegacyV5FCsvFramesProducesTelemetryAndModel() {
-        val protocol = InMotionProtocol()
         val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = MAX_TEST_FRAMES)
         assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
         assertTrue("Expected substantial V5F frame sample", frames.size > MINIMUM_V5F_FRAME_COUNT)
@@ -108,12 +113,10 @@ class InMotionProtocolTest {
         assertTrue(decoded.any { it.model.contains("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
-        protocol.close()
     }
 
     @Test
     fun decodeLegacyV8SCsvFramesProducesTelemetryAndModel() {
-        val protocol = InMotionProtocol()
         val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = MAX_TEST_FRAMES)
         assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
         assertTrue("Expected substantial V8S frame sample", frames.size > MINIMUM_V8S_FRAME_COUNT)
@@ -123,7 +126,6 @@ class InMotionProtocolTest {
         assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
-        protocol.close()
     }
 
     private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {

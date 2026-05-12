@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -34,6 +36,18 @@ class WheelLogKingsongTest {
     }
 
     private val testDataPath = "/ble_frames/kingsong/RAW_WHEELLOG/"
+
+    private lateinit var protocol: KingsongProtocol
+
+    @BeforeEach
+    fun setUp() {
+        protocol = KingsongProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
 
     private fun isA9TelemetryFrame(frame: BleFrame): Boolean {
         return frame.bleData.size > 16 && (frame.bleData[16].toInt() and 0xFF) == 0xA9
@@ -68,7 +82,6 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongFramesDecoding() = runBlocking {
-        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 40000)
         
         assertTrue("Should load some frames", frames.isNotEmpty())
@@ -101,7 +114,6 @@ class WheelLogKingsongTest {
         println("Success rate: ${(successfulDecodes * 100.0 / telemetryFrames.size).toInt()}%")
         
         assertTrue("Should decode most frames successfully", successfulDecodes > telemetryFrames.size * 0.8)
-        protocol.close()
     }
 
     /**
@@ -109,7 +121,6 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongFramesConsistency() = runBlocking {
-        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 200)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
@@ -138,7 +149,6 @@ class WheelLogKingsongTest {
         }
         
         println("Consistency test passed for ${decodedFrames.size} frames")
-        protocol.close()
     }
 
     /**
@@ -146,7 +156,6 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongDecodingPerformance() = runBlocking {
-        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
@@ -168,7 +177,6 @@ class WheelLogKingsongTest {
         
         assertTrue("Should decode at reasonable speed", framesPerSecond > MIN_DECODE_FPS)
         assertTrue("Should decode most frames", decodedCount > telemetryFrames.size * 0.7)
-        protocol.close()
     }
 
     /**
@@ -215,7 +223,6 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testKnownKingsongFramePatterns() = runBlocking {
-        val protocol = KingsongProtocol()
         val frames = loadKingsongFrames("$testDataPath/RAW_2023_09_01_18_32_03.csv", maxFrames = 200)
 
         val decoded = decodeA9Frames(protocol, frames, timeoutMs = 10000L)
@@ -234,7 +241,6 @@ class WheelLogKingsongTest {
             println("  Frame 2: ${describeFrame(decoded2)}")
             println("  Frame 3: ${describeFrame(decoded3)}")
         }
-        protocol.close()
     }
 
     /**

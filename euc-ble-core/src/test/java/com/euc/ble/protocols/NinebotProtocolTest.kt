@@ -5,12 +5,24 @@ import com.euc.ble.models.EUCDevice
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 class NinebotProtocolTest {
 
+    private lateinit var protocol: NinebotProtocol
+    @BeforeEach
+    fun setUp() {
+        protocol = NinebotProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
+
     @Test
     fun canHandleNinebotIdentifiersAndNames() {
-        val protocol = NinebotProtocol()
         val byManufacturer = EUCDevice(name = "Unknown", address = "A", manufacturerId = BLEConstants.MANUFACTURER_NINEBOT, rssi = -45)
         val byName = EUCDevice(name = "Ninebot Z10", address = "B", manufacturerId = 0, rssi = -60)
         val bySegwayName = EUCDevice(name = "Segway Z8", address = "C", manufacturerId = 0, rssi = -70)
@@ -20,12 +32,10 @@ class NinebotProtocolTest {
         assertTrue(protocol.canHandle(byName))
         assertTrue(protocol.canHandle(bySegwayName))
         assertEquals(false, protocol.canHandle(other))
-        protocol.close()
     }
 
     @Test
     fun decodeWheelLogStyleFrameProducesTelemetry() {
-        val protocol = NinebotProtocol()
         val frame = byteArrayOf(
             0x55.toByte(),
             0x18.toByte(),
@@ -50,12 +60,10 @@ class NinebotProtocolTest {
         assertEquals(72, decoded?.batteryLevel)
         assertEquals(true, decoded?.isCharging)
         assertEquals(200L, decoded?.rideTime)
-        protocol.close()
     }
 
     @Test
     fun createCommandSupportsCommonControlCommands() {
-        val protocol = NinebotProtocol()
         val lightOn = protocol.createCommand(CommandType.LIGHT_ON, Unit)
         val lock = protocol.createCommand(CommandType.LOCK, Unit)
         val unsupported = protocol.createCommand(CommandType.REQUEST_FIRMWARE, Unit)
@@ -63,6 +71,5 @@ class NinebotProtocolTest {
         assertTrue(lightOn.isNotEmpty())
         assertTrue(lock.isNotEmpty())
         assertEquals(true, unsupported.isEmpty())
-        protocol.close()
     }
 }

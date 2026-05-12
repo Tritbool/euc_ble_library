@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -18,10 +20,20 @@ import kotlin.math.abs
 class WheelLogNosfetTest {
 
     private val resourceDir = "/ble_frames/nosfet/RAW_WHEELLOG/"
+    private lateinit var protocol: NosfetProtocol
+
+    @BeforeEach
+    fun setUp() {
+        protocol = NosfetProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
 
     @Test
     fun decodeRealNosfetWheelLogFrames() = runBlocking {
-        val protocol = NosfetProtocol()
         val frames = loadFrames("${resourceDir}RAW_2026_05_08_18_55_45.csv", maxFrames = 7000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
@@ -42,7 +54,6 @@ class WheelLogNosfetTest {
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
         assertTrue(decoded.all { it.rideTime >= 0 })
         assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
-        protocol.close()
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {

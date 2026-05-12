@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -28,9 +30,19 @@ class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
 
+    private lateinit var protocol: GotwayProtocol
+    @BeforeEach
+    fun setUp() {
+        protocol = GotwayProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
+
     @Test
     fun testLoadAndDecodeRealFrames() = runBlocking {
-        val protocol = GotwayProtocol()
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1000)
         assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
 
@@ -103,12 +115,10 @@ class WheelLogGotwayTest {
                 vendorMismatch <= decodedCount / 4
             )
         }
-        protocol.close()
     }
 
     @Test
     fun testDecodedFramesConsistencyShortSequence() = runBlocking {
-        val protocol = GotwayProtocol()
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_24_18_43_22.csv", maxFrames = 200)
 
         // Start collecting in background
@@ -151,7 +161,6 @@ class WheelLogGotwayTest {
                 )
             }
         }
-        protocol.close()
     }
 
     @Test
@@ -200,7 +209,6 @@ class WheelLogGotwayTest {
 
     @Test
     fun testFrameReassemblyWithFragmentedData() = runBlocking {
-        val protocol = GotwayProtocol()
 
         // Create a valid complete frame
         val validFrame = createValidGotwayFrame(
@@ -228,7 +236,6 @@ class WheelLogGotwayTest {
         val results = collector.await()
         assertEquals("Should decode one reassembled frame", 1, results.size)
         assertEquals(67.2, results[0].voltage, 0.01)
-        protocol.close()
     }
 
     /**

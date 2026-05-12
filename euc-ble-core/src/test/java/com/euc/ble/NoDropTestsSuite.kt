@@ -28,24 +28,6 @@ import org.junit.platform.suite.api.Suite
 
 @Suite
 @SelectClasses(
-    FrameReassemblerStaticFlowTest::class,
-    ByteUtilsTest::class,
-    ByteUtilsSafeAccessTest::class,
-    EUCDataTest::class,
-    GotwayProtocolTest::class,
-    InMotionProtocolTest::class,
-    GotwayFrameReassemblerTest::class,
-    KingsongProtocolAsyncTest::class,
-    BleFrequencyAnalysisTest::class,
-    WheelLogGotwayTest::class,
-    WheelLogInMotionTest::class,
-    WheelLogNinebotTest::class,
-    WheelLogLeaperkimTest::class,
-    WheelLogNosfetTest::class,
-    WheelLogKingsongTest::class,
-    LeaperkimProtocolTest::class,
-    NosfetProtocolTest::class,
-    NinebotProtocolTest::class,
     GotwayNoDropTest::class,
     InmotionNoDropTest::class,
     KingsongNoDropTest::class,
@@ -53,4 +35,6 @@ import org.junit.platform.suite.api.Suite
     NosfetNoDropTest::class,
     NinebotNoDropTest::class
 )
-class AllTestsSuite
+
+class NoDropTestsSuite {
+}

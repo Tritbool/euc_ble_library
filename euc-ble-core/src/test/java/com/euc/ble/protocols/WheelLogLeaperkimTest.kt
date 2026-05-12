@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -25,9 +27,20 @@ class WheelLogLeaperkimTest {
     private val tripResetMaxDistanceAfterReset = 1.0
     private val tripResetMinDropDistance = 10.0
 
+    private lateinit var protocol: LeaperkimProtocol
+
+    @BeforeEach
+    fun setUp() {
+        protocol = LeaperkimProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
+
     @Test
     fun decodeRealLeaperkimWheelLogFrames() = runBlocking {
-        val protocol = LeaperkimProtocol()
         val frames = loadFrames("${resourceDir}RAW_2026_04_30_07_04_10.csv", maxFrames = 70000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
@@ -50,12 +63,10 @@ class WheelLogLeaperkimTest {
         assertTrue(decoded.any { it.model.contains("Patton", ignoreCase = true) })
         assertTrue(decoded.all { it.rideTime >= 0 })
         assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
-        protocol.close()
     }
 
     @Test
     fun decodedLeaperkimFramesAreConsistent() = runBlocking {
-        val protocol = LeaperkimProtocol()
         val frames = loadFrames("${resourceDir}RAW_2026_04_30_20_08_09.csv", maxFrames = 9000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
@@ -94,7 +105,6 @@ class WheelLogLeaperkimTest {
                 isLikelyTripResetToZero(prev.distance, cur.distance) || (cur.distance >= prev.distance - 1.0)
             )
         }
-        protocol.close()
     }
 
     private fun isLikelyTripResetToZero(previousDistance: Double, currentDistance: Double): Boolean {
@@ -105,7 +115,6 @@ class WheelLogLeaperkimTest {
 
     @Test
     fun canHandleLeaperkimAndVeteranDeviceNames() {
-        val protocol = LeaperkimProtocol()
         val devices = listOf(
             EUCDevice(name = "Patton-S", address = "A", manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM, rssi = -50),
             EUCDevice(name = "Veteran Patton", address = "B", manufacturerId = 0, rssi = -60),
@@ -120,7 +129,6 @@ class WheelLogLeaperkimTest {
             false,
             protocol.canHandle(EUCDevice(name = "Nosfet Aero", address = "E", manufacturerId = 0, rssi = -45))
         )
-        protocol.close()
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {

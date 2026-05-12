@@ -3,6 +3,8 @@ package com.euc.ble.protocols
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -16,9 +18,21 @@ class WheelLogNinebotTest {
 
     private val resourceDir = "/ble_frames/ninebot/RAW_WHEELLOG/"
 
+    private lateinit var protocol: NinebotProtocol
+
+    @BeforeEach
+    fun setUp() {
+        protocol = NinebotProtocol()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        protocol.close()
+    }
+
+
     @Test
     fun decodeRealNinebotWheelLogFrames() {
-        val protocol = NinebotProtocol()
         val frames = loadFrames("${resourceDir}RAW_2023_09_09_11_02_51.csv", maxFrames = 5000)
         assertTrue("Expected Ninebot WheelLog frames", frames.isNotEmpty())
 
@@ -29,7 +43,6 @@ class WheelLogNinebotTest {
         assertTrue(decoded.all { it.voltage in 20.0..150.0 })
         assertTrue(decoded.all { it.speed in -120.0..120.0 })
         assertTrue(decoded.any { it.model.contains("Ninebot", ignoreCase = true) })
-        protocol.close()
     }
 
     @Test
@@ -42,19 +55,16 @@ class WheelLogNinebotTest {
         )
 
         files.forEach { fileName ->
-            val protocol = NinebotProtocol()
             val frames = loadFrames("$resourceDir$fileName", maxFrames = 2000)
             assertTrue("Expected frames in $fileName", frames.isNotEmpty())
 
             val decodedCount = frames.count { protocol.decode(it) != null }
             assertTrue("Expected decoded telemetry in $fileName", decodedCount > 0)
-            protocol.close()
         }
     }
 
     @Test
     fun decodedNinebotTelemetryIsReasonablyConsistent() {
-        val protocol = NinebotProtocol()
         val frames = loadFrames("${resourceDir}RAW_2023_09_07_11_29_37.csv", maxFrames = 1200)
         assertTrue("Expected Ninebot WheelLog frames", frames.isNotEmpty())
 
@@ -68,7 +78,6 @@ class WheelLogNinebotTest {
             assertTrue("Speed jump too large", abs(current.speed - previous.speed) < 25.0)
             assertTrue("Battery jump too large", abs(current.batteryLevel - previous.batteryLevel) <= 5)
         }
-        protocol.close()
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
