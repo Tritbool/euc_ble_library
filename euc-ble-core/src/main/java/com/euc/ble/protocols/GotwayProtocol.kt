@@ -158,6 +158,12 @@ class GotwayProtocol : EUCProtocol {
 
     override fun close() {
         scope.cancel()
+        smartBmsCellPages.clear()
+        lastKnownVoltage = null
+        lastKnownCurrent = null
+        lastKnownTripDistance = 0.0
+        lastKnownTotalDistance = null
+        lastKnownMotorTemperature = null
         _channel.close()
     }
 
@@ -205,9 +211,9 @@ class GotwayProtocol : EUCProtocol {
         val voltage = lastKnownVoltage ?: fallbackVoltage
         if (voltage > 300.0) return null  // pareil pour voltage
 
-        val shortTripDistanceKm = ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
-        val fallbackTripDistanceKm = (ByteUtils.tryGetUnsignedIntBE(data, 6) ?: 0L).toDouble() / 1000.0
-        val tripDistanceKm = shortTripDistanceKm ?: fallbackTripDistanceKm
+        val primaryTripDistanceKm = ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
+        val legacyTripDistanceKm = (ByteUtils.tryGetUnsignedIntBE(data, 6) ?: 0L).toDouble() / 1000.0
+        val tripDistanceKm = primaryTripDistanceKm ?: legacyTripDistanceKm
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
@@ -292,6 +298,8 @@ class GotwayProtocol : EUCProtocol {
         val batteryCurrentRaw = ByteUtils.tryGetSignedShortBE(data, 2) ?: return null
         val motorTemperatureRaw = ByteUtils.tryGetSignedShortBE(data, 6) ?: return null
 
+        // WheelLog/Begode Type 7 convention: positive raw value means charge/regen, so
+        // published battery current is inverted to match discharge-positive telemetry.
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
 
