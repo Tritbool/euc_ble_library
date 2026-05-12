@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
+import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.Assertions.assertNotEquals

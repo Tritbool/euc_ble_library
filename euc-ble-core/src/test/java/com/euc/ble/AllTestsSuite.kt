@@ -19,6 +19,7 @@ import com.euc.ble.protocols.NosfetNoDropTest
 import com.euc.ble.protocols.NosfetProtocolTest
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogInMotionTest
+import com.euc.ble.protocols.WheelLogKingsongTest
 import com.euc.ble.protocols.WheelLogLeaperkimTest
 import com.euc.ble.protocols.WheelLogNinebotTest
 import com.euc.ble.protocols.WheelLogNosfetTest
@@ -41,6 +42,7 @@ import org.junit.platform.suite.api.Suite
     WheelLogNinebotTest::class,
     WheelLogLeaperkimTest::class,
     WheelLogNosfetTest::class,
+    WheelLogKingsongTest::class,
     LeaperkimProtocolTest::class,
     NosfetProtocolTest::class,
     NinebotProtocolTest::class,
