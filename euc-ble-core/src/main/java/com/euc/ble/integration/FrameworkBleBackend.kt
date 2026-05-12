@@ -26,8 +26,10 @@ class FrameworkBleBackend(
     override val type: BleBackendType = BleBackendType.FRAMEWORK
     private var listener: BleBackendListener? = null
     private var rawFrameJob: Job? = null
+    @Volatile
     private var isInitialized: Boolean = false
 
+    @Synchronized
     override fun initialize() {
         bleManager.initialize()
         installCallbacks()
