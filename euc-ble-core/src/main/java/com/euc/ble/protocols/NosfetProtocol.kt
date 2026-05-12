@@ -34,8 +34,8 @@ class NosfetProtocol : LeaperkimProtocol() {
 
     override fun formatVersion(versionRaw: Int): String {
         val major = versionRaw / 100
-        val minor = (versionRaw % 100) / 10
-        val patch = versionRaw % 10
+        val minor = 0
+        val patch = versionRaw % 100
         return "%03d.%01d.%02d".format(major, minor, patch)
     }
 
