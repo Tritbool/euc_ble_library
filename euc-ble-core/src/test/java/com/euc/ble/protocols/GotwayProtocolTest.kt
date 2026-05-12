@@ -120,6 +120,73 @@ class GotwayProtocolTest {
         return frame
     }
 
+    private fun createGotwayNewBoardTypeAFrame(
+        voltageRaw: Int,
+        speedRaw: Int,
+        tripDistanceRaw: Int,
+        phaseCurrentRaw: Int,
+        tempRaw: Int
+    ): ByteArray {
+        val frame = ByteArray(24)
+        frame[0] = 0x55.toByte()
+        frame[1] = 0xAA.toByte()
+        frame[2] = ((voltageRaw shr 8) and 0xFF).toByte()
+        frame[3] = (voltageRaw and 0xFF).toByte()
+        frame[4] = ((speedRaw shr 8) and 0xFF).toByte()
+        frame[5] = (speedRaw and 0xFF).toByte()
+        frame[6] = 0x00
+        frame[7] = 0x00
+        frame[8] = ((tripDistanceRaw shr 8) and 0xFF).toByte()
+        frame[9] = (tripDistanceRaw and 0xFF).toByte()
+        frame[10] = ((phaseCurrentRaw shr 8) and 0xFF).toByte()
+        frame[11] = (phaseCurrentRaw and 0xFF).toByte()
+        frame[12] = ((tempRaw shr 8) and 0xFF).toByte()
+        frame[13] = (tempRaw and 0xFF).toByte()
+        frame[14] = 0x00
+        frame[15] = 0x00
+        frame[16] = 0x00
+        frame[17] = 0x00
+        frame[18] = 0x00
+        frame[19] = 0x18
+        frame[20] = 0x5A.toByte()
+        frame[21] = 0x5A.toByte()
+        frame[22] = 0x5A.toByte()
+        frame[23] = 0x5A.toByte()
+        return frame
+    }
+
+    private fun createGotwayFrameType1(batteryVoltageTenth: Int): ByteArray {
+        val frame = ByteArray(24)
+        frame[0] = 0x55.toByte()
+        frame[1] = 0xAA.toByte()
+        frame[6] = ((batteryVoltageTenth shr 8) and 0xFF).toByte()
+        frame[7] = (batteryVoltageTenth and 0xFF).toByte()
+        frame[18] = 0x01
+        frame[19] = 0x00
+        frame[20] = 0x5A.toByte()
+        frame[21] = 0x5A.toByte()
+        frame[22] = 0x5A.toByte()
+        frame[23] = 0x5A.toByte()
+        return frame
+    }
+
+    private fun createGotwayFrameType7(batteryCurrentRaw: Int, motorTempRaw: Int): ByteArray {
+        val frame = ByteArray(24)
+        frame[0] = 0x55.toByte()
+        frame[1] = 0xAA.toByte()
+        frame[2] = ((batteryCurrentRaw shr 8) and 0xFF).toByte()
+        frame[3] = (batteryCurrentRaw and 0xFF).toByte()
+        frame[6] = ((motorTempRaw shr 8) and 0xFF).toByte()
+        frame[7] = (motorTempRaw and 0xFF).toByte()
+        frame[18] = 0x07
+        frame[19] = 0x18
+        frame[20] = 0x5A.toByte()
+        frame[21] = 0x5A.toByte()
+        frame[22] = 0x5A.toByte()
+        frame[23] = 0x5A.toByte()
+        return frame
+    }
+
     @Test
     fun testCanHandle() {
         val gotwayDevice = MockBLEUtils.createMockDevice(
@@ -306,6 +373,45 @@ class GotwayProtocolTest {
         }
 
         assertEquals(-5.0, result.current, 0.01)
+    }
+
+    @Test
+    fun testDecodeTypeAUsesTripDistanceFieldAtBytes8To9() = runBlocking {
+        val frame = createGotwayNewBoardTypeAFrame(
+            voltageRaw = 0x1775,
+            speedRaw = 0x0538,
+            tripDistanceRaw = 0x02EE,
+            phaseCurrentRaw = -1180,
+            tempRaw = 0x1481
+        )
+
+        protocol.decode(frame)
+
+        val result = withTimeout(10000) {
+            protocol.dataFlow.first()
+        }
+
+        assertEquals(0.75, result.distance, 0.001)
+        assertEquals(48.096, result.speed, 0.01)
+    }
+
+    @Test
+    fun testDecodeType7UsesLatestType1VoltageAndPublishesMotorTemperature() = runBlocking {
+        val type1 = createGotwayFrameType1(batteryVoltageTenth = 1201) // 120.1V
+        val type7 = createGotwayFrameType7(batteryCurrentRaw = 556, motorTempRaw = 35)
+
+        protocol.decode(type1)
+        protocol.decode(type7)
+
+        val result = withTimeout(10000) {
+            protocol.dataFlow.first()
+        }
+
+        assertEquals("Gotway (Type 7)", result.model)
+        assertEquals(120.1, result.voltage, 0.01)
+        assertEquals(-5.56, result.current, 0.01)
+        assertNotNull(result.motorTemperature)
+        assertEquals(35.0, result.motorTemperature!!, 0.01)
     }
 
     @Test

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.UUID
+import kotlin.math.abs
 
 /**
  * Gotway EUC Protocol Implementation
@@ -117,6 +118,12 @@ class GotwayProtocol : EUCProtocol {
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var lastKnownVoltage = 0.0
+    private var lastKnownCurrent = 0.0
+    private var lastKnownTripDistance = 0.0
+    private var lastKnownTotalDistance: Double? = null
+    private var lastKnownMotorTemperature: Double? = null
+    private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
 
     init {
         // Start observing frames asynchronously
@@ -164,7 +171,20 @@ class GotwayProtocol : EUCProtocol {
     private fun processFrame(frame: ByteArray) {
         val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {
             0x00 -> parseTypeA(frame)
+            0x01 -> {
+                parseType1(frame)
+                null
+            }
+            0x02 -> {
+                parseType2or3(frame, bmsIndex = 0)
+                null
+            }
+            0x03 -> {
+                parseType2or3(frame, bmsIndex = 1)
+                null
+            }
             0x04 -> parseTypeB(frame)
+            0x07 -> parseType7(frame)
             else -> null // Ignore unknown frame types from the reassembler
         }
 
@@ -173,30 +193,34 @@ class GotwayProtocol : EUCProtocol {
     @VisibleForTesting
     private fun parseTypeA(data: ByteArray): EUCData? {
 
-        val speedRaw = ByteUtils.tryGetUnsignedShortBE(data, 4) ?: return null
+        val speedRaw = ByteUtils.tryGetSignedShortBE(data, 4)?.toInt() ?: return null
         val speed = (speedRaw * 3.6) / 100.0
-        if (speed > 200.0) return null  // frame corrompue ou sentinel
+        if (abs(speed) > 200.0) return null  // frame corrompue ou sentinel
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
-        val voltage = voltageRaw / 100.0
+        val fallbackVoltage = voltageRaw / 100.0
+        val voltage = if (lastKnownVoltage > 0.0) lastKnownVoltage else fallbackVoltage
         if (voltage > 300.0) return null  // pareil pour voltage
 
-        val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 6) ?: return null
+        val tripDistanceKm = (ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0))
+            ?: ((ByteUtils.tryGetUnsignedIntBE(data, 6) ?: 0L).toDouble() / 1000.0)
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
-        val distanceMeters = distanceRaw.toDouble()
-        val current = currentRaw / 100.0
+        val currentFromTypeA = currentRaw / 100.0
+        val current = if (lastKnownCurrent != 0.0) lastKnownCurrent else currentFromTypeA
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
         val power = voltage * current
+        val battery = estimateBatteryLevel(voltage)
+        lastKnownTripDistance = tripDistanceKm
 
         return EUCData(
             speed = speed,
             voltage = voltage,
             current = current,
             temperature = temperature,
-            batteryLevel = 0, // Not available in this frame
-            distance = distanceMeters,
+            batteryLevel = battery,
+            distance = tripDistanceKm,
             power = power,
             timestamp = System.currentTimeMillis(),
             rawData = data,
@@ -206,8 +230,9 @@ class GotwayProtocol : EUCProtocol {
             firmwareVersion = null,
             isCharging = false, // Not available in this frame
             rideTime = 0,
-            cellVoltages = null, // Not available in standard 24-byte frame
-            motorTemperature = null
+            cellVoltages = getCombinedCellVoltages(),
+            motorTemperature = lastKnownMotorTemperature,
+            totalDistance = lastKnownTotalDistance
         )
     }
     @VisibleForTesting
@@ -215,6 +240,7 @@ class GotwayProtocol : EUCProtocol {
         // Frame B primarily provides total distance. Other fields are not documented
         // and may not be present.
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
+        lastKnownTotalDistance = distanceRaw.toDouble()
 
         return EUCData(
             // The following are placeholders as they are not in this frame type
@@ -234,8 +260,74 @@ class GotwayProtocol : EUCProtocol {
             isCharging = false,
             rideTime = 0,
             cellVoltages = null,
-            motorTemperature = null
+            motorTemperature = null,
+            totalDistance = lastKnownTotalDistance
         )
+    }
+    @VisibleForTesting
+    private fun parseType1(data: ByteArray) {
+        val batteryVoltageTenth = ByteUtils.tryGetUnsignedShortBE(data, 6) ?: return
+        lastKnownVoltage = batteryVoltageTenth / 10.0
+    }
+
+    @VisibleForTesting
+    private fun parseType2or3(data: ByteArray, bmsIndex: Int) {
+        val page = ByteUtils.tryGetUnsignedByte(data, 19) ?: return
+        val cells = smartBmsCellPages.getOrPut(bmsIndex) { DoubleArray(56) }
+        for (i in 0 until 8) {
+            val cellRaw = ByteUtils.tryGetUnsignedShortBE(data, (i + 1) * 2) ?: continue
+            val cellIndex = page * 8 + i
+            if (cellIndex in cells.indices) {
+                cells[cellIndex] = cellRaw / 1000.0
+            }
+        }
+    }
+
+    @VisibleForTesting
+    private fun parseType7(data: ByteArray): EUCData? {
+        val batteryCurrentRaw = ByteUtils.tryGetSignedShortBE(data, 2) ?: return null
+        val motorTemperatureRaw = ByteUtils.tryGetSignedShortBE(data, 6) ?: return null
+
+        lastKnownCurrent = (-batteryCurrentRaw) / 100.0
+        lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
+
+        val voltage = lastKnownVoltage
+        val current = lastKnownCurrent
+        val power = voltage * current
+
+        return EUCData(
+            speed = 0.0,
+            voltage = voltage,
+            current = current,
+            temperature = 0.0,
+            batteryLevel = estimateBatteryLevel(voltage),
+            distance = lastKnownTripDistance,
+            power = power,
+            timestamp = System.currentTimeMillis(),
+            rawData = data,
+            manufacturer = manufacturer,
+            model = "Gotway (Type 7)",
+            serialNumber = null,
+            firmwareVersion = null,
+            isCharging = false,
+            rideTime = 0,
+            cellVoltages = getCombinedCellVoltages(),
+            motorTemperature = lastKnownMotorTemperature,
+            totalDistance = lastKnownTotalDistance
+        )
+    }
+
+    private fun estimateBatteryLevel(voltage: Double): Int {
+        if (voltage <= 0.0) return 0
+        return (((voltage - 52.0) / (134.4 - 52.0)) * 100.0).toInt().coerceIn(0, 100)
+    }
+
+    private fun getCombinedCellVoltages(): List<Double>? {
+        if (smartBmsCellPages.isEmpty()) return null
+        val combined = smartBmsCellPages.values
+            .flatMap { it.asList() }
+            .filter { it > 0.0 }
+        return combined.ifEmpty { null }
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
