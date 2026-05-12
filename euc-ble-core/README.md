@@ -126,6 +126,54 @@ bleManager.sendCommand(lightOnCommand, device.getDataCharacteristicUUID())
 bleManager.disconnect()
 ```
 
+## WheelLog Migration Adapter Layer
+
+The library now includes a backend abstraction to help migrate WheelLog BLE incrementally:
+
+- `BleBackend`: common contract consumed by app/UI layers
+- `FrameworkBleBackend`: adapter over `BLEManager` (new framework)
+- `LegacyBleBackend`: wrapper over a legacy BLE engine contract
+- `SwitchableBleBackend`: runtime switch between `LEGACY` and `FRAMEWORK`
+
+### Minimal parity checklist (before legacy removal)
+
+- Scan start/stop + discovered devices
+- Connect/disconnect + connection state changes
+- BLE data stream decoding events
+- Command write path
+- Error events
+- Raw notification frames (`RawFrameReceived`)
+- Reconnection behavior
+
+### Runtime switch example
+
+```kotlin
+val backend = BleBackendFactory.fromFlag(
+    useLegacy = BuildConfig.USE_LEGACY_BLE,
+    frameworkBackend = FrameworkBleBackend(bleManager),
+    legacyBackend = LegacyBleBackend(myLegacyEngine)
+)
+
+backend.setListener { event ->
+    when (event) {
+        is BleBackendEvent.DeviceDiscovered -> { /* update list */ }
+        is BleBackendEvent.DataReceived -> { /* update dashboard */ }
+        is BleBackendEvent.RawFrameReceived -> { /* optional raw log */ }
+        else -> Unit
+    }
+}
+
+backend.initialize()
+backend.startScan()
+```
+
+To switch backend at runtime for A/B validation:
+
+```kotlin
+backend.switchTo(BleBackendType.LEGACY)
+backend.switchTo(BleBackendType.FRAMEWORK)
+```
+
 ### Client Example: Save Raw + Decoded Frames to Two CSV Files
 
 ```kotlin

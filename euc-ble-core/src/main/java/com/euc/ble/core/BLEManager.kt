@@ -597,11 +597,11 @@ sealed interface ScanCallback {
 }
 
 sealed class ConnectionCallback : com.euc.ble.core.ScanCallback {
-    fun onConnected() {}
-    fun onDisconnected() {}
-    fun onConnectionFailed(error: BLEException) {}
-    fun onServicesDiscovered(services: List<BluetoothGattService>) {}
-    fun onMtuChanged(mtu: Int) {}
+    open fun onConnected() {}
+    open fun onDisconnected() {}
+    open fun onConnectionFailed(error: BLEException) {}
+    open fun onServicesDiscovered(services: List<BluetoothGattService>) {}
+    open fun onMtuChanged(mtu: Int) {}
 }
 
 interface DataCallback {
