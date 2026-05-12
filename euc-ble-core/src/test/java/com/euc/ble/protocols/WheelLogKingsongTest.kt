@@ -69,7 +69,7 @@ class WheelLogKingsongTest {
     @Test
     fun testRealKingsongFramesDecoding() = runBlocking {
         val protocol = KingsongProtocol()
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_19_18_34_07.csv", maxFrames = 50)
+        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 40000)
         
         assertTrue("Should load some frames", frames.isNotEmpty())
 

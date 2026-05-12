@@ -203,7 +203,7 @@ class GotwayProtocol : EUCProtocol {
     private fun parseTypeA(data: ByteArray): EUCData? {
 
         val speedRaw = ByteUtils.tryGetSignedShortBE(data, 4)?.toInt() ?: return null
-        val speed = (speedRaw * 3.6) / 100.0
+        val speed = abs((speedRaw * 3.6) / 100.0)
         if (abs(speed) > 200.0) return null  // frame corrompue ou sentinel
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
@@ -211,9 +211,11 @@ class GotwayProtocol : EUCProtocol {
         val voltage = lastKnownVoltage ?: fallbackVoltage
         if (voltage > 300.0) return null  // pareil pour voltage
 
-        val primaryTripDistanceKm = ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
-        val legacyTripDistanceKm = (ByteUtils.tryGetUnsignedIntBE(data, 6) ?: 0L).toDouble() / 1000.0
-        val tripDistanceKm = primaryTripDistanceKm ?: legacyTripDistanceKm
+        val frameVariant = ByteUtils.tryGetUnsignedByte(data, 19)
+        val tripDistanceKm = when (frameVariant) {
+            0x18 -> ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
+            else -> ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()
+        } ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
