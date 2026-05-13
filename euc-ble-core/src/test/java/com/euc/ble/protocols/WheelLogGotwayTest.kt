@@ -164,6 +164,69 @@ class WheelLogGotwayTest {
     }
 
     @Test
+    fun testTypeBContentDecodedFromWheelLogCapture() = runBlocking {
+        val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1200)
+        assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        val collectorJob = launch {
+            protocol.dataFlow.collect { data ->
+                decoded.add(data)
+            }
+        }
+
+        delay(100)
+        frames.forEach { frame ->
+            protocol.decode(frame.bleData)
+        }
+        delay(3000)
+        collectorJob.cancel()
+
+        val typeBFrames = decoded.filter { it.model == "Gotway (Type B)" }
+        assertTrue("Aucune frame Type B décodée depuis la capture WheelLog", typeBFrames.isNotEmpty())
+
+        typeBFrames.forEach { data ->
+            val raw = data.rawData
+            assertEquals("Type de frame inattendu", 0x04, raw[18].toInt() and 0xFF)
+
+            val expectedDistance = ByteUtils.tryGetUnsignedIntBE(raw, 2)?.toDouble()
+            val settings = ByteUtils.tryGetUnsignedShortBE(raw, 6)
+            val expectedPedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }
+            val expectedAlarmMode = settings?.let { (it shr 10) and 0x03 }
+            val expectedRollAngleMode = settings?.let { (it shr 7) and 0x03 }
+            val expectedUsesMiles = settings?.let { (it and 0x01) == 1 }
+            val expectedAutoPowerOff = ByteUtils.tryGetUnsignedShortBE(raw, 8)
+            val expectedTiltBack = ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < 100 }
+            val expectedLedMode = ByteUtils.tryGetUnsignedByte(raw, 13)
+            val expectedAlertFlags = ByteUtils.tryGetUnsignedByte(raw, 14)
+            val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
+            val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
+
+            assertNotNull("Distance Type B non lisible", expectedDistance)
+            assertEquals(expectedDistance!!, data.distance, 0.01)
+            assertEquals(expectedDistance, data.totalDistance, 0.01)
+
+            assertEquals(expectedPedalsMode, data.pedalsMode)
+            assertEquals(expectedAlarmMode, data.alarmMode)
+            assertEquals(expectedRollAngleMode, data.rollAngleMode)
+            assertEquals(expectedUsesMiles, data.usesMiles)
+            assertEquals(expectedAutoPowerOff, data.autoPowerOffMinutes)
+            assertEquals(expectedTiltBack, data.tiltBackSpeed)
+            assertEquals(expectedLedMode, data.ledMode)
+            assertEquals(expectedAlertFlags, data.alertFlags)
+            assertEquals(expectedLightMode, data.lightMode)
+            assertEquals(expectedWheelAlarm, data.wheelAlarm)
+
+            assertEquals(0.0, data.speed, 0.01)
+            assertEquals(0.0, data.voltage, 0.01)
+            assertEquals(0.0, data.current, 0.01)
+            assertEquals(0.0, data.temperature, 0.01)
+            assertEquals(0, data.batteryLevel)
+            assertEquals(0.0, data.power, 0.01)
+        }
+    }
+
+    @Test
     fun testFrameReassemblerDirectlyWithRealData() = runBlocking {
         val frameParser= FixedSizeFrameParser(GotwayProtocol.FRAME_SIZE, GotwayProtocol.HEADER,
             GotwayProtocol.FOOTER)
