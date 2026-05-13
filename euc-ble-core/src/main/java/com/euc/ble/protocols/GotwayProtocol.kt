@@ -336,6 +336,8 @@ class GotwayProtocol : EUCProtocol {
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
+            // WheelLog maps Type 7 PWM as whole-percent raw values (output = raw * 100),
+            // while Type A fallback uses tenths of percent (output = raw * 10).
             val truePwm = abs(raw.toDouble())
             // WheelLog only switches to Type 7 as authoritative PWM once a non-zero value is
             // observed; keep the latest Type A fallback when Type 7 reports zero/unset.
