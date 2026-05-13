@@ -134,7 +134,7 @@ class InMotionProtocolTest {
     fun createCommandSupportsV2LightBrightness() {
         val cmd = protocol.createCommand(CommandType.LIGHT_BRIGHTNESS, 70)
         assertArrayEquals(
-            ByteUtils.hexToBytes("AAAA1402602B465F"),
+            ByteUtils.hexToBytes("AAAA1403602B461A"),
             cmd
         )
     }
