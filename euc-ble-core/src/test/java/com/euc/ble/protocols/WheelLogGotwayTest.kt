@@ -35,6 +35,7 @@ class WheelLogGotwayTest {
     private val maxValidTiltBackSpeed = 100
     private val frameTypeOffset = 18
     private val typeBFrameType = 0x04
+    private val distanceOffset = 2
 
     private lateinit var protocol: GotwayProtocol
     @BeforeEach
@@ -195,9 +196,14 @@ class WheelLogGotwayTest {
 
         typeBFrames.forEach { data ->
             val raw = data.rawData
-            assertEquals("Unexpected frame type", typeBFrameType, raw[frameTypeOffset].toInt() and 0xFF)
+            val actualFrameType = raw[frameTypeOffset].toInt() and 0xFF
+            assertEquals(
+                "Unexpected frame type: expected=$typeBFrameType actual=$actualFrameType",
+                typeBFrameType,
+                actualFrameType
+            )
 
-            val expectedDistance = ByteUtils.tryGetUnsignedIntBE(raw, 2)?.toDouble()
+            val expectedDistance = ByteUtils.tryGetUnsignedIntBE(raw, distanceOffset)?.toDouble()
             val settings = ByteUtils.tryGetUnsignedShortBE(raw, 6)
             val expectedPedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }
             val expectedAlarmMode = settings?.let { (it shr 10) and 0x03 }
