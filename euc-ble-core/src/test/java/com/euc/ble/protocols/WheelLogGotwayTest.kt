@@ -175,10 +175,12 @@ class WheelLogGotwayTest {
             }
         }
 
+        // Let the collector subscribe before frames are fed, matching existing test timing pattern.
         delay(100)
         frames.forEach { frame ->
             protocol.decode(frame.bleData)
         }
+        // Allow asynchronous frame reassembly/decoding to flush capture fragments.
         delay(3000)
         collectorJob.cancel()
 
@@ -202,7 +204,9 @@ class WheelLogGotwayTest {
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
-            val parsedDistance = expectedDistance ?: throw AssertionError("Type B distance could not be parsed from raw frame")
+            val parsedDistance = expectedDistance ?: throw AssertionError(
+                "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
+            )
             assertEquals(parsedDistance, data.distance, 0.01)
             assertEquals(parsedDistance, data.totalDistance, 0.01)
 
