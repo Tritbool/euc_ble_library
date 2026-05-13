@@ -34,6 +34,16 @@ class EUCDataTest {
             rideTime = 1800,
             cellVoltages = listOf(4.1, 4.2, 4.15, 4.18),
             motorTemperature = 35.0,
+            pedalsMode = 2,
+            alarmMode = 1,
+            rollAngleMode = 0,
+            usesMiles = false,
+            autoPowerOffMinutes = 10,
+            tiltBackSpeed = 45,
+            ledMode = 3,
+            lightMode = 1,
+            alertFlags = 0x12,
+            wheelAlarm = false,
         )
 
         assertEquals(25.5, data.speed, 0.01)
@@ -53,6 +63,16 @@ class EUCDataTest {
         assertEquals(1800L, data.rideTime)
         assertEquals(listOf(4.1, 4.2, 4.15, 4.18), data.cellVoltages)
         //assertEquals(35.0, data.motorTemperature?:0, 0.01)
+        assertEquals(2, data.pedalsMode)
+        assertEquals(1, data.alarmMode)
+        assertEquals(0, data.rollAngleMode)
+        assertEquals(false, data.usesMiles)
+        assertEquals(10, data.autoPowerOffMinutes)
+        assertEquals(45, data.tiltBackSpeed)
+        assertEquals(3, data.ledMode)
+        assertEquals(1, data.lightMode)
+        assertEquals(0x12, data.alertFlags)
+        assertEquals(false, data.wheelAlarm)
     }
 
     @Test
@@ -95,6 +115,16 @@ class EUCDataTest {
         assertEquals(0L, data.rideTime)
         assertNull(data.cellVoltages)
         assertNull(data.motorTemperature)
+        assertNull(data.pedalsMode)
+        assertNull(data.alarmMode)
+        assertNull(data.rollAngleMode)
+        assertNull(data.usesMiles)
+        assertNull(data.autoPowerOffMinutes)
+        assertNull(data.tiltBackSpeed)
+        assertNull(data.ledMode)
+        assertNull(data.lightMode)
+        assertNull(data.alertFlags)
+        assertNull(data.wheelAlarm)
     }
 
     @Test

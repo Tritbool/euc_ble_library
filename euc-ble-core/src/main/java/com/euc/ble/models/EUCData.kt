@@ -21,7 +21,17 @@ data class EUCData(
     val rideTime: Long,             // ride time in seconds
     val cellVoltages: List<Double>?=null, // individual cell voltages
     val motorTemperature: Double?=null,   // motor temperature in degrees Celsius (null if not available)
-    val totalDistance: Double?=null
+    val totalDistance: Double?=null,
+    val pedalsMode: Int?=null,
+    val alarmMode: Int?=null,
+    val rollAngleMode: Int?=null,
+    val usesMiles: Boolean?=null,
+    val autoPowerOffMinutes: Int?=null,
+    val tiltBackSpeed: Int?=null,
+    val ledMode: Int?=null,
+    val lightMode: Int?=null,
+    val alertFlags: Int?=null,
+    val wheelAlarm: Boolean?=null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

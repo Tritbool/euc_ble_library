@@ -249,9 +249,19 @@ class GotwayProtocol : EUCProtocol {
     }
     @VisibleForTesting
     private fun parseTypeB(data: ByteArray): EUCData? {
-        // Frame B primarily provides total distance. Other fields are not documented
-        // and may not be present.
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
+        val settings = ByteUtils.tryGetUnsignedShortBE(data, 6)
+        val pedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }
+        val alarmMode = settings?.let { (it shr 10) and 0x03 }
+        val rollAngleMode = settings?.let { (it shr 7) and 0x03 }
+        val usesMiles = settings?.let { (it and 0x01) == 1 }
+        val autoPowerOffMinutes = ByteUtils.tryGetUnsignedShortBE(data, 8)
+        val tiltBackSpeed = ByteUtils.tryGetUnsignedShortBE(data, 10)?.takeIf { it < 100 }
+        val ledMode = ByteUtils.tryGetUnsignedByte(data, 13)
+        val alertFlags = ByteUtils.tryGetUnsignedByte(data, 14)
+        val lightMode = ByteUtils.tryGetUnsignedByte(data, 15)?.and(0x03)
+        val wheelAlarm = alertFlags?.let { (it and 0x01) == 1 }
+
         lastKnownTotalDistance = distanceRaw.toDouble()
 
         return EUCData(
@@ -273,7 +283,17 @@ class GotwayProtocol : EUCProtocol {
             rideTime = 0,
             cellVoltages = null,
             motorTemperature = null,
-            totalDistance = lastKnownTotalDistance
+            totalDistance = lastKnownTotalDistance,
+            pedalsMode = pedalsMode,
+            alarmMode = alarmMode,
+            rollAngleMode = rollAngleMode,
+            usesMiles = usesMiles,
+            autoPowerOffMinutes = autoPowerOffMinutes,
+            tiltBackSpeed = tiltBackSpeed,
+            ledMode = ledMode,
+            lightMode = lightMode,
+            alertFlags = alertFlags,
+            wheelAlarm = wheelAlarm
         )
     }
     @VisibleForTesting
