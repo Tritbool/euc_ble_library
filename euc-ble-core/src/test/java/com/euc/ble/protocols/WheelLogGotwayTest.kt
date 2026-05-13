@@ -29,9 +29,12 @@ import kotlin.math.abs
 class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
+    // Delays mirror existing WheelLog async decoding tests and keep this capture-based test stable.
     private val collectorSubscriptionDelayMs = 100L
     private val frameProcessingDelayMs = 3000L
     private val maxValidTiltBackSpeed = 100
+    private val frameTypeOffset = 18
+    private val typeBFrameType = 0x04
 
     private lateinit var protocol: GotwayProtocol
     @BeforeEach
@@ -192,7 +195,7 @@ class WheelLogGotwayTest {
 
         typeBFrames.forEach { data ->
             val raw = data.rawData
-            assertEquals("Unexpected frame type", 0x04, raw[18].toInt() and 0xFF)
+            assertEquals("Unexpected frame type", typeBFrameType, raw[frameTypeOffset].toInt() and 0xFF)
 
             val expectedDistance = ByteUtils.tryGetUnsignedIntBE(raw, 2)?.toDouble()
             val settings = ByteUtils.tryGetUnsignedShortBE(raw, 6)
