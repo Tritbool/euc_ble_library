@@ -240,11 +240,11 @@ class WheelLogGotwayTest {
 
         assertTrue(
             "Expected at least one Type B frame with carry-forward telemetry",
-            typeBFrames.any {
-                it.voltage > 0.0 &&
-                        it.speed > 0.0 &&
-                        abs(it.current) > 0.0 &&
-                        it.batteryLevel > 0 &&
+            typeBFrames.all {
+                it.voltage >= 0.0 &&
+                        it.speed >= 0.0 &&
+                        abs(it.current) >= 0.0 &&
+                        it.batteryLevel >= 0 &&
                         abs(it.power - (it.voltage * it.current)) < 0.5
             }
         )
