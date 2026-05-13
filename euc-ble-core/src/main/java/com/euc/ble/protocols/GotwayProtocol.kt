@@ -337,6 +337,8 @@ class GotwayProtocol : EUCProtocol {
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
             val truePwm = kotlin.math.abs(raw.toDouble())
+            // WheelLog only switches to Type 7 as authoritative PWM once a non-zero value is
+            // observed; keep the latest Type A fallback when Type 7 reports zero/unset.
             if (truePwm > 0.0) {
                 lastKnownPwm = truePwm
             }

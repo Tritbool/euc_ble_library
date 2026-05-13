@@ -273,7 +273,8 @@ class WheelLogGotwayTest {
 
         typeAFrames.forEach { data ->
             val expectedPwm = abs(ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0) / 10.0
-            assertEquals(expectedPwm, data.pwm ?: -1.0, 0.01)
+            assertNotNull(data.pwm)
+            assertEquals(expectedPwm, data.pwm ?: 0.0, 0.01)
         }
 
         assertTrue("Expected at least one Type A frame with non-zero PWM", typeAFrames.any { (it.pwm ?: 0.0) > 0.0 })
