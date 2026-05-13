@@ -169,6 +169,7 @@ open class LeaperkimProtocol : EUCProtocol {
         val totalDistanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 12) ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(frame, 16) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(frame, 18) ?: return null
+        val pwmRaw = ByteUtils.tryGetUnsignedShortBE(frame, 34) ?: 0
         val chargeMode = ByteUtils.tryGetUnsignedShortBE(frame, 22) ?: 0
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0
 
@@ -176,6 +177,7 @@ open class LeaperkimProtocol : EUCProtocol {
         val speed = speedRaw / 100.0
         val current = currentRaw / 100.0
         val temperature = tempRaw / 100.0
+        val pwm = pwmRaw / 100.0
 
         if (voltage !in 20.0..180.0) return null
         if (speed !in -120.0..120.0) return null
@@ -199,6 +201,7 @@ open class LeaperkimProtocol : EUCProtocol {
             batteryLevel = battery,
             distance = tripDistanceKm,
             power = voltage * current,
+            pwm = pwm,
             timestamp = now,
             rawData = frame,
             manufacturer = manufacturer,

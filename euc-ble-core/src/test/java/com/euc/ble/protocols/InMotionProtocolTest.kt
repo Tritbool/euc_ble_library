@@ -56,6 +56,7 @@ class InMotionProtocolTest {
         assertEquals(0.0, decoded.first().speed, 0.01)
         assertEquals(77.42, decoded.first().voltage, 0.01)
         assertEquals(0.12, decoded.first().current, 0.01)
+        assertEquals(1.95, decoded.first().pwm ?: -1.0, 0.01)
         assertEquals(29.0, decoded.first().temperature, 0.01)
         assertEquals(25.0, decoded.first().motorTemperature ?: -1.0, 0.01)
         assertEquals(58, decoded.first().batteryLevel)

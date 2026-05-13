@@ -423,6 +423,7 @@ class InMotionProtocol : EUCProtocol {
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
+        val pwm = (ByteUtils.tryGetSignedShortLE(payload, 14)?.toDouble() ?: 0.0) / 100.0
         val distanceKm = (ByteUtils.getUnsignedShortLE(payload, 28) * 10.0) / 1000.0
 
         val battery1 = ByteUtils.getUnsignedShortLE(payload, 34)
@@ -446,6 +447,7 @@ class InMotionProtocol : EUCProtocol {
             batteryLevel = battery,
             distance = distanceKm,
             power = voltage * current,
+            pwm = pwm,
             timestamp = now,
             rawData = rawFrame,
             manufacturer = manufacturer,

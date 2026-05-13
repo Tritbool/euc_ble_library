@@ -57,6 +57,7 @@ class NosfetProtocolTest {
             totalDistanceRaw = 65432,
             currentRaw = -250,
             temperatureRaw = 3500,
+            pwmRaw = 6550,
             chargeMode = 1,
             versionRaw = 4301
         )
@@ -69,6 +70,7 @@ class NosfetProtocolTest {
         assertEquals("Nosfet Aero", telemetry.model)
         assertEquals("043.0.01", telemetry.firmwareVersion)
         assertEquals(100, telemetry.batteryLevel)
+        assertEquals(65.5, telemetry.pwm ?: -1.0, 0.01)
         assertTrue(telemetry.isCharging)
     }
 
@@ -87,6 +89,7 @@ class NosfetProtocolTest {
         totalDistanceRaw: Long = 0,
         currentRaw: Int = 0,
         temperatureRaw: Int = 2500,
+        pwmRaw: Int = 0,
         chargeMode: Int = 0,
         versionRaw: Int = 4300
     ): ByteArray {
@@ -112,6 +115,8 @@ class NosfetProtocolTest {
         frame[17] = (currentRaw and 0xFF).toByte()
         frame[18] = ((temperatureRaw shr 8) and 0xFF).toByte()
         frame[19] = (temperatureRaw and 0xFF).toByte()
+        frame[34] = ((pwmRaw shr 8) and 0xFF).toByte()
+        frame[35] = (pwmRaw and 0xFF).toByte()
 
         frame[22] = ((chargeMode shr 8) and 0xFF).toByte()
         frame[23] = (chargeMode and 0xFF).toByte()

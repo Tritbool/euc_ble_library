@@ -134,6 +134,7 @@ class KingsongProtocol : EUCProtocol {
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
+    private var lastKnownPwm: Double? = null
 
     init {
         // Start observing frames asynchronously and process them
@@ -214,6 +215,10 @@ class KingsongProtocol : EUCProtocol {
         val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
         return when (messageType) {
             0xA9 -> parseTypeA9(data, headerIdx)
+            0xF5 -> {
+                parseTypeF5(data, headerIdx)
+                null
+            }
             else -> null
         }
     }
@@ -266,6 +271,7 @@ class KingsongProtocol : EUCProtocol {
                 batteryLevel = batteryLevel,
                 distance = distance,
                 power = power,
+                pwm = lastKnownPwm,
                 timestamp = now,
                 rawData = data,
                 manufacturer = manufacturer,
@@ -280,6 +286,12 @@ class KingsongProtocol : EUCProtocol {
         } catch (_: Exception) {
             return null
         }
+    }
+
+    private fun parseTypeF5(data: ByteArray, base: Int) {
+        if (!ensureRange(data, base + 15, 1)) return
+        val outputByte = ByteUtils.getUnsignedByte(data, base + 15)
+        lastKnownPwm = outputByte / 100.0
     }
 
     private fun deriveRideTimeSeconds(nowMs: Long): Long {
@@ -299,6 +311,7 @@ class KingsongProtocol : EUCProtocol {
 
     override fun close() {
         scope.cancel()
+        lastKnownPwm = null
         _channel.close()
     }
 
