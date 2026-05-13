@@ -280,6 +280,10 @@ class NinebotProtocol : EUCProtocol {
     }
 
     private fun parseWheelLogSerialFrame(frame: ByteArray) {
+        if ((frame[6].toInt() and 0xFF) == WHEELLOG_SERIAL_TYPE) {
+            serialBuffer.clear()
+        }
+
         val payloadLength = frame[2].toInt() and 0xFF
         val payloadStart = 7
         val payloadEnd = (payloadStart + payloadLength).coerceAtMost(frame.size - 2)
