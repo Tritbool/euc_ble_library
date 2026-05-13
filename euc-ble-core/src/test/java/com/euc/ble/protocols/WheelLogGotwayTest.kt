@@ -29,6 +29,9 @@ import kotlin.math.abs
 class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
+    private val collectorSubscriptionDelayMs = 100L
+    private val frameProcessingDelayMs = 3000L
+    private val maxValidTiltBackSpeed = 100
 
     private lateinit var protocol: GotwayProtocol
     @BeforeEach
@@ -176,12 +179,12 @@ class WheelLogGotwayTest {
         }
 
         // Let the collector subscribe before frames are fed, matching existing test timing pattern.
-        delay(100)
+        delay(collectorSubscriptionDelayMs)
         frames.forEach { frame ->
             protocol.decode(frame.bleData)
         }
         // Allow asynchronous frame reassembly/decoding to flush capture fragments.
-        delay(3000)
+        delay(frameProcessingDelayMs)
         collectorJob.cancel()
 
         val typeBFrames = decoded.filter { it.model == "Gotway (Type B)" }
@@ -198,7 +201,7 @@ class WheelLogGotwayTest {
             val expectedRollAngleMode = settings?.let { (it shr 7) and 0x03 }
             val expectedUsesMiles = settings?.let { (it and 0x01) == 1 }
             val expectedAutoPowerOff = ByteUtils.tryGetUnsignedShortBE(raw, 8)
-            val expectedTiltBack = ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < 100 }
+            val expectedTiltBack = ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < maxValidTiltBackSpeed }
             val expectedLedMode = ByteUtils.tryGetUnsignedByte(raw, 13)
             val expectedAlertFlags = ByteUtils.tryGetUnsignedByte(raw, 14)
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
