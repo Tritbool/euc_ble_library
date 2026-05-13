@@ -9,6 +9,7 @@ import com.euc.ble.models.EUCData
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import com.euc.ble.test.JUnit4AssertionsCompat.fail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -216,7 +217,7 @@ class WheelLogGotwayTest {
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
-            val parsedDistance = expectedDistance ?: throw AssertionError(
+            val parsedDistance = expectedDistance ?: fail(
                 "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
             )
             assertEquals(parsedDistance, data.distance, 0.01)
