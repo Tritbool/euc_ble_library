@@ -224,7 +224,7 @@ class GotwayProtocol : EUCProtocol {
         val currentFromTypeA = currentRaw / 100.0
         val current = lastKnownCurrent ?: currentFromTypeA
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
-        val pwmFromTypeA = kotlin.math.abs(ByteUtils.tryGetSignedShortBE(data, 14) ?: 0) / 10.0
+        val pwmFromTypeA = abs(ByteUtils.tryGetSignedShortBE(data, 14) ?: 0) / 10.0
         lastKnownPwm = pwmFromTypeA
         val power = voltage * current
         val batteryLevel = estimateBatteryLevel(voltage)
@@ -336,7 +336,7 @@ class GotwayProtocol : EUCProtocol {
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
-            val truePwm = kotlin.math.abs(raw.toDouble())
+            val truePwm = abs(raw.toDouble())
             // WheelLog only switches to Type 7 as authoritative PWM once a non-zero value is
             // observed; keep the latest Type A fallback when Type 7 reports zero/unset.
             if (truePwm > 0.0) {
