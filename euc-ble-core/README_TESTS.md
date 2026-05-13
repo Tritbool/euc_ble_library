@@ -81,6 +81,12 @@ To run the tests, use the following commands:
 # Run all tests
 ./gradlew :euc-ble-core:test
 
+# Run tests + full JaCoCo coverage report
+./gradlew :euc-ble-core:jacocoTestReport
+
+# Run tests + focused JaCoCo coverage report (protocols/models/frames)
+./gradlew :euc-ble-core:jacocoFocusedReport
+
 # Run specific test class
 ./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest"
 
@@ -90,6 +96,11 @@ To run the tests, use the following commands:
 # Run test suite
 ./gradlew :euc-ble-core:test --tests "com.euc.ble.AllTestsSuite"
 ```
+
+Coverage reports are generated under:
+
+- `euc-ble-core/build/reports/jacoco/full/html/index.html`
+- `euc-ble-core/build/reports/jacoco/focused/html/index.html`
 
 ## Test Design Principles
 
