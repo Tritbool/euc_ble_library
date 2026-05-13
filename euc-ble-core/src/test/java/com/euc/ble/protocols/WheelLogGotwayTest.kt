@@ -217,9 +217,10 @@ class WheelLogGotwayTest {
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
-            val parsedDistance = expectedDistance ?: fail(
-                "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
-            )
+            if (expectedDistance == null) {
+                fail("Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}")
+            }
+            val parsedDistance = expectedDistance
             assertEquals(parsedDistance, data.distance, 0.01)
             assertEquals(parsedDistance, data.totalDistance, 0.01)
 
