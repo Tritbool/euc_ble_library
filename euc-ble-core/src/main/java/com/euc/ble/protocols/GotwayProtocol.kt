@@ -220,6 +220,8 @@ class GotwayProtocol : EUCProtocol {
         val fallbackVoltage = voltageRaw / 100.0
         val voltage = lastKnownVoltage ?: fallbackVoltage
         if (!hasType1Voltage) {
+            // Before the dedicated Type 1 battery-voltage frame is seen, keep tracking
+            // voltage from Type A so Type B/Type 7 carry-forward telemetry remains usable.
             lastKnownVoltage = fallbackVoltage
         }
         if (voltage > 300.0) return null  // pareil pour voltage
@@ -234,6 +236,8 @@ class GotwayProtocol : EUCProtocol {
 
         val currentFromTypeA = currentRaw / 100.0
         if (!hasType7Current) {
+            // Before authoritative battery current from Type 7 is seen, keep Type A current
+            // as the carry-forward source for Type B updates.
             lastKnownCurrent = currentFromTypeA
         }
         val current = lastKnownCurrent ?: currentFromTypeA
