@@ -224,7 +224,7 @@ class GotwayProtocol : EUCProtocol {
         val currentFromTypeA = currentRaw / 100.0
         val current = lastKnownCurrent ?: currentFromTypeA
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
-        val pwmFromTypeA = abs(ByteUtils.tryGetSignedShortBE(data, 14) ?: 0) / 10.0
+        val pwmFromTypeA = abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0
         lastKnownPwm = pwmFromTypeA
         val power = voltage * current
         val batteryLevel = estimateBatteryLevel(voltage)

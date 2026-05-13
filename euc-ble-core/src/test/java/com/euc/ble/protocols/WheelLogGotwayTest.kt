@@ -225,7 +225,7 @@ class WheelLogGotwayTest {
                 "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
             }
             assertEquals(parsedDistance, data.distance, 0.01)
-            assertEquals(parsedDistance, data.totalDistance, 0.01)
+            assertEquals(parsedDistance, data.totalDistance?:0.0, 0.01)
 
             assertEquals(expectedPedalsMode, data.pedalsMode)
             assertEquals(expectedAlarmMode, data.alarmMode)
@@ -272,7 +272,7 @@ class WheelLogGotwayTest {
         assertTrue("No Type A frames decoded from WheelLog capture", typeAFrames.isNotEmpty())
 
         typeAFrames.forEach { data ->
-            val expectedPwm = abs(ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0) / 10.0
+            val expectedPwm = abs((ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0).toDouble()) / 10.0
             assertNotNull(data.pwm)
             assertEquals(expectedPwm, data.pwm ?: 0.0, 0.01)
         }
