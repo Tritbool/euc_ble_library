@@ -36,6 +36,8 @@ jobs:
       - name: Run unit tests
         run: >
           ./gradlew :euc-ble-core:testDebugUnitTest
+          --tests
+          com.euc.ble.RegularTestsSuite
           --no-daemon
           --stacktrace
           -Dkotlinx.coroutines.io.parallelism=4
