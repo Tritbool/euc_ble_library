@@ -257,6 +257,7 @@ class NinebotProtocol : EUCProtocol {
     }
 
     private fun decodeWheelLogSpeed(frame: ByteArray): Double {
+        // Legacy WheelLog Ninebot adapter reports absolute speed for default protocol variants.
         val signedLegacySpeed = ByteUtils.tryGetSignedShortLE(frame, 17)?.toInt()
             ?.let { abs(it) / 10.0 }
         val protoS2Speed = ByteUtils.tryGetUnsignedShortLE(frame, 35)?.toDouble()?.div(100.0)
@@ -301,6 +302,7 @@ class NinebotProtocol : EUCProtocol {
 
         val majorByte = frame[payloadStart + 1].toInt() and 0xFF
         val minorBuildByte = frame[payloadStart].toInt() and 0xFF
+        // Legacy variants encode major in different nibbles; prefer high nibble and fall back to low nibble.
         val major = (majorByte shr 4).takeIf { it > 0 } ?: (majorByte and 0x0F)
         val minor = (minorBuildByte shr 4) and 0x0F
         val build = minorBuildByte and 0x0F
