@@ -335,10 +335,12 @@ class GotwayProtocol : EUCProtocol {
         // published battery current is inverted to match discharge-positive telemetry.
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
-        truePwmRaw
-            ?.let { kotlin.math.abs(it.toDouble()) }
-            ?.takeIf { it > 0.0 }
-            ?.let { lastKnownPwm = it }
+        truePwmRaw?.let { raw ->
+            val truePwm = kotlin.math.abs(raw.toDouble())
+            if (truePwm > 0.0) {
+                lastKnownPwm = truePwm
+            }
+        }
 
         val voltage = lastKnownVoltage ?: 0.0
         val current = lastKnownCurrent ?: 0.0
