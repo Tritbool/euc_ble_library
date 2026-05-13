@@ -97,7 +97,15 @@ class GotwayProtocolTest {
      * Format for Type B:
      *   [2-5]: Total distance (BE, uint32)
      */
-    private fun createGotwayFrameTypeB(distanceRaw: Long): ByteArray {
+    private fun createGotwayFrameTypeB(
+        distanceRaw: Long,
+        settings: Int = 0,
+        autoPowerOffMinutes: Int = 0,
+        tiltBackSpeed: Int = 0,
+        ledMode: Int = 0,
+        alertFlags: Int = 0,
+        lightMode: Int = 0
+    ): ByteArray {
         val frame = ByteArray(24)
         // Header
         frame[0] = 0x55.toByte()
@@ -107,8 +115,19 @@ class GotwayProtocolTest {
         frame[3] = ((distanceRaw shr 16) and 0xFF).toByte()
         frame[4] = ((distanceRaw shr 8) and 0xFF).toByte()
         frame[5] = (distanceRaw and 0xFF).toByte()
-        // Reserved bytes 6-17
-        for (i in 6..17) frame[i] = 0x00
+        // Settings and mode data
+        frame[6] = ((settings shr 8) and 0xFF).toByte()
+        frame[7] = (settings and 0xFF).toByte()
+        frame[8] = ((autoPowerOffMinutes shr 8) and 0xFF).toByte()
+        frame[9] = (autoPowerOffMinutes and 0xFF).toByte()
+        frame[10] = ((tiltBackSpeed shr 8) and 0xFF).toByte()
+        frame[11] = (tiltBackSpeed and 0xFF).toByte()
+        frame[12] = 0x00
+        frame[13] = (ledMode and 0xFF).toByte()
+        frame[14] = (alertFlags and 0xFF).toByte()
+        frame[15] = (lightMode and 0x03).toByte()
+        frame[16] = 0x00
+        frame[17] = 0x00
         // Frame type = 0x04 for Type B
         frame[18] = 0x04
         // Reserved
@@ -286,6 +305,59 @@ class GotwayProtocolTest {
         // Type B doesn't provide other values, they should be 0
         assertEquals(0.0, result.voltage, 0.01)
         assertEquals(0.0, result.speed, 0.01)
+    }
+
+    @Test
+    fun testDecodeTypeBParsesSettingsAndAlerts() = runBlocking {
+        val pedalsRaw = 1 // 0..3
+        val alarmRaw = 2 // 0..3
+        val rollRaw = 3 // 0..3
+        val inMilesRaw = 1
+        val settings = (pedalsRaw shl 13) or (alarmRaw shl 10) or (rollRaw shl 7) or inMilesRaw
+        val frame = createGotwayFrameTypeB(
+            distanceRaw = 456789,
+            settings = settings,
+            autoPowerOffMinutes = 15,
+            tiltBackSpeed = 40,
+            ledMode = 5,
+            alertFlags = 0b0010_1101,
+            lightMode = 2
+        )
+
+        protocol.decode(frame)
+
+        val result = withTimeout(10000) {
+            protocol.dataFlow.first()
+        }
+
+        assertNotNull(result.totalDistance)
+        assertEquals(456789.0, result.totalDistance!!, 0.01)
+        assertEquals(1, result.pedalsMode)
+        assertEquals(alarmRaw, result.alarmMode)
+        assertEquals(rollRaw, result.rollAngleMode)
+        assertEquals(true, result.usesMiles)
+        assertEquals(15, result.autoPowerOffMinutes)
+        assertEquals(40, result.tiltBackSpeed)
+        assertEquals(5, result.ledMode)
+        assertEquals(2, result.lightMode)
+        assertEquals(0b0010_1101, result.alertFlags)
+        assertEquals(true, result.wheelAlarm)
+    }
+
+    @Test
+    fun testDecodeTypeBTiltBackSpeedOverLimitIsIgnored() = runBlocking {
+        val frame = createGotwayFrameTypeB(
+            distanceRaw = 321,
+            tiltBackSpeed = 120
+        )
+
+        protocol.decode(frame)
+
+        val result = withTimeout(10000) {
+            protocol.dataFlow.first()
+        }
+
+        assertNull(result.tiltBackSpeed)
     }
 
     @Test
