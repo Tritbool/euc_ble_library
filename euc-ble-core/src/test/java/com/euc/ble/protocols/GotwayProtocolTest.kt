@@ -310,10 +310,10 @@ class GotwayProtocolTest {
     @Test
     fun testDecodeTypeBParsesSettingsAndAlerts() = runBlocking {
         val pedalsRaw = 1 // 0..3
-        val alarmsRaw = 2 // 0..3
+        val alarmRaw = 2 // 0..3
         val rollRaw = 3 // 0..3
         val inMilesRaw = 1
-        val settings = (pedalsRaw shl 13) or (alarmsRaw shl 10) or (rollRaw shl 7) or inMilesRaw
+        val settings = (pedalsRaw shl 13) or (alarmRaw shl 10) or (rollRaw shl 7) or inMilesRaw
         val frame = createGotwayFrameTypeB(
             distanceRaw = 456789,
             settings = settings,
@@ -333,7 +333,7 @@ class GotwayProtocolTest {
         assertNotNull(result.totalDistance)
         assertEquals(456789.0, result.totalDistance!!, 0.01)
         assertEquals(1, result.pedalsMode)
-        assertEquals(alarmsRaw, result.alarmMode)
+        assertEquals(alarmRaw, result.alarmMode)
         assertEquals(rollRaw, result.rollAngleMode)
         assertEquals(true, result.usesMiles)
         assertEquals(15, result.autoPowerOffMinutes)

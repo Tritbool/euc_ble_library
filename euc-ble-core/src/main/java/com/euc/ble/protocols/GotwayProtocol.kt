@@ -251,6 +251,8 @@ class GotwayProtocol : EUCProtocol {
     private fun parseTypeB(data: ByteArray): EUCData? {
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
         val settings = ByteUtils.tryGetUnsignedShortBE(data, 6)
+        // Legacy WheelLog maps firmware pedals bits with "2 - raw" before exposing the
+        // mode value to the app layer; keep the same mapping for compatibility.
         val pedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }
         val alarmMode = settings?.let { (it shr 10) and 0x03 }
         val rollAngleMode = settings?.let { (it shr 7) and 0x03 }
