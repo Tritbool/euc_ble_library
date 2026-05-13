@@ -38,6 +38,13 @@ open class LeaperkimProtocol : EUCProtocol {
         "Patton", "Patton S", "Sherman", "Sherman S", "Sherman L",
         "Lynx", "Lynx S", "Abrams", "Oryx"
     )
+    override val supportedCommandTypes: Set<CommandType> = setOf(
+        CommandType.LIGHT_ON,
+        CommandType.LIGHT_OFF,
+        CommandType.BEEP,
+        CommandType.SET_PEDALS_MODE,
+        CommandType.CUSTOM
+    )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_READ_CHARACTERISTIC)

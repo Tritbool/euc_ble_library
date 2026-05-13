@@ -21,6 +21,8 @@ class NinebotProtocol : EUCProtocol {
 
     companion object {
         private const val FRAME_HEADER = 0x55
+        private const val FRAME_ACTION = 0x21
+        private const val FRAME_QUERY = 0x22
         private const val MIN_FRAME_SIZE = 18
         private const val WHEELLOG_HEADER_FIRST = 0x5A
         private const val WHEELLOG_HEADER_SECOND = 0xA5
@@ -32,6 +34,8 @@ class NinebotProtocol : EUCProtocol {
         private const val WHEELLOG_SERIAL_TYPE_PART3 = 0x16
         private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
         private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
+        private const val MIN_READY_VOLTAGE_V = 30.0
+        private const val MIN_READY_BATTERY_LEVEL = 1
         private const val BATTERY_OFFSET = 16
         private const val STATUS_OFFSET = 17
         private const val RIDE_TIME_OFFSET = 18
@@ -40,6 +44,16 @@ class NinebotProtocol : EUCProtocol {
     override val manufacturer: String = "Ninebot"
     override val supportedModels: List<String> = listOf(
         "S1", "S2", "S2 Pro", "A1", "A1 Pro", "Z6", "Z8", "Z10", "One S2", "One E+", "One C+"
+    )
+    override val supportedCommandTypes: Set<CommandType> = setOf(
+        CommandType.LIGHT_ON,
+        CommandType.LIGHT_OFF,
+        CommandType.BEEP,
+        CommandType.LOCK,
+        CommandType.UNLOCK,
+        CommandType.REQUEST_SERIAL,
+        CommandType.REQUEST_FIRMWARE,
+        CommandType.REQUEST_BATTERY_INFO
     )
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
@@ -336,7 +350,42 @@ class NinebotProtocol : EUCProtocol {
             CommandType.BEEP -> buildControlCommand(0x18, 0x01)
             CommandType.LOCK -> buildControlCommand(0x31, 0x01)
             CommandType.UNLOCK -> buildControlCommand(0x31, 0x00)
+            CommandType.REQUEST_SERIAL -> buildQueryCommand(0x10)
+            CommandType.REQUEST_FIRMWARE -> buildQueryCommand(0x1A)
+            CommandType.REQUEST_BATTERY_INFO -> buildQueryCommand(0xB0)
             else -> byteArrayOf()
+        }
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+        return ProtocolPollingPlan(
+            enabled = true,
+            startupQueries = listOf(
+                ProtocolQuerySpec(id = "ninebot.serial", commandType = CommandType.REQUEST_SERIAL, maxRetries = 3),
+                ProtocolQuerySpec(id = "ninebot.firmware", commandType = CommandType.REQUEST_FIRMWARE, maxRetries = 3),
+                ProtocolQuerySpec(id = "ninebot.battery.init", commandType = CommandType.REQUEST_BATTERY_INFO, maxRetries = 2)
+            ),
+            periodicQueries = listOf(
+                ProtocolQuerySpec(
+                    id = "ninebot.battery.periodic",
+                    commandType = CommandType.REQUEST_BATTERY_INFO,
+                    intervalMs = 5_000L,
+                    responseTimeoutMs = 1_500L,
+                    maxRetries = 2
+                )
+            )
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+        if (data.size < 7) return false
+        val typeAt6 = data[6].toInt() and 0xFF
+        val typeAt2 = data[2].toInt() and 0xFF
+        return when (query.commandType) {
+            CommandType.REQUEST_SERIAL -> typeAt6 == WHEELLOG_SERIAL_TYPE || typeAt6 == WHEELLOG_SERIAL_TYPE_PART2 || typeAt6 == WHEELLOG_SERIAL_TYPE_PART3
+            CommandType.REQUEST_FIRMWARE -> typeAt6 == WHEELLOG_FIRMWARE_TYPE
+            CommandType.REQUEST_BATTERY_INFO -> typeAt6 == WHEELLOG_TELEMETRY_TYPE || typeAt2 == 0x01
+            else -> false
         }
     }
 
@@ -344,7 +393,7 @@ class NinebotProtocol : EUCProtocol {
         val payload = byteArrayOf(
             FRAME_HEADER.toByte(),
             0x05,
-            0x21,
+            FRAME_ACTION.toByte(),
             code.toByte(),
             value.toByte()
         )
@@ -355,8 +404,22 @@ class NinebotProtocol : EUCProtocol {
         return payload + byteArrayOf((checksum and 0xFF).toByte())
     }
 
+    private fun buildQueryCommand(code: Int): ByteArray {
+        val payload = byteArrayOf(
+            FRAME_HEADER.toByte(),
+            0x04,
+            FRAME_QUERY.toByte(),
+            code.toByte()
+        )
+        var checksum = 0
+        for (i in 1 until payload.size) {
+            checksum = checksum xor (payload[i].toInt() and 0xFF)
+        }
+        return payload + byteArrayOf((checksum and 0xFF).toByte())
+    }
+
     override fun isDeviceReady(data: EUCData): Boolean {
-        return data.voltage > 30.0 && data.batteryLevel > 0
+        return data.voltage > MIN_READY_VOLTAGE_V && data.batteryLevel >= MIN_READY_BATTERY_LEVEL
     }
 
     override fun close() {

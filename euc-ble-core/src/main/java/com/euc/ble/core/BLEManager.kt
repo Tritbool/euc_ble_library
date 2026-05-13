@@ -23,11 +23,15 @@ import com.euc.ble.integration.BleBackendEvent
 import com.euc.ble.integration.BleBackendListener
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import com.euc.ble.protocols.CommandSupport
+import com.euc.ble.protocols.CommandType
 import com.euc.ble.protocols.EUCProtocol
+import com.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -42,6 +46,10 @@ import java.util.concurrent.ConcurrentHashMap
  * Handles device scanning, connection, and data processing
  */
 class BLEManager(private val context: Context, private val logger: Logger = AndroidLogger()) : BluetoothGattCallback() {
+    companion object {
+        private const val MIN_QUERY_ATTEMPTS = 1
+        private const val MIN_QUERY_TIMEOUT_MS = 200L
+    }
     
     // Configuration
     private var scanTimeout: Long = BLEConstants.DEFAULT_SCAN_TIMEOUT_MS
@@ -65,6 +73,8 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     // Protocol management
     private val protocols: MutableList<EUCProtocol> = mutableListOf()
     private var currentProtocol: EUCProtocol? = null
+    private var queryOrchestrationJob: Job? = null
+    private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
     
     // Callbacks
     private var scanCallback: ScanCallback? = null
@@ -94,11 +104,24 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
      * ```
      */
     val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
+
+    private val _queryTraceFlow = MutableSharedFlow<QueryTraceEvent>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val queryTraceFlow: SharedFlow<QueryTraceEvent> = _queryTraceFlow.asSharedFlow()
     
     // Coroutine management
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
+
+    private data class PendingQueryState(
+        val protocolName: String,
+        val query: ProtocolQuerySpec,
+        val attempt: Int,
+        val sentAtMs: Long
+    )
     
     // Device cache
     private val discoveredDevices = ConcurrentHashMap<String, EUCDevice>()
@@ -209,6 +232,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
         reconnectJob?.cancel()
         reconnectJob = null
         reconnectRetryCount = 0
+        cancelPollingOrchestration()
 
         connectionJob?.cancel()
         bluetoothGatt?.disconnect()
@@ -223,10 +247,39 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     /**
      * Send a command to the connected device
      */
+    fun getCommandSupport(commandType: CommandType): CommandSupport {
+        val protocol = currentProtocol ?: return CommandSupport.UNSUPPORTED
+        return protocol.getCommandSupport(commandType)
+    }
+
+    fun createCommand(commandType: CommandType, value: Any = Unit): ByteArray {
+        val protocol = currentProtocol ?: run {
+            errorCallback?.onError(BLEException("No protocol selected; cannot create command"))
+            return byteArrayOf()
+        }
+        if (protocol.getCommandSupport(commandType) == CommandSupport.UNSUPPORTED) {
+            errorCallback?.onError(
+                BLEException("Unsupported command '$commandType' for protocol ${protocol.manufacturer}")
+            )
+            return byteArrayOf()
+        }
+        val payload = protocol.createCommand(commandType, value)
+        if (payload.isEmpty()) {
+            errorCallback?.onError(
+                BLEException("Protocol ${protocol.manufacturer} returned empty payload for '$commandType'")
+            )
+        }
+        return payload
+    }
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
         if (connectionState != BLEConstants.ConnectionState.CONNECTED) {
             errorCallback?.onError(BLEException("Not connected to a device"))
+            return
+        }
+        if (command.isEmpty()) {
+            errorCallback?.onError(BLEException("Cannot send empty command payload"))
             return
         }
 
@@ -407,6 +460,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
                 gatt.discoverServices()
             }
             BluetoothProfile.STATE_DISCONNECTED -> {
+                cancelPollingOrchestration()
                 connectionState = BLEConstants.ConnectionState.DISCONNECTED
                 connectionCallback?.onDisconnected()
 
@@ -493,6 +547,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
                 // Enable notifications for data characteristics
                 enableNotifications(protocol.getDataCharacteristicUUID())
                 connectionCallback?.onServicesDiscovered(gatt.services)
+                startPollingOrchestration(protocol)
             } ?: run {
                 errorCallback?.onError(BLEException("No protocol found for this device"))
                 disconnect()
@@ -528,6 +583,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
         _rawFrameFlow.tryEmit(data.clone())
         currentProtocol?.let { protocol ->
             try {
+                matchPendingQueries(protocol, data)
                 val eucData = protocol.decode(data)
                 eucData?.let { d -> dataCallback?.onDataReceived(d) }
             } catch (e: Exception) {
@@ -577,6 +633,186 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             // Activer les notifications localement
             bluetoothGatt?.setCharacteristicNotification(char, true)
         }
+    }
+
+    private fun startPollingOrchestration(protocol: EUCProtocol) {
+        cancelPollingOrchestration()
+        val plan = protocol.getPollingPlan()
+        if (!plan.enabled) return
+
+        queryOrchestrationJob = coroutineScope.launch(Dispatchers.IO) {
+            for (query in plan.startupQueries) {
+                executeQueryWithRetry(protocol, query)
+            }
+
+            plan.periodicQueries.forEach { query ->
+                launch {
+                    if (query.initialDelayMs > 0L) delay(query.initialDelayMs)
+                    while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
+                        executeQueryWithRetry(protocol, query)
+                        if (query.intervalMs <= 0L) break
+                        delay(query.intervalMs)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun cancelPollingOrchestration() {
+        queryOrchestrationJob?.cancel()
+        queryOrchestrationJob = null
+        pendingQueries.clear()
+    }
+
+    private suspend fun executeQueryWithRetry(protocol: EUCProtocol, query: ProtocolQuerySpec) {
+        val retryCount = query.maxRetries.coerceAtLeast(0)
+        val totalAttempts = retryCount + MIN_QUERY_ATTEMPTS
+        for (attempt in 1..totalAttempts) {
+            if (connectionState != BLEConstants.ConnectionState.CONNECTED) return
+            val sent = sendProtocolQuery(protocol, query, attempt)
+            if (!sent) return
+
+            val timeoutMs = query.responseTimeoutMs.coerceAtLeast(MIN_QUERY_TIMEOUT_MS)
+            delay(timeoutMs)
+
+            if (!pendingQueries.containsKey(query.id)) {
+                return
+            }
+
+            pendingQueries.remove(query.id)
+            emitQueryTrace(
+                QueryTraceEvent(
+                    timestampMs = System.currentTimeMillis(),
+                    protocol = protocol.manufacturer,
+                    queryId = query.id,
+                    commandType = query.commandType,
+                    phase = QueryTracePhase.TIMEOUT,
+                    attempt = attempt,
+                    message = "No matching response after ${timeoutMs}ms"
+                )
+            )
+
+            if (attempt < totalAttempts) {
+                emitQueryTrace(
+                    QueryTraceEvent(
+                        timestampMs = System.currentTimeMillis(),
+                        protocol = protocol.manufacturer,
+                        queryId = query.id,
+                        commandType = query.commandType,
+                        phase = QueryTracePhase.RETRY_SCHEDULED,
+                        attempt = attempt + 1,
+                        message = "Retry scheduled in ${query.retryBackoffMs}ms"
+                    )
+                )
+                if (query.retryBackoffMs > 0L) delay(query.retryBackoffMs)
+            } else {
+                emitQueryTrace(
+                    QueryTraceEvent(
+                        timestampMs = System.currentTimeMillis(),
+                        protocol = protocol.manufacturer,
+                        queryId = query.id,
+                        commandType = query.commandType,
+                        phase = QueryTracePhase.FAILED,
+                        attempt = attempt,
+                        message = "Query exhausted retries"
+                    )
+                )
+            }
+        }
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun sendProtocolQuery(protocol: EUCProtocol, query: ProtocolQuerySpec, attempt: Int): Boolean {
+        if (protocol.getCommandSupport(query.commandType) == CommandSupport.UNSUPPORTED) {
+            emitQueryTrace(
+                QueryTraceEvent(
+                    timestampMs = System.currentTimeMillis(),
+                    protocol = protocol.manufacturer,
+                    queryId = query.id,
+                    commandType = query.commandType,
+                    phase = QueryTracePhase.UNSUPPORTED,
+                    attempt = attempt,
+                    message = "Command is unsupported by protocol support matrix"
+                )
+            )
+            return false
+        }
+
+        val payload = protocol.createCommand(query.commandType, query.value)
+        if (payload.isEmpty()) {
+            emitQueryTrace(
+                QueryTraceEvent(
+                    timestampMs = System.currentTimeMillis(),
+                    protocol = protocol.manufacturer,
+                    queryId = query.id,
+                    commandType = query.commandType,
+                    phase = QueryTracePhase.UNSUPPORTED,
+                    attempt = attempt,
+                    message = "Command payload is empty"
+                )
+            )
+            return false
+        }
+
+        sendCommand(payload, protocol.getWriteCharacteristicUUID())
+        pendingQueries[query.id] = PendingQueryState(
+            protocolName = protocol.manufacturer,
+            query = query,
+            attempt = attempt,
+            sentAtMs = System.currentTimeMillis()
+        )
+
+        emitQueryTrace(
+            QueryTraceEvent(
+                timestampMs = System.currentTimeMillis(),
+                protocol = protocol.manufacturer,
+                queryId = query.id,
+                commandType = query.commandType,
+                phase = QueryTracePhase.SENT,
+                attempt = attempt
+            )
+        )
+        return true
+    }
+
+    private fun matchPendingQueries(protocol: EUCProtocol, data: ByteArray) {
+        if (pendingQueries.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val matchedIds = mutableListOf<String>()
+
+        for ((id, state) in pendingQueries) {
+            if (state.protocolName != protocol.manufacturer) continue
+            if (!protocol.matchesQueryResponse(state.query, data)) continue
+            matchedIds.add(id)
+            val rawLatency = now - state.sentAtMs
+            if (rawLatency < 0L) {
+                logger.warn(
+                    "BLEQueryTrace",
+                    "Negative latency detected for query=${state.query.id} protocol=${state.protocolName}; sentAt=${state.sentAtMs} now=$now"
+                )
+            }
+            emitQueryTrace(
+                QueryTraceEvent(
+                    timestampMs = now,
+                    protocol = state.protocolName,
+                    queryId = id,
+                    commandType = state.query.commandType,
+                    phase = QueryTracePhase.RESPONSE_MATCHED,
+                    attempt = state.attempt,
+                    latencyMs = if (rawLatency < 0L) 0L else rawLatency
+                )
+            )
+        }
+
+        matchedIds.forEach { pendingQueries.remove(it) }
+    }
+
+    private fun emitQueryTrace(event: QueryTraceEvent) {
+        _queryTraceFlow.tryEmit(event)
+        logger.info(
+            "BLEQueryTrace",
+            "phase=${event.phase} protocol=${event.protocol} query=${event.queryId} command=${event.commandType} attempt=${event.attempt} latencyMs=${event.latencyMs ?: -1} message=${event.message ?: ""}"
+        )
     }
     
     // Cleanup
@@ -650,3 +886,23 @@ interface DataCallback {
 interface ErrorCallback {
     fun onError(error: BLEException)
 }
+
+enum class QueryTracePhase {
+    SENT,
+    RESPONSE_MATCHED,
+    TIMEOUT,
+    RETRY_SCHEDULED,
+    UNSUPPORTED,
+    FAILED
+}
+
+data class QueryTraceEvent(
+    val timestampMs: Long,
+    val protocol: String,
+    val queryId: String,
+    val commandType: CommandType,
+    val phase: QueryTracePhase,
+    val attempt: Int,
+    val latencyMs: Long? = null,
+    val message: String? = null
+)
