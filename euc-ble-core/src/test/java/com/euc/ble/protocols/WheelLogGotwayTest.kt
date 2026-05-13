@@ -9,7 +9,6 @@ import com.euc.ble.models.EUCData
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import com.euc.ble.test.JUnit4AssertionsCompat.fail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -30,7 +29,7 @@ import kotlin.math.abs
 class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
-    // Delays mirror existing WheelLog async decoding tests and keep this capture-based test stable.
+    // Delays match existing WheelLog async decoding tests to ensure capture-based test stability.
     private val collectorSubscriptionDelayMs = 100L
     private val frameProcessingDelayMs = 3000L
     private val maxValidTiltBackSpeed = 100
@@ -217,10 +216,9 @@ class WheelLogGotwayTest {
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
-            if (expectedDistance == null) {
-                fail("Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}")
+            val parsedDistance = requireNotNull(expectedDistance) {
+                "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
             }
-            val parsedDistance = expectedDistance
             assertEquals(parsedDistance, data.distance, 0.01)
             assertEquals(parsedDistance, data.totalDistance, 0.01)
 
