@@ -202,9 +202,9 @@ class WheelLogGotwayTest {
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
-            assertNotNull("Type B distance could not be parsed from raw frame", expectedDistance)
-            assertEquals(expectedDistance!!, data.distance, 0.01)
-            assertEquals(expectedDistance, data.totalDistance, 0.01)
+            val parsedDistance = expectedDistance ?: throw AssertionError("Type B distance could not be parsed from raw frame")
+            assertEquals(parsedDistance, data.distance, 0.01)
+            assertEquals(parsedDistance, data.totalDistance, 0.01)
 
             assertEquals(expectedPedalsMode, data.pedalsMode)
             assertEquals(expectedAlarmMode, data.alarmMode)
@@ -217,6 +217,7 @@ class WheelLogGotwayTest {
             assertEquals(expectedLightMode, data.lightMode)
             assertEquals(expectedWheelAlarm, data.wheelAlarm)
 
+            // Type B only carries distance/settings; telemetry fields are placeholders in the protocol output.
             assertEquals(0.0, data.speed, 0.01)
             assertEquals(0.0, data.voltage, 0.01)
             assertEquals(0.0, data.current, 0.01)
