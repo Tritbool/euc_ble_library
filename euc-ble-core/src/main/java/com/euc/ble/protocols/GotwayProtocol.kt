@@ -123,6 +123,10 @@ class GotwayProtocol : EUCProtocol {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var lastKnownVoltage: Double? = null
     private var lastKnownCurrent: Double? = null
+    private var hasType1Voltage = false
+    private var hasType7Current = false
+    private var lastKnownSpeed = 0.0
+    private var lastKnownTemperature = 0.0
     private var lastKnownTripDistance = 0.0
     private var lastKnownTotalDistance: Double? = null
     private var lastKnownMotorTemperature: Double? = null
@@ -162,6 +166,10 @@ class GotwayProtocol : EUCProtocol {
         smartBmsCellPages.clear()
         lastKnownVoltage = null
         lastKnownCurrent = null
+        hasType1Voltage = false
+        hasType7Current = false
+        lastKnownSpeed = 0.0
+        lastKnownTemperature = 0.0
         lastKnownTripDistance = 0.0
         lastKnownTotalDistance = null
         lastKnownMotorTemperature = null
@@ -211,6 +219,11 @@ class GotwayProtocol : EUCProtocol {
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
         val fallbackVoltage = voltageRaw / 100.0
         val voltage = lastKnownVoltage ?: fallbackVoltage
+        if (!hasType1Voltage) {
+            // Before the dedicated Type 1 battery-voltage frame is seen, keep tracking
+            // voltage from Type A so Type B/Type 7 carry-forward telemetry remains usable.
+            lastKnownVoltage = fallbackVoltage
+        }
         if (voltage > 300.0) return null  // pareil pour voltage
 
         val frameVariant = ByteUtils.tryGetUnsignedByte(data, 19)
@@ -222,8 +235,15 @@ class GotwayProtocol : EUCProtocol {
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
         val currentFromTypeA = currentRaw / 100.0
+        if (!hasType7Current) {
+            // Before authoritative battery current from Type 7 is seen, keep Type A current
+            // as the carry-forward source for Type B updates.
+            lastKnownCurrent = currentFromTypeA
+        }
         val current = lastKnownCurrent ?: currentFromTypeA
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
+        lastKnownSpeed = speed
+        lastKnownTemperature = temperature
         val pwmFromTypeA = abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0
         lastKnownPwm = pwmFromTypeA
         val power = voltage * current
@@ -272,17 +292,20 @@ class GotwayProtocol : EUCProtocol {
         val wheelAlarm = alertFlags?.let { (it and 0x01) == 1 }
 
         lastKnownTotalDistance = distanceRaw.toDouble()
+        val voltage = lastKnownVoltage ?: 0.0
+        val current = lastKnownCurrent ?: 0.0
+        val power = voltage * current
+        val batteryLevel = estimateBatteryLevel(voltage)
 
         return EUCData(
-            // The following are placeholders as they are not in this frame type
-            speed = 0.0,
-            voltage = 0.0,
-            current = 0.0,
-            temperature = 0.0,
-            batteryLevel = 0,
-            distance = distanceRaw.toDouble(),
-            power = 0.0,
-            pwm = null,
+            speed = lastKnownSpeed,
+            voltage = voltage,
+            current = current,
+            temperature = lastKnownTemperature,
+            batteryLevel = batteryLevel,
+            distance = lastKnownTripDistance,
+            power = power,
+            pwm = lastKnownPwm,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
@@ -310,6 +333,7 @@ class GotwayProtocol : EUCProtocol {
     private fun parseType1(data: ByteArray) {
         val batteryVoltageTenth = ByteUtils.tryGetUnsignedShortBE(data, 6) ?: return
         lastKnownVoltage = batteryVoltageTenth / 10.0
+        hasType1Voltage = true
     }
 
     @VisibleForTesting
@@ -334,6 +358,7 @@ class GotwayProtocol : EUCProtocol {
         // WheelLog/Begode Type 7 convention: positive raw value means charge/regen, so
         // published battery current is inverted to match discharge-positive telemetry.
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
+        hasType7Current = true
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
             // WheelLog maps Type 7 PWM raw values as whole-percent units (used as-is),
@@ -351,10 +376,10 @@ class GotwayProtocol : EUCProtocol {
         val power = voltage * current
 
         return EUCData(
-            speed = 0.0,
+            speed = lastKnownSpeed,
             voltage = voltage,
             current = current,
-            temperature = 0.0,
+            temperature = lastKnownTemperature,
             batteryLevel = estimateBatteryLevel(voltage),
             distance = lastKnownTripDistance,
             power = power,

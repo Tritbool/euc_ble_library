@@ -300,7 +300,19 @@ class GotwayProtocolTest {
 
     @Test
     fun testDecodeValidTypeBFrame() = runBlocking {
-        // Type B only provides total distance
+        val typeAFrame = createGotwayFrame(
+            voltageRaw = 6720,
+            speedRaw = 833,
+            distanceRaw = 1000,
+            currentRaw = 250,
+            tempRaw = 2500,
+            pwmRaw = 136,
+            frameType = 0x00
+        )
+        protocol.decode(typeAFrame)
+        withTimeout(10000) { protocol.dataFlow.first() }
+
+        // Type B provides settings/total distance and should carry forward last telemetry values.
         val frame = createGotwayFrameTypeB(distanceRaw = 123456)
 
         protocol.decode(frame)
@@ -309,13 +321,15 @@ class GotwayProtocolTest {
             protocol.dataFlow.first()
         }
 
-        assertEquals(123456.0, result.distance, 0.01)
+        assertEquals(1000.0, result.distance, 0.01)
+        assertEquals(123456.0, result.totalDistance ?: 0.0, 0.01)
         assertEquals("Gotway", result.manufacturer)
         assertEquals("Gotway (Type B)", result.model)
-        // Type B doesn't provide other values, they should be 0
-        assertEquals(0.0, result.voltage, 0.01)
-        assertEquals(0.0, result.speed, 0.01)
-        assertNull(result.pwm)
+        assertEquals(67.2, result.voltage, 0.01)
+        assertEquals(29.988, result.speed, 0.1)
+        assertEquals(2.5, result.current, 0.01)
+        assertEquals(25.0, result.temperature, 0.01)
+        assertEquals(13.6, result.pwm ?: 0.0, 0.01)
     }
 
     @Test

@@ -224,8 +224,7 @@ class WheelLogGotwayTest {
             val parsedDistance = requireNotNull(expectedDistance) {
                 "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
             }
-            assertEquals(parsedDistance, data.distance, 0.01)
-            assertEquals(parsedDistance, data.totalDistance?:0.0, 0.01)
+            assertEquals(parsedDistance, data.totalDistance ?: 0.0, 0.01)
 
             assertEquals(expectedPedalsMode, data.pedalsMode)
             assertEquals(expectedAlarmMode, data.alarmMode)
@@ -237,16 +236,18 @@ class WheelLogGotwayTest {
             assertEquals(expectedAlertFlags, data.alertFlags)
             assertEquals(expectedLightMode, data.lightMode)
             assertEquals(expectedWheelAlarm, data.wheelAlarm)
-            assertEquals(null, data.pwm)
-
-            // Type B only carries distance/settings; telemetry fields are placeholders in the protocol output.
-            assertEquals(0.0, data.speed, 0.01)
-            assertEquals(0.0, data.voltage, 0.01)
-            assertEquals(0.0, data.current, 0.01)
-            assertEquals(0.0, data.temperature, 0.01)
-            assertEquals(0, data.batteryLevel)
-            assertEquals(0.0, data.power, 0.01)
         }
+
+        assertTrue(
+            "Expected at least one Type B frame with carry-forward telemetry",
+            typeBFrames.any {
+                it.voltage > 0.0 &&
+                        it.speed > 0.0 &&
+                        abs(it.current) > 0.0 &&
+                        it.batteryLevel > 0 &&
+                        abs(it.power - (it.voltage * it.current)) < 0.5
+            }
+        )
     }
 
     @Test

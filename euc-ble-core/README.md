@@ -23,7 +23,7 @@ A modular Bluetooth Low Energy library for Electric Unicycles (EUC) that provide
 | Manufacturer | Protocol class | WheelLog test coverage | Command support | Telemetry completeness |
 | --- | --- | --- | --- | --- |
 | KingSong | `KingsongProtocol` | `WheelLogKingsongTest` | Light/BEEP/Power/Brightness | Core telemetry + battery and session ride time fallback |
-| Gotway/Begode | `GotwayProtocol` | `WheelLogGotwayTest` | Light/BEEP/Power/Brightness | Type A: rich telemetry, Type B: distance-focused placeholder fields by design |
+| Gotway/Begode | `GotwayProtocol` | `WheelLogGotwayTest` | Light/BEEP/Power/Brightness | Type A: rich telemetry, Type B: settings + total distance with legacy-style carry-forward telemetry |
 | InMotion | `InMotionProtocol` | `WheelLogInMotionTest` | V2 control commands (legacy read-only) | Legacy: rich telemetry + ride time, V2: rich telemetry + ride time fallback |
 | Ninebot | `NinebotProtocol` | `NinebotProtocolTest`, `WheelLogNinebotTest` | Light/BEEP/Lock/Unlock | MVP parser with core telemetry and ride time support, including WheelLog stream reassembly |
 | Leaperkim/Veteran | `LeaperkimProtocol` | `WheelLogLeaperkimTest` | Light/BEEP + custom payload | Rich telemetry + session ride time fallback |
