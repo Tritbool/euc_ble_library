@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlin.math.abs
 import java.util.UUID
 
 /**
@@ -25,6 +26,10 @@ class NinebotProtocol : EUCProtocol {
         private const val WHEELLOG_MIN_FRAME_SIZE = 9
         private const val WHEELLOG_MAX_FRAME_SIZE = 128
         private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
+        private const val WHEELLOG_SERIAL_TYPE = 0x10
+        private const val WHEELLOG_SERIAL_TYPE_PART2 = 0x13
+        private const val WHEELLOG_SERIAL_TYPE_PART3 = 0x16
+        private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
         private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
         private const val BATTERY_OFFSET = 16
         private const val STATUS_OFFSET = 17
@@ -47,6 +52,9 @@ class NinebotProtocol : EUCProtocol {
 
     private var sessionStartTimestampMs: Long? = null
     private val wheelLogBuffer = mutableListOf<Byte>()
+    private val serialBuffer = StringBuilder()
+    private var serialNumber: String? = null
+    private var firmwareVersion: String? = null
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_READ_CHARACTERISTIC)
@@ -163,7 +171,7 @@ class NinebotProtocol : EUCProtocol {
             val frame = wheelLogBuffer.subList(0, expectedFrameLength).toByteArray()
             wheelLogBuffer.subList(0, expectedFrameLength).clear()
 
-            parseWheelLogTelemetryFrame(frame)?.let(decodedFrames::add)
+            parseWheelLogFrame(frame)?.let(decodedFrames::add)
         }
 
         return decodedFrames
@@ -181,17 +189,37 @@ class NinebotProtocol : EUCProtocol {
         return -1
     }
 
-    private fun parseWheelLogTelemetryFrame(frame: ByteArray): EUCData? {
-        if (frame.size < 41) return null
+    private fun parseWheelLogFrame(frame: ByteArray): EUCData? {
+        if (frame.size < WHEELLOG_MIN_FRAME_SIZE) return null
         if ((frame[0].toInt() and 0xFF) != WHEELLOG_HEADER_FIRST) return null
         if ((frame[1].toInt() and 0xFF) != WHEELLOG_HEADER_SECOND) return null
+        val frameType = frame[6].toInt() and 0xFF
+
+        return when (frameType) {
+            WHEELLOG_TELEMETRY_TYPE -> parseWheelLogTelemetryFrame(frame)
+            WHEELLOG_SERIAL_TYPE,
+            WHEELLOG_SERIAL_TYPE_PART2,
+            WHEELLOG_SERIAL_TYPE_PART3 -> {
+                parseWheelLogSerialFrame(frame)
+                null
+            }
+            WHEELLOG_FIRMWARE_TYPE -> {
+                parseWheelLogFirmwareFrame(frame)
+                null
+            }
+            else -> null
+        }
+    }
+
+    private fun parseWheelLogTelemetryFrame(frame: ByteArray): EUCData? {
+        if (frame.size < 41) return null
         if ((frame[6].toInt() and 0xFF) != WHEELLOG_TELEMETRY_TYPE) return null
 
         val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, 31) ?: return null) / 100.0
-        val speed = (ByteUtils.tryGetUnsignedShortLE(frame, 17) ?: return null) / 100.0
-        val current = (ByteUtils.tryGetSignedShortLE(frame, 25)?.toInt() ?: return null) / 100.0
+        val speed = decodeWheelLogSpeed(frame)
+        val current = (ByteUtils.tryGetSignedShortLE(frame, 33)?.toInt() ?: return null) / 100.0
         val temperature = (ByteUtils.tryGetUnsignedShortLE(frame, 29) ?: return null) / 10.0
-        val battery = ByteUtils.tryGetUnsignedByte(frame, 15) ?: return null
+        val battery = decodeWheelLogBattery(frame) ?: return null
 
         if (voltage !in 20.0..150.0) return null
         if (speed !in -120.0..120.0) return null
@@ -200,8 +228,11 @@ class NinebotProtocol : EUCProtocol {
         if (battery !in 0..100) return null
 
         val now = System.currentTimeMillis()
-        val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 7) ?: return null).toDouble() / 1000.0
-        val rideTime = ByteUtils.tryGetUnsignedShortLE(frame, 27)?.toLong() ?: deriveRideTimeSeconds(now)
+        val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 21) ?: return null).toDouble() / 1000.0
+        val rideTime = ByteUtils.tryGetUnsignedShortLE(frame, 27)
+            ?.toLong()
+            ?.takeIf { it in 0L..604_800L }
+            ?: deriveRideTimeSeconds(now)
 
         return EUCData(
             speed = speed,
@@ -215,14 +246,65 @@ class NinebotProtocol : EUCProtocol {
             rawData = frame,
             manufacturer = manufacturer,
             model = inferModel(frame),
-            serialNumber = null,
-            firmwareVersion = null,
+            serialNumber = serialNumber,
+            firmwareVersion = firmwareVersion,
             isCharging = current > 0.5,
             rideTime = rideTime,
             cellVoltages = null,
             motorTemperature = null,
-            totalDistance = null
+            totalDistance = distance
         )
+    }
+
+    private fun decodeWheelLogSpeed(frame: ByteArray): Double {
+        val signedLegacySpeed = ByteUtils.tryGetSignedShortLE(frame, 17)?.toInt()
+            ?.let { abs(it) / 10.0 }
+        val protoS2Speed = ByteUtils.tryGetUnsignedShortLE(frame, 35)?.toDouble()?.div(100.0)
+        return when {
+            signedLegacySpeed != null && signedLegacySpeed in 0.0..120.0 -> signedLegacySpeed
+            protoS2Speed != null && protoS2Speed in 0.0..120.0 -> protoS2Speed
+            else -> signedLegacySpeed ?: protoS2Speed ?: 0.0
+        }
+    }
+
+    private fun decodeWheelLogBattery(frame: ByteArray): Int? {
+        val batteryRaw = ByteUtils.tryGetUnsignedShortLE(frame, 15)
+            ?: ByteUtils.tryGetUnsignedByte(frame, 15)
+            ?: return null
+        return if (batteryRaw <= 100) {
+            batteryRaw
+        } else {
+            (batteryRaw / 100).coerceIn(0, 100)
+        }
+    }
+
+    private fun parseWheelLogSerialFrame(frame: ByteArray) {
+        val payloadLength = frame[2].toInt() and 0xFF
+        val payloadStart = 7
+        val payloadEnd = (payloadStart + payloadLength).coerceAtMost(frame.size - 2)
+        if (payloadEnd <= payloadStart) return
+
+        val part = frame.copyOfRange(payloadStart, payloadEnd)
+            .decodeToString()
+            .trim('\u0000', ' ', '\r', '\n')
+        if (part.isEmpty()) return
+
+        serialBuffer.append(part)
+        serialNumber = serialBuffer.toString().takeIf { it.isNotBlank() }
+    }
+
+    private fun parseWheelLogFirmwareFrame(frame: ByteArray) {
+        val payloadLength = frame[2].toInt() and 0xFF
+        val payloadStart = 7
+        val payloadEnd = (payloadStart + payloadLength).coerceAtMost(frame.size - 2)
+        if (payloadEnd - payloadStart < 2) return
+
+        val majorByte = frame[payloadStart + 1].toInt() and 0xFF
+        val minorBuildByte = frame[payloadStart].toInt() and 0xFF
+        val major = (majorByte shr 4).takeIf { it > 0 } ?: (majorByte and 0x0F)
+        val minor = (minorBuildByte shr 4) and 0x0F
+        val build = minorBuildByte and 0x0F
+        firmwareVersion = "$major.$minor.$build"
     }
 
     private fun inferModel(data: ByteArray): String {
@@ -271,6 +353,7 @@ class NinebotProtocol : EUCProtocol {
 
     override fun close() {
         wheelLogBuffer.clear()
+        serialBuffer.clear()
         _channel.close()
     }
 }
