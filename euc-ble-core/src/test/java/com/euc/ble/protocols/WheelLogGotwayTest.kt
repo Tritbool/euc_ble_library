@@ -29,6 +29,13 @@ import kotlin.math.abs
 class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
+    // Delays match existing WheelLog async decoding tests to ensure capture-based test stability.
+    private val collectorSubscriptionDelayMs = 100L
+    private val frameProcessingDelayMs = 3000L
+    private val maxValidTiltBackSpeed = 100
+    private val frameTypeOffset = 18
+    private val typeBFrameType = 0x04
+    private val distanceOffset = 2
 
     private lateinit var protocol: GotwayProtocol
     @BeforeEach
@@ -160,6 +167,79 @@ class WheelLogGotwayTest {
                     cur.distance >= prev.distance - 1.0
                 )
             }
+        }
+    }
+
+    @Test
+    fun testTypeBContentDecodedFromWheelLogCapture() = runBlocking {
+        val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1200)
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        val collectorJob = launch {
+            protocol.dataFlow.collect { data ->
+                decoded.add(data)
+            }
+        }
+
+        // Let the collector subscribe before frames are fed, matching existing test timing pattern.
+        delay(collectorSubscriptionDelayMs)
+        frames.forEach { frame ->
+            protocol.decode(frame.bleData)
+        }
+        // Allow asynchronous frame reassembly/decoding to flush capture fragments.
+        delay(frameProcessingDelayMs)
+        collectorJob.cancel()
+
+        val typeBFrames = decoded.filter { it.model == "Gotway (Type B)" }
+        assertTrue("No Type B frames decoded from WheelLog capture", typeBFrames.isNotEmpty())
+
+        typeBFrames.forEach { data ->
+            val raw = data.rawData
+            val actualFrameType = raw[frameTypeOffset].toInt() and 0xFF
+            assertEquals(
+                "Unexpected frame type: expected=$typeBFrameType actual=$actualFrameType",
+                typeBFrameType,
+                actualFrameType
+            )
+
+            val expectedDistance = ByteUtils.tryGetUnsignedIntBE(raw, distanceOffset)?.toDouble()
+            val settings = ByteUtils.tryGetUnsignedShortBE(raw, 6)
+            val expectedPedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }
+            val expectedAlarmMode = settings?.let { (it shr 10) and 0x03 }
+            val expectedRollAngleMode = settings?.let { (it shr 7) and 0x03 }
+            val expectedUsesMiles = settings?.let { (it and 0x01) == 1 }
+            val expectedAutoPowerOff = ByteUtils.tryGetUnsignedShortBE(raw, 8)
+            val expectedTiltBack = ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < maxValidTiltBackSpeed }
+            val expectedLedMode = ByteUtils.tryGetUnsignedByte(raw, 13)
+            val expectedAlertFlags = ByteUtils.tryGetUnsignedByte(raw, 14)
+            val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
+            val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
+
+            val parsedDistance = requireNotNull(expectedDistance) {
+                "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
+            }
+            assertEquals(parsedDistance, data.distance, 0.01)
+            assertEquals(parsedDistance, data.totalDistance, 0.01)
+
+            assertEquals(expectedPedalsMode, data.pedalsMode)
+            assertEquals(expectedAlarmMode, data.alarmMode)
+            assertEquals(expectedRollAngleMode, data.rollAngleMode)
+            assertEquals(expectedUsesMiles, data.usesMiles)
+            assertEquals(expectedAutoPowerOff, data.autoPowerOffMinutes)
+            assertEquals(expectedTiltBack, data.tiltBackSpeed)
+            assertEquals(expectedLedMode, data.ledMode)
+            assertEquals(expectedAlertFlags, data.alertFlags)
+            assertEquals(expectedLightMode, data.lightMode)
+            assertEquals(expectedWheelAlarm, data.wheelAlarm)
+
+            // Type B only carries distance/settings; telemetry fields are placeholders in the protocol output.
+            assertEquals(0.0, data.speed, 0.01)
+            assertEquals(0.0, data.voltage, 0.01)
+            assertEquals(0.0, data.current, 0.01)
+            assertEquals(0.0, data.temperature, 0.01)
+            assertEquals(0, data.batteryLevel)
+            assertEquals(0.0, data.power, 0.01)
         }
     }
 
