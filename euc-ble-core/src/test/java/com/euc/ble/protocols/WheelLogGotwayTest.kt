@@ -36,6 +36,7 @@ class WheelLogGotwayTest {
     private val frameTypeOffset = 18
     private val typeBFrameType = 0x04
     private val distanceOffset = 2
+    private val typeAPwmOffset = 14
 
     private lateinit var protocol: GotwayProtocol
     @BeforeEach
@@ -109,6 +110,10 @@ class WheelLogGotwayTest {
         assertTrue(
             "Expected non-placeholder telemetry from Type A frames",
             decoded.any { it.model.contains("Type A") && it.voltage > 0.0 && abs(it.current) > 0.0 }
+        )
+        assertTrue(
+            "Expected PWM to be decoded from Type A frames",
+            decoded.any { it.model.contains("Type A") && (it.pwm ?: 0.0) > 0.0 }
         )
 
         // With FrameReassembler, we expect to decode reassembled frames
@@ -232,6 +237,7 @@ class WheelLogGotwayTest {
             assertEquals(expectedAlertFlags, data.alertFlags)
             assertEquals(expectedLightMode, data.lightMode)
             assertEquals(expectedWheelAlarm, data.wheelAlarm)
+            assertEquals(null, data.pwm)
 
             // Type B only carries distance/settings; telemetry fields are placeholders in the protocol output.
             assertEquals(0.0, data.speed, 0.01)
@@ -241,6 +247,36 @@ class WheelLogGotwayTest {
             assertEquals(0, data.batteryLevel)
             assertEquals(0.0, data.power, 0.01)
         }
+    }
+
+    @Test
+    fun testTypeAPwmDecodedFromWheelLogCapture() = runBlocking {
+        val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1200)
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
+
+        val decoded = mutableListOf<EUCData>()
+        val collectorJob = launch {
+            protocol.dataFlow.collect { data ->
+                decoded.add(data)
+            }
+        }
+
+        delay(collectorSubscriptionDelayMs)
+        frames.forEach { frame ->
+            protocol.decode(frame.bleData)
+        }
+        delay(frameProcessingDelayMs)
+        collectorJob.cancel()
+
+        val typeAFrames = decoded.filter { it.model == "Gotway (Type A)" }
+        assertTrue("No Type A frames decoded from WheelLog capture", typeAFrames.isNotEmpty())
+
+        typeAFrames.forEach { data ->
+            val expectedPwm = abs(ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0) / 10.0
+            assertEquals(expectedPwm, data.pwm ?: -1.0, 0.01)
+        }
+
+        assertTrue("Expected at least one Type A frame with non-zero PWM", typeAFrames.any { (it.pwm ?: 0.0) > 0.0 })
     }
 
     @Test

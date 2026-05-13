@@ -126,6 +126,7 @@ class GotwayProtocol : EUCProtocol {
     private var lastKnownTripDistance = 0.0
     private var lastKnownTotalDistance: Double? = null
     private var lastKnownMotorTemperature: Double? = null
+    private var lastKnownPwm: Double? = null
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
 
     init {
@@ -164,6 +165,7 @@ class GotwayProtocol : EUCProtocol {
         lastKnownTripDistance = 0.0
         lastKnownTotalDistance = null
         lastKnownMotorTemperature = null
+        lastKnownPwm = null
         _channel.close()
     }
 
@@ -222,6 +224,8 @@ class GotwayProtocol : EUCProtocol {
         val currentFromTypeA = currentRaw / 100.0
         val current = lastKnownCurrent ?: currentFromTypeA
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
+        val fallbackPwm = kotlin.math.abs(ByteUtils.tryGetSignedShortBE(data, 14) ?: 0) / 10.0
+        lastKnownPwm = fallbackPwm
         val power = voltage * current
         val batteryLevel = estimateBatteryLevel(voltage)
         lastKnownTripDistance = tripDistanceKm
@@ -234,6 +238,7 @@ class GotwayProtocol : EUCProtocol {
             batteryLevel = batteryLevel,
             distance = tripDistanceKm,
             power = power,
+            pwm = lastKnownPwm,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
@@ -277,6 +282,7 @@ class GotwayProtocol : EUCProtocol {
             batteryLevel = 0,
             distance = distanceRaw.toDouble(),
             power = 0.0,
+            pwm = null,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
@@ -323,11 +329,16 @@ class GotwayProtocol : EUCProtocol {
     private fun parseType7(data: ByteArray): EUCData? {
         val batteryCurrentRaw = ByteUtils.tryGetSignedShortBE(data, 2) ?: return null
         val motorTemperatureRaw = ByteUtils.tryGetSignedShortBE(data, 6) ?: return null
+        val truePwmRaw = ByteUtils.tryGetSignedShortBE(data, 8)
 
         // WheelLog/Begode Type 7 convention: positive raw value means charge/regen, so
         // published battery current is inverted to match discharge-positive telemetry.
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
+        val truePwm = truePwmRaw?.let { kotlin.math.abs(it.toDouble()) }
+        if (truePwm != null && truePwm > 0.0) {
+            lastKnownPwm = truePwm
+        }
 
         val voltage = lastKnownVoltage ?: 0.0
         val current = lastKnownCurrent ?: 0.0
@@ -341,6 +352,7 @@ class GotwayProtocol : EUCProtocol {
             batteryLevel = estimateBatteryLevel(voltage),
             distance = lastKnownTripDistance,
             power = power,
+            pwm = lastKnownPwm,
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,

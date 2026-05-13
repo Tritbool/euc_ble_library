@@ -24,6 +24,7 @@ class EUCDataTest {
             batteryLevel = 75,
             distance = 15.3,
             power = 705.6,
+            pwm = 47.5,
             timestamp = 1234567890L,
             rawData = byteArrayOf(0x01, 0x02, 0x03),
             manufacturer = "KingSong",
@@ -53,6 +54,7 @@ class EUCDataTest {
         assertEquals(75, data.batteryLevel)
         assertEquals(15.3, data.distance, 0.01)
         assertEquals(705.6, data.power, 0.01)
+        assertEquals(47.5, data.pwm ?: 0.0, 0.01)
         assertEquals(1234567890L, data.timestamp)
         assertArrayEquals(byteArrayOf(0x01, 0x02, 0x03), data.rawData)
         assertEquals("KingSong", data.manufacturer)
@@ -105,6 +107,7 @@ class EUCDataTest {
         assertEquals(0, data.batteryLevel)
         assertEquals(0.0, data.distance, 0.01)
         assertEquals(0.0, data.power, 0.01)
+        assertNull(data.pwm)
         assertEquals(0L, data.timestamp)
         assertArrayEquals(byteArrayOf(), data.rawData)
         assertEquals("Gotway", data.manufacturer)

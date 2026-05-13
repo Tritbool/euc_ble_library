@@ -11,6 +11,7 @@ data class EUCData(
     val batteryLevel: Int,         // percentage 0-100
     val distance: Double,           // kilometers
     val power: Double,              // watts
+    val pwm: Double?=null,          // PWM duty cycle percentage (0-100), null if unavailable
     val timestamp: Long,            // milliseconds
     val rawData: ByteArray,         // raw byte data
     val manufacturer: String,       // manufacturer name
