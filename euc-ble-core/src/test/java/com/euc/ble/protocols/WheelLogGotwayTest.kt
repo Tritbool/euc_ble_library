@@ -166,7 +166,7 @@ class WheelLogGotwayTest {
     @Test
     fun testTypeBContentDecodedFromWheelLogCapture() = runBlocking {
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1200)
-        assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
 
         val decoded = mutableListOf<EUCData>()
         val collectorJob = launch {
@@ -183,11 +183,11 @@ class WheelLogGotwayTest {
         collectorJob.cancel()
 
         val typeBFrames = decoded.filter { it.model == "Gotway (Type B)" }
-        assertTrue("Aucune frame Type B décodée depuis la capture WheelLog", typeBFrames.isNotEmpty())
+        assertTrue("No Type B frames decoded from WheelLog capture", typeBFrames.isNotEmpty())
 
         typeBFrames.forEach { data ->
             val raw = data.rawData
-            assertEquals("Type de frame inattendu", 0x04, raw[18].toInt() and 0xFF)
+            assertEquals("Unexpected frame type", 0x04, raw[18].toInt() and 0xFF)
 
             val expectedDistance = ByteUtils.tryGetUnsignedIntBE(raw, 2)?.toDouble()
             val settings = ByteUtils.tryGetUnsignedShortBE(raw, 6)
@@ -202,7 +202,7 @@ class WheelLogGotwayTest {
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
-            assertNotNull("Distance Type B non lisible", expectedDistance)
+            assertNotNull("Type B distance could not be parsed from raw frame", expectedDistance)
             assertEquals(expectedDistance!!, data.distance, 0.01)
             assertEquals(expectedDistance, data.totalDistance, 0.01)
 
