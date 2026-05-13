@@ -59,7 +59,12 @@ jobs:
           summary = Path(".coverage-summary.md")
 
           if not report.exists():
-              summary.write_text("## Coverage (protocols/models/frames)\n\nCoverage XML not found.\n")
+              summary.write_text(
+                  "## Coverage (protocols/models/frames)\n\n"
+                  "Coverage XML not found at "
+                  "`euc-ble-core/build/reports/jacoco/focused/jacoco.xml`.\n"
+                  "Ensure `:euc-ble-core:jacocoFocusedReport` completed successfully.\n"
+              )
               raise SystemExit(0)
 
           root = ET.parse(report).getroot()
