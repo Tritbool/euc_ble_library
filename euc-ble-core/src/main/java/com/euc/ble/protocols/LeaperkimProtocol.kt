@@ -133,6 +133,7 @@ open class LeaperkimProtocol : EUCProtocol {
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
     private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
+    @Volatile private var lastMajorVersion: Int? = null
 
     init {
         scope.launch {
@@ -185,6 +186,7 @@ open class LeaperkimProtocol : EUCProtocol {
         if (temperature !in -50.0..130.0) return null
 
         val majorVersion = extractMajorVersion(versionRaw)
+        lastMajorVersion = majorVersion
         val model = modelByMajorVersion(majorVersion)
         val battery = estimateBatteryPercent(voltageRaw, majorVersion)
 
@@ -273,7 +275,25 @@ open class LeaperkimProtocol : EUCProtocol {
         return when (commandType) {
             CommandType.LIGHT_ON -> "SetLightON".encodeToByteArray()
             CommandType.LIGHT_OFF -> "SetLightOFF".encodeToByteArray()
-            CommandType.BEEP -> "b".encodeToByteArray()
+            CommandType.BEEP -> {
+                if ((lastMajorVersion ?: 0) < 3) {
+                    "b".encodeToByteArray()
+                } else {
+                    byteArrayOf(
+                        0x4c, 0x6b, 0x41, 0x70, 0x0e, 0x00,
+                        0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01,
+                        0xca.toByte(), 0x87.toByte(), 0xe6.toByte(), 0x6f
+                    )
+                }
+            }
+            CommandType.SET_PEDALS_MODE -> {
+                when ((value as? Int)?.coerceIn(0, 2)) {
+                    0 -> "SETh".encodeToByteArray()
+                    1 -> "SETm".encodeToByteArray()
+                    2 -> "SETs".encodeToByteArray()
+                    else -> byteArrayOf()
+                }
+            }
             CommandType.CUSTOM -> {
                 when (value) {
                     is ByteArray -> value.clone()

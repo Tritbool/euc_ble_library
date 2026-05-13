@@ -25,6 +25,11 @@ class LeaperkimProtocolTest {
     private val telemetryEmissionTimeoutMs = 5_000L
     private val invalidFrameCheckTimeoutMs = 500L
     private val beepCommandPayload = "b".encodeToByteArray()
+    private val modernBeepCommandPayload = byteArrayOf(
+        0x4c, 0x6b, 0x41, 0x70, 0x0e, 0x00,
+        0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01,
+        0xca.toByte(), 0x87.toByte(), 0xe6.toByte(), 0x6f
+    )
     private lateinit var protocol: LeaperkimProtocol
 
     @BeforeEach
@@ -107,6 +112,19 @@ class LeaperkimProtocolTest {
         assertArrayEquals("SetLightON".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_ON, Unit))
         assertArrayEquals("SetLightOFF".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_OFF, Unit))
         assertArrayEquals(beepCommandPayload, protocol.createCommand(CommandType.BEEP, Unit))
+    }
+
+    @Test
+    fun createCommandUsesModernBeepOnNewerFirmware() {
+        protocol.decode(createLeaperkimFrame(versionRaw = 4000))
+        assertArrayEquals(modernBeepCommandPayload, protocol.createCommand(CommandType.BEEP, Unit))
+    }
+
+    @Test
+    fun createCommandMapsPedalsModeVariants() {
+        assertArrayEquals("SETh".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
+        assertArrayEquals("SETm".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 1))
+        assertArrayEquals("SETs".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
     }
 
     private fun createLeaperkimFrame(

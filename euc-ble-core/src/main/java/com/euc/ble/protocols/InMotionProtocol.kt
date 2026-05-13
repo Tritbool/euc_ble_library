@@ -474,6 +474,10 @@ class InMotionProtocol : EUCProtocol {
         return when (commandType) {
             CommandType.LIGHT_ON -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x01))
             CommandType.LIGHT_OFF -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x00))
+            CommandType.LIGHT_BRIGHTNESS -> {
+                val brightness = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x2b, brightness.toByte()))
+            }
             CommandType.BEEP -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x18, 0x00))
             CommandType.LOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x01))
             CommandType.UNLOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x00))

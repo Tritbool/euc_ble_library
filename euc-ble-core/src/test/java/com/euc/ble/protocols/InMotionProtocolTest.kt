@@ -2,6 +2,7 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
@@ -127,6 +128,15 @@ class InMotionProtocolTest {
         assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
         assertTrue(decoded.all { it.manufacturer.equals("InMotion", ignoreCase = true) })
         assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
+
+    @Test
+    fun createCommandSupportsV2LightBrightness() {
+        val cmd = protocol.createCommand(CommandType.LIGHT_BRIGHTNESS, 70)
+        assertArrayEquals(
+            ByteUtils.hexToBytes("AAAA1402602B465F"),
+            cmd
+        )
     }
 
     private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {

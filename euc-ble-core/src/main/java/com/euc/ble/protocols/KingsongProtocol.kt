@@ -329,19 +329,54 @@ class KingsongProtocol : EUCProtocol {
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {
-            CommandType.LIGHT_ON -> byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x01, 0x01)
-            CommandType.LIGHT_OFF -> byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x01, 0x00)
-            CommandType.BEEP -> byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x02, 0x01)
-            CommandType.POWER_OFF -> byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x03, 0x01)
+            CommandType.LIGHT_ON -> buildLegacyCommand(command = 0x73, payload2 = 0x13, payload3 = 0x01)
+            CommandType.LIGHT_OFF -> buildLegacyCommand(command = 0x73, payload2 = 0x12, payload3 = 0x01)
+            CommandType.SET_LIGHT_MODE -> {
+                val mode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
+                buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
+            }
+            CommandType.BEEP -> buildLegacyCommand(command = 0x88)
+            CommandType.POWER_OFF -> buildLegacyCommand(command = 0x40)
+            CommandType.SET_PEDALS_MODE -> {
+                val pedalsMode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
+                buildLegacyCommand(command = 0x87, payload2 = pedalsMode, payload3 = 0xE0, payload17 = 0x15)
+            }
+            CommandType.SET_LED_MODE -> {
+                val ledMode = (value as? Int)?.coerceIn(0, 0xFF) ?: return byteArrayOf()
+                buildLegacyCommand(command = 0x6C, payload2 = ledMode)
+            }
             CommandType.LIGHT_BRIGHTNESS -> {
                 val intVal = (value as? Int) ?: return byteArrayOf()
-                val clamped = intVal.coerceIn(0, 100)
-                val brightness = (clamped * 255 / 100).toByte()
-                byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x04, brightness)
+                val mode = when {
+                    intVal <= 0 -> 0
+                    intVal >= 100 -> 2
+                    else -> 1
+                }
+                buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
             }
 
             else -> byteArrayOf()
         }
+    }
+
+    private fun buildLegacyCommand(
+        command: Int,
+        payload2: Int = 0x00,
+        payload3: Int = 0x00,
+        payload17: Int = 0x14
+    ): ByteArray {
+        val data = byteArrayOf(
+            0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x14, 0x5A, 0x5A
+        )
+        data[2] = payload2.toByte()
+        data[3] = payload3.toByte()
+        data[16] = command.toByte()
+        data[17] = payload17.toByte()
+        return data
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 
 class KingsongProtocolTest {
@@ -37,6 +38,42 @@ class KingsongProtocolTest {
         protocol.decode(createA9Frame())
         val data = withTimeout(5_000L) { protocol.dataFlow.first() }
         assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+    }
+
+    @Test
+    fun createCommandUsesLegacyFrameFormatForCoreActions() {
+        assertArrayEquals(
+            createLegacyCommand(command = 0x73, payload2 = 0x13, payload3 = 0x01),
+            protocol.createCommand(CommandType.LIGHT_ON, Unit)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x73, payload2 = 0x12, payload3 = 0x01),
+            protocol.createCommand(CommandType.LIGHT_OFF, Unit)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x88),
+            protocol.createCommand(CommandType.BEEP, Unit)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x40),
+            protocol.createCommand(CommandType.POWER_OFF, Unit)
+        )
+    }
+
+    @Test
+    fun createCommandSupportsLegacySettingsControls() {
+        assertArrayEquals(
+            createLegacyCommand(command = 0x87, payload2 = 0x02, payload3 = 0xE0, payload17 = 0x15),
+            protocol.createCommand(CommandType.SET_PEDALS_MODE, 2)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x6C, payload2 = 0x05),
+            protocol.createCommand(CommandType.SET_LED_MODE, 5)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x73, payload2 = 0x14, payload3 = 0x01),
+            protocol.createCommand(CommandType.SET_LIGHT_MODE, 2)
+        )
     }
 
     private fun createA9Frame(
@@ -79,5 +116,25 @@ class KingsongProtocolTest {
         frame[15] = (outputPercentByte and 0xFF).toByte()
         frame[16] = 0xF5.toByte()
         return frame
+    }
+
+    private fun createLegacyCommand(
+        command: Int,
+        payload2: Int = 0x00,
+        payload3: Int = 0x00,
+        payload17: Int = 0x14
+    ): ByteArray {
+        val data = byteArrayOf(
+            0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x14, 0x5A, 0x5A
+        )
+        data[2] = payload2.toByte()
+        data[3] = payload3.toByte()
+        data[16] = command.toByte()
+        data[17] = payload17.toByte()
+        return data
     }
 }
