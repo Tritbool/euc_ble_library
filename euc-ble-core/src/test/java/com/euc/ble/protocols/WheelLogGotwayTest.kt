@@ -224,7 +224,7 @@ class WheelLogGotwayTest {
             val parsedDistance = requireNotNull(expectedDistance) {
                 "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
             }
-            assertEquals(parsedDistance, data.totalDistance?:0.0, 0.01)
+            assertEquals(parsedDistance, data.totalDistance ?: 0.0, 0.01)
 
             assertEquals(expectedPedalsMode, data.pedalsMode)
             assertEquals(expectedAlarmMode, data.alarmMode)
