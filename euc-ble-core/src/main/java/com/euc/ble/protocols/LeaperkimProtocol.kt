@@ -159,6 +159,7 @@ open class LeaperkimProtocol : EUCProtocol {
 
         val len = ByteUtils.getUnsignedByte(data, 3)
         if (data.size != len + 4) return
+        // WheelLog-compatible Leaperkim frames longer than 38 bytes carry trailing CRC32.
         if (len > 38 && !isCrcValid(data, len)) return
 
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(data, 28) ?: return
@@ -177,6 +178,7 @@ open class LeaperkimProtocol : EUCProtocol {
 
         val len = ByteUtils.getUnsignedByte(frame, 3)
         if (frame.size != len + 4) return null
+        // WheelLog-compatible Leaperkim frames longer than 38 bytes carry trailing CRC32.
         if (len > 38 && !isCrcValid(frame, len)) return null
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(frame, 4) ?: return null
