@@ -252,12 +252,14 @@ class GotwayProtocol : EUCProtocol {
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
         val settings = ByteUtils.tryGetUnsignedShortBE(data, 6)
         // Legacy WheelLog maps firmware pedals bits with "2 - raw" before exposing the
-        // mode value to the app layer; keep the same mapping for compatibility.
+        // mode value to the app layer (typically mapped into 0..2); keep this behavior
+        // for compatibility with existing consumers.
         val pedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }
         val alarmMode = settings?.let { (it shr 10) and 0x03 }
         val rollAngleMode = settings?.let { (it shr 7) and 0x03 }
         val usesMiles = settings?.let { (it and 0x01) == 1 }
         val autoPowerOffMinutes = ByteUtils.tryGetUnsignedShortBE(data, 8)
+        // Legacy parser ignores values >= 100, treating them as unset/invalid in this field.
         val tiltBackSpeed = ByteUtils.tryGetUnsignedShortBE(data, 10)?.takeIf { it < 100 }
         val ledMode = ByteUtils.tryGetUnsignedByte(data, 13)
         val alertFlags = ByteUtils.tryGetUnsignedByte(data, 14)

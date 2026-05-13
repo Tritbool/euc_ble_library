@@ -22,9 +22,9 @@ data class EUCData(
     val cellVoltages: List<Double>?=null, // individual cell voltages
     val motorTemperature: Double?=null,   // motor temperature in degrees Celsius (null if not available)
     val totalDistance: Double?=null,
-    val pedalsMode: Int?=null,
-    val alarmMode: Int?=null,
-    val rollAngleMode: Int?=null,
+    val pedalsMode: Int?=null,       // mode value exposed by protocol (legacy-mapped, typically 0..2)
+    val alarmMode: Int?=null,        // encoded alarm mode value (firmware-dependent, usually 0..3)
+    val rollAngleMode: Int?=null,    // encoded roll-angle mode value (firmware-dependent, usually 0..3)
     val usesMiles: Boolean?=null,
     val autoPowerOffMinutes: Int?=null,
     val tiltBackSpeed: Int?=null,
