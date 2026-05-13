@@ -70,6 +70,7 @@ class LeaperkimProtocolTest {
             totalDistanceRaw = 65432,
             currentRaw = -250,
             temperatureRaw = 3500,
+            pwmRaw = 7850,
             chargeMode = 1,
             versionRaw = 7001
         )
@@ -85,6 +86,7 @@ class LeaperkimProtocolTest {
         assertEquals(12.34, telemetry.speed, 0.01)
         assertEquals(-2.50, telemetry.current, 0.01)
         assertEquals(35.00, telemetry.temperature, 0.01)
+        assertEquals(78.50, telemetry.pwm ?: -1.0, 0.01)
         assertEquals(54.321, telemetry.distance, 0.001)
         assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.001)
         assertEquals("007.0.01", telemetry.firmwareVersion)
@@ -115,6 +117,7 @@ class LeaperkimProtocolTest {
         totalDistanceRaw: Long = 0,
         currentRaw: Int = 0,
         temperatureRaw: Int = defaultTemperatureRaw,
+        pwmRaw: Int = 0,
         chargeMode: Int = 0,
         versionRaw: Int = defaultVersionRaw
     ): ByteArray {
@@ -140,6 +143,8 @@ class LeaperkimProtocolTest {
         frame[17] = (currentRaw and 0xFF).toByte()
         frame[18] = ((temperatureRaw shr 8) and 0xFF).toByte()
         frame[19] = (temperatureRaw and 0xFF).toByte()
+        frame[34] = ((pwmRaw shr 8) and 0xFF).toByte()
+        frame[35] = (pwmRaw and 0xFF).toByte()
 
         frame[22] = ((chargeMode shr 8) and 0xFF).toByte()
         frame[23] = (chargeMode and 0xFF).toByte()
