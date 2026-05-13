@@ -19,6 +19,8 @@ import android.os.Looper
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import com.euc.ble.exceptions.BLEException
+import com.euc.ble.integration.BleBackendEvent
+import com.euc.ble.integration.BleBackendListener
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import com.euc.ble.protocols.EUCProtocol
@@ -34,7 +36,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.text.compareTo
 
 /**
  * Main BLE Manager for Electric Unicycles
@@ -290,7 +291,7 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
     fun setScanCallback(callback: ScanCallback) {
         this.scanCallback = callback
     }
-    
+
     fun setConnectionCallback(callback: ConnectionCallback) {
         this.connectionCallback = callback
     }
@@ -602,6 +603,44 @@ sealed class ConnectionCallback : com.euc.ble.core.ScanCallback {
     open fun onConnectionFailed(error: BLEException) {}
     open fun onServicesDiscovered(services: List<BluetoothGattService>) {}
     open fun onMtuChanged(mtu: Int) {}
+}
+
+class ListenerConnectionCallback(
+    private val listener: BleBackendListener?,
+    private val bleManager: BLEManager
+) : ConnectionCallback() {
+
+    override fun onScanStarted() {
+        listener?.onEvent(BleBackendEvent.ScanStarted)
+    }
+
+    override fun onDeviceDiscovered(device: EUCDevice) {
+        listener?.onEvent(BleBackendEvent.DeviceDiscovered(device))
+    }
+
+    override fun onScanCompleted(devices: List<EUCDevice>) {
+        listener?.onEvent(BleBackendEvent.ScanCompleted(devices))
+    }
+
+    override fun onConnected() {
+        listener?.onEvent(BleBackendEvent.Connected(bleManager.getConnectedDevice()))
+    }
+
+    override fun onDisconnected() {
+        listener?.onEvent(BleBackendEvent.Disconnected)
+    }
+
+    override fun onConnectionFailed(error: BLEException) {
+        listener?.onEvent(BleBackendEvent.Error(error))
+    }
+
+    override fun onServicesDiscovered(services: List<BluetoothGattService>) {
+        listener?.onEvent(BleBackendEvent.ServicesDiscovered(services.map { it.uuid }))
+    }
+
+    override fun onMtuChanged(mtu: Int) {
+        listener?.onEvent(BleBackendEvent.MtuChanged(mtu))
+    }
 }
 
 interface DataCallback {
