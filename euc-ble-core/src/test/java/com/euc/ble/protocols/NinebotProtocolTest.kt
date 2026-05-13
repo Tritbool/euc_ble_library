@@ -8,7 +8,6 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import kotlin.math.abs
 class NinebotProtocolTest {
 
     private lateinit var protocol: NinebotProtocol
@@ -94,8 +93,7 @@ class NinebotProtocolTest {
         assertEquals(-2.5, decoded?.current ?: 0.0, 0.001)
         assertEquals(23.5, decoded?.temperature ?: 0.0, 0.001)
         assertEquals(95, decoded?.batteryLevel)
-        val totalDistance = decoded?.totalDistance
-        assertTrue(totalDistance != null && abs(totalDistance - 123.456) < 0.001)
+        assertEquals(123.456, decoded?.totalDistance ?: 0.0, 0.001)
     }
 
     @Test

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import java.util.UUID
 
 /**
@@ -228,6 +229,7 @@ class NinebotProtocol : EUCProtocol {
         if (battery !in 0..100) return null
 
         val now = System.currentTimeMillis()
+        // Legacy Ninebot B0 provides odometer-style distance; we expose it on both fields until trip data is available.
         val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 21) ?: return null).toDouble() / 1000.0
         val rideTime = ByteUtils.tryGetUnsignedShortLE(frame, 27)
             ?.toLong()
@@ -257,7 +259,7 @@ class NinebotProtocol : EUCProtocol {
     }
 
     private fun decodeWheelLogSpeed(frame: ByteArray): Double {
-        // Legacy WheelLog Ninebot adapter reports absolute speed for default protocol variants.
+        // Legacy default protocol uses signed short /10 at offset 17; S2 variant reports speed /100 at offset 35.
         val signedLegacySpeed = ByteUtils.tryGetSignedShortLE(frame, 17)?.toInt()
             ?.let { abs(it) / 10.0 }
         val protoS2Speed = ByteUtils.tryGetUnsignedShortLE(frame, 35)?.toDouble()?.div(100.0)
@@ -275,7 +277,7 @@ class NinebotProtocol : EUCProtocol {
         return if (batteryRaw <= 100) {
             batteryRaw
         } else {
-            (batteryRaw / 100).coerceIn(0, 100)
+            (batteryRaw / 100.0).roundToInt().coerceIn(0, 100)
         }
     }
 
