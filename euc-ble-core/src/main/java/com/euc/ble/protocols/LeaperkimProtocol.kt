@@ -146,10 +146,26 @@ open class LeaperkimProtocol : EUCProtocol {
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
         _rawFrameFlow.tryEmit(data.clone())
+        updateLastKnownVersionFromRawChunk(data)
         runBlocking(Dispatchers.IO) {
             frameReassembler.processIncomingBytes(data)
         }
         return null
+    }
+
+    private fun updateLastKnownVersionFromRawChunk(data: ByteArray) {
+        if (data.size < 30) return
+        if (data[0] != 0xDC.toByte() || data[1] != 0x5A.toByte() || data[2] != 0x5C.toByte()) return
+
+        val len = ByteUtils.getUnsignedByte(data, 3)
+        if (data.size != len + 4) return
+        // WheelLog-compatible Leaperkim frames longer than 38 bytes carry trailing CRC32.
+        if (len > 38 && !isCrcValid(data, len)) return
+
+        val versionRaw = ByteUtils.tryGetUnsignedShortBE(data, 28) ?: return
+        if (versionRaw > 0) {
+            lastMajorVersion = extractMajorVersion(versionRaw)
+        }
     }
 
     private fun processFrame(frame: ByteArray) {
@@ -162,6 +178,7 @@ open class LeaperkimProtocol : EUCProtocol {
 
         val len = ByteUtils.getUnsignedByte(frame, 3)
         if (frame.size != len + 4) return null
+        // WheelLog-compatible Leaperkim frames longer than 38 bytes carry trailing CRC32.
         if (len > 38 && !isCrcValid(frame, len)) return null
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(frame, 4) ?: return null
