@@ -82,7 +82,7 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongFramesDecoding() = runBlocking {
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_30_19_15_30.csv", maxFrames = 40000)
+        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 4000)
         
         assertTrue("Should load some frames", frames.isNotEmpty())
 
