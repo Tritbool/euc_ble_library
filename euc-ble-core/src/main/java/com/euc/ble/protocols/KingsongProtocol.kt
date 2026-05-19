@@ -269,7 +269,6 @@ class KingsongProtocol : EUCProtocol {
             val isCharging = (statusByte and 0x01) != 0
 
             val power = voltage * current
-            val now = System.currentTimeMillis()
             val rideTimeSeconds = deriveRideTimeSeconds()
 
             val model = "KingSong"
@@ -283,7 +282,7 @@ class KingsongProtocol : EUCProtocol {
                 distance = distance,
                 power = power,
                 pwm = lastKnownPwm,
-                timestamp = now,
+                timestamp = System.currentTimeMillis(),
                 rawData = data,
                 manufacturer = manufacturer,
                 model = model,
