@@ -31,6 +31,7 @@ class KingsongProtocol : EUCProtocol {
     private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     private val MIN_LENGTH = 20
+    private val NANOS_PER_SECOND = 1_000_000_000L
     // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
 
     private val unpackBuffer = ArrayList<Byte>()
@@ -307,14 +308,13 @@ class KingsongProtocol : EUCProtocol {
     @Synchronized
     private fun deriveRideTimeSeconds(): Long {
         val nowNs = System.nanoTime()
-        val start = sessionStartTimestampNs ?: nowNs.also {
+        val startNs = sessionStartTimestampNs ?: nowNs.also {
             sessionStartTimestampNs = it
             lastRideTimeSeconds = 0L
         }
-        val elapsedSeconds = ((nowNs - start) / 1_000_000_000L).coerceAtLeast(0L)
-        if (elapsedSeconds < lastRideTimeSeconds) return lastRideTimeSeconds
-        lastRideTimeSeconds = elapsedSeconds
-        return elapsedSeconds
+        val elapsedSeconds = ((nowNs - startNs) / NANOS_PER_SECOND).coerceAtLeast(0L)
+        lastRideTimeSeconds = maxOf(lastRideTimeSeconds, elapsedSeconds)
+        return lastRideTimeSeconds
     }
 
     private fun estimateBatteryPercent(voltage: Double): Int {
@@ -327,6 +327,7 @@ class KingsongProtocol : EUCProtocol {
 
     }
 
+    @Synchronized
     override fun close() {
         scope.cancel()
         sessionStartTimestampNs = null
