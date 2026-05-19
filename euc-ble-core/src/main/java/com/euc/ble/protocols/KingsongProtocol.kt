@@ -146,6 +146,7 @@ class KingsongProtocol : EUCProtocol {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampNs: Long? = null
     private var lastRideTimeSeconds: Long = 0L
+    @Volatile
     private var lastKnownPwm: Double? = null
 
     init {
