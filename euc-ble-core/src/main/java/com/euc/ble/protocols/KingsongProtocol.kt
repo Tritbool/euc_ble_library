@@ -100,6 +100,16 @@ class KingsongProtocol : EUCProtocol {
         "KS-14D", "KS-16", "KS-16S", "KS-16X", "KS-18L", "KS-18XL",
         "KS-19", "KS-S18", "KS-S19", "KS-S20", "KS-S22", "KS-F22"
     )
+    override val supportedCommandTypes: Set<CommandType> = setOf(
+        CommandType.LIGHT_ON,
+        CommandType.LIGHT_OFF,
+        CommandType.SET_LIGHT_MODE,
+        CommandType.LIGHT_BRIGHTNESS,
+        CommandType.BEEP,
+        CommandType.POWER_OFF,
+        CommandType.SET_PEDALS_MODE,
+        CommandType.SET_LED_MODE
+    )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =

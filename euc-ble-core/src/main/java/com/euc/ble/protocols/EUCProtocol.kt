@@ -63,6 +63,34 @@ interface EUCProtocol : Closeable {
     fun createCommand(commandType: CommandType, value: Any): ByteArray
 
     /**
+     * Explicit command support matrix for this protocol.
+     * Commands outside this set are considered unsupported by design.
+     */
+    val supportedCommandTypes: Set<CommandType>
+        get() = emptySet()
+
+    /**
+     * API-level command support check (used by framework and clients).
+     */
+    fun getCommandSupport(commandType: CommandType): CommandSupport {
+        return if (supportedCommandTypes.contains(commandType)) {
+            CommandSupport.SUPPORTED
+        } else {
+            CommandSupport.UNSUPPORTED
+        }
+    }
+
+    /**
+     * Optional polling/query plan consumed by BLEManager orchestration.
+     */
+    fun getPollingPlan(): ProtocolPollingPlan = ProtocolPollingPlan.disabled()
+
+    /**
+     * Optional query/response matcher used by BLEManager observability and retry loop.
+     */
+    fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean = false
+
+    /**
      * Get the UUID for the write characteristic (if different from data characteristic)
      */
     fun getWriteCharacteristicUUID(): UUID = getDataCharacteristicUUID()
@@ -95,4 +123,30 @@ enum class CommandType {
     REQUEST_FIRMWARE,
     REQUEST_BATTERY_INFO,
     CUSTOM
+}
+
+enum class CommandSupport {
+    SUPPORTED,
+    UNSUPPORTED
+}
+
+data class ProtocolQuerySpec(
+    val id: String,
+    val commandType: CommandType,
+    val value: Any = Unit,
+    val initialDelayMs: Long = 0L,
+    val intervalMs: Long = 0L,
+    val responseTimeoutMs: Long = 1500L,
+    val maxRetries: Int = 2,
+    val retryBackoffMs: Long = 500L
+)
+
+data class ProtocolPollingPlan(
+    val enabled: Boolean,
+    val startupQueries: List<ProtocolQuerySpec> = emptyList(),
+    val periodicQueries: List<ProtocolQuerySpec> = emptyList()
+) {
+    companion object {
+        fun disabled() = ProtocolPollingPlan(enabled = false)
+    }
 }

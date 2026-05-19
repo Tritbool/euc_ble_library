@@ -25,7 +25,8 @@ A modular Bluetooth Low Energy library for Electric Unicycles (EUC) that provide
 | KingSong | `KingsongProtocol` | `WheelLogKingsongTest` | Light/BEEP/Power/Brightness | Core telemetry + battery and session ride time fallback |
 | Gotway/Begode | `GotwayProtocol` | `WheelLogGotwayTest` | Light/BEEP/Power/Brightness | Type A: rich telemetry, Type B: settings + total distance with legacy-style carry-forward telemetry |
 | InMotion | `InMotionProtocol` | `WheelLogInMotionTest` | V2 control commands (legacy read-only) | Legacy: rich telemetry + ride time, V2: rich telemetry + ride time fallback |
-| Ninebot | `NinebotProtocol` | `NinebotProtocolTest`, `WheelLogNinebotTest` | Light/BEEP/Lock/Unlock | MVP parser with core telemetry and ride time support, including WheelLog stream reassembly |
+| Ninebot (standard) | `NinebotProtocol` | `NinebotProtocolTest`, `WheelLogNinebotTest` | Light/BEEP/Lock/Unlock + query commands (serial/firmware/battery) | Core telemetry + startup/periodic query orchestration |
+| Ninebot (Z-series) | `NinebotZProtocol` | `ProtocolParityContractTest` | Light/BEEP/Lock/Unlock + Z settings/query flow (speed/alarm/calibrate/BMS/auth/custom) | Dedicated Z handshake/BMS/settings polling path |
 | Leaperkim/Veteran | `LeaperkimProtocol` | `WheelLogLeaperkimTest` | Light/BEEP + custom payload | Rich telemetry + session ride time fallback |
 
 ## Installation
@@ -60,6 +61,7 @@ bleManager.registerProtocol(KingsongProtocol())
 bleManager.registerProtocol(GotwayProtocol())
 bleManager.registerProtocol(InMotionProtocol())
 bleManager.registerProtocol(NinebotProtocol())
+bleManager.registerProtocol(NinebotZProtocol())
 bleManager.registerProtocol(LeaperkimProtocol())
 
 // Set up callbacks
@@ -440,3 +442,11 @@ Contributions are welcome! Please follow the existing code style and architectur
 ## Support
 
 For issues, questions, or feature requests, please open an issue on the GitHub repository.
+### Command support contract
+
+Each protocol now declares a command support matrix:
+
+- `supportedCommandTypes`
+- `getCommandSupport(commandType)`
+
+Use `BLEManager.getCommandSupport(...)` before creating/sending commands to distinguish supported vs explicitly unsupported operations.

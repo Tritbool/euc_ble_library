@@ -148,6 +148,13 @@ class GotwayProtocol : EUCProtocol {
         "Nikola", "Nikola Plus", "Tesla", "Monster", "Monster Pro",
         "Begode", "Begode RS", "Begode Master", "Begode Hero"
     )
+    override val supportedCommandTypes: Set<CommandType> = setOf(
+        CommandType.LIGHT_ON,
+        CommandType.LIGHT_OFF,
+        CommandType.BEEP,
+        CommandType.POWER_OFF,
+        CommandType.LIGHT_BRIGHTNESS
+    )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)

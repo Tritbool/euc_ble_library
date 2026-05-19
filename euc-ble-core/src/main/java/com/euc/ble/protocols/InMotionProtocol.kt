@@ -52,6 +52,18 @@ class InMotionProtocol : EUCProtocol {
 
     override val manufacturer: String = "InMotion"
     override val supportedModels: List<String> = listOf("V9", "P6")
+    override val supportedCommandTypes: Set<CommandType> = setOf(
+        CommandType.LIGHT_ON,
+        CommandType.LIGHT_OFF,
+        CommandType.LIGHT_BRIGHTNESS,
+        CommandType.BEEP,
+        CommandType.LOCK,
+        CommandType.UNLOCK,
+        CommandType.POWER_OFF,
+        CommandType.REQUEST_SERIAL,
+        CommandType.REQUEST_FIRMWARE,
+        CommandType.REQUEST_BATTERY_INFO
+    )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)
@@ -482,7 +494,41 @@ class InMotionProtocol : EUCProtocol {
             CommandType.LOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x01))
             CommandType.UNLOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x00))
             CommandType.POWER_OFF -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x77, 0x01))
+            // InMotion V2 returns model/serial/firmware from the same MAIN_INFO page; both queries use the same request.
+            CommandType.REQUEST_SERIAL,
+            CommandType.REQUEST_FIRMWARE -> buildMessage(FLAG_INITIAL, COMMAND_MAIN_INFO, byteArrayOf())
+            CommandType.REQUEST_BATTERY_INFO -> buildMessage(FLAG_DEFAULT, COMMAND_REAL_TIME_INFO, byteArrayOf())
             else -> byteArrayOf()
+        }
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+        return ProtocolPollingPlan(
+            enabled = true,
+            startupQueries = listOf(
+                ProtocolQuerySpec(id = "inmotion.main-info", commandType = CommandType.REQUEST_FIRMWARE, maxRetries = 3),
+                ProtocolQuerySpec(id = "inmotion.realtime-init", commandType = CommandType.REQUEST_BATTERY_INFO, maxRetries = 2)
+            ),
+            periodicQueries = listOf(
+                ProtocolQuerySpec(
+                    id = "inmotion.realtime",
+                    commandType = CommandType.REQUEST_BATTERY_INFO,
+                    intervalMs = 1_000L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 1
+                )
+            )
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+        if (data.size < 5 || data[0] != HEADER[0] || data[1] != HEADER[1]) return false
+        val command = data[4].toInt() and 0x7F
+        return when (query.commandType) {
+            CommandType.REQUEST_SERIAL,
+            CommandType.REQUEST_FIRMWARE -> command == COMMAND_MAIN_INFO
+            CommandType.REQUEST_BATTERY_INFO -> command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS
+            else -> false
         }
     }
 

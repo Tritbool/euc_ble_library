@@ -66,11 +66,11 @@ class NinebotProtocolTest {
     fun createCommandSupportsCommonControlCommands() {
         val lightOn = protocol.createCommand(CommandType.LIGHT_ON, Unit)
         val lock = protocol.createCommand(CommandType.LOCK, Unit)
-        val unsupported = protocol.createCommand(CommandType.REQUEST_FIRMWARE, Unit)
+        val requestFirmware = protocol.createCommand(CommandType.REQUEST_FIRMWARE, Unit)
 
         assertTrue(lightOn.isNotEmpty())
         assertTrue(lock.isNotEmpty())
-        assertEquals(true, unsupported.isEmpty())
+        assertTrue(requestFirmware.isNotEmpty())
     }
 
     @Test
