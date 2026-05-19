@@ -305,6 +305,7 @@ class KingsongProtocol : EUCProtocol {
         lastKnownPwm = outputByte / 100.0
     }
 
+    @Synchronized
     private fun deriveRideTimeSeconds(): Long {
         val nowNs = System.nanoTime()
         val start = sessionStartTimestampNs ?: nowNs.also {
