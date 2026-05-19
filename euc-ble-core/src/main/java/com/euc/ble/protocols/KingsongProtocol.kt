@@ -143,7 +143,8 @@ class KingsongProtocol : EUCProtocol {
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO)
-    private var sessionStartTimestampMs: Long? = null
+    private var sessionStartTimestampNs: Long? = null
+    private var lastRideTimeSeconds: Long = 0L
     private var lastKnownPwm: Double? = null
 
     init {
@@ -269,7 +270,7 @@ class KingsongProtocol : EUCProtocol {
 
             val power = voltage * current
             val now = System.currentTimeMillis()
-            val rideTimeSeconds = deriveRideTimeSeconds(now)
+            val rideTimeSeconds = deriveRideTimeSeconds()
 
             val model = "KingSong"
 
@@ -304,9 +305,16 @@ class KingsongProtocol : EUCProtocol {
         lastKnownPwm = outputByte / 100.0
     }
 
-    private fun deriveRideTimeSeconds(nowMs: Long): Long {
-        val start = sessionStartTimestampMs ?: nowMs.also { sessionStartTimestampMs = it }
-        return ((nowMs - start) / 1000L).coerceAtLeast(0L)
+    private fun deriveRideTimeSeconds(): Long {
+        val nowNs = System.nanoTime()
+        val start = sessionStartTimestampNs ?: nowNs.also {
+            sessionStartTimestampNs = it
+            lastRideTimeSeconds = 0L
+        }
+        val elapsedSeconds = ((nowNs - start) / 1_000_000_000L).coerceAtLeast(0L)
+        if (elapsedSeconds < lastRideTimeSeconds) return lastRideTimeSeconds
+        lastRideTimeSeconds = elapsedSeconds
+        return elapsedSeconds
     }
 
     private fun estimateBatteryPercent(voltage: Double): Int {
@@ -321,6 +329,8 @@ class KingsongProtocol : EUCProtocol {
 
     override fun close() {
         scope.cancel()
+        sessionStartTimestampNs = null
+        lastRideTimeSeconds = 0L
         lastKnownPwm = null
         _channel.close()
     }
