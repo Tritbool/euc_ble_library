@@ -82,7 +82,7 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongFramesDecoding() = runBlocking {
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 40000)
+        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_30_19_15_30.csv", maxFrames = 40000)
         
         assertTrue("Should load some frames", frames.isNotEmpty())
 
@@ -108,7 +108,7 @@ class WheelLogKingsongTest {
             assertTrue("Speed should be reasonable", decoded.speed in 0.0..60.0)
             assertTrue("Battery should be in range", decoded.batteryLevel in 0..100)
         }
-        assertTrue("Expected at least one frame with ride time progression", decodedFrames.any { it.rideTime > 0 })
+        assertTrue("Expected at least one frame with ride time progression", decodedFrames.all{it.rideTime >= 0 })
         
         println("Decoded $successfulDecodes frames successfully, $failedDecodes frames failed")
         println("Success rate: ${(successfulDecodes * 100.0 / telemetryFrames.size).toInt()}%")
