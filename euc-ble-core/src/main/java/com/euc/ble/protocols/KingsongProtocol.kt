@@ -327,11 +327,12 @@ class KingsongProtocol : EUCProtocol {
 
     }
 
-    @Synchronized
     override fun close() {
         scope.cancel()
-        sessionStartTimestampNs = null
-        lastRideTimeSeconds = 0L
+        synchronized(this) {
+            sessionStartTimestampNs = null
+            lastRideTimeSeconds = 0L
+        }
         lastKnownPwm = null
         _channel.close()
     }
