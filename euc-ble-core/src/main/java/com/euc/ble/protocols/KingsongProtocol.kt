@@ -333,8 +333,8 @@ class KingsongProtocol : EUCProtocol {
         synchronized(this) {
             sessionStartTimestampNs = null
             lastRideTimeSeconds = 0L
+            lastKnownPwm = null
         }
-        lastKnownPwm = null
         _channel.close()
     }
 
