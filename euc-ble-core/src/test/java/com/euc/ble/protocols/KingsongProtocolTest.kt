@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
@@ -355,14 +356,14 @@ class KingsongProtocolTest {
     fun matchesQueryResponseReturnsFalseForWrongType() {
         val query = ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
         val bbFrame = createBBFrame("KS-16X-234") // 0xBB != 0xB3
-        assertTrue(!protocol.matchesQueryResponse(query, bbFrame))
+        assertFalse(protocol.matchesQueryResponse(query, bbFrame))
     }
 
     @Test
     fun matchesQueryResponseReturnsFalseForShortFrame() {
         val query = ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
         val shortFrame = ByteArray(5)
-        assertTrue(!protocol.matchesQueryResponse(query, shortFrame))
+        assertFalse(protocol.matchesQueryResponse(query, shortFrame))
     }
 
     // --- Tests for isDeviceReady ---
@@ -378,7 +379,7 @@ class KingsongProtocolTest {
     fun isDeviceReadyReturnsFalseForLowBattery() = runBlocking {
         protocol.decode(createA9Frame(voltageRaw = 8400, temperatureRaw = 3500, batteryByte = 3))
         val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertTrue(!protocol.isDeviceReady(data))
+        assertFalse(protocol.isDeviceReady(data))
     }
 
     @Test
@@ -386,7 +387,7 @@ class KingsongProtocolTest {
         // temperature = raw / 100, so 8000 = 80°C > 75°C
         protocol.decode(createA9Frame(voltageRaw = 8400, temperatureRaw = 8000, batteryByte = 80))
         val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertTrue(!protocol.isDeviceReady(data))
+        assertFalse(protocol.isDeviceReady(data))
     }
 
     @Test
@@ -394,7 +395,7 @@ class KingsongProtocolTest {
         // voltage = raw / 100, so 2500 = 25V < 30V
         protocol.decode(createA9Frame(voltageRaw = 2500, temperatureRaw = 3500, batteryByte = 80))
         val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertTrue(!protocol.isDeviceReady(data))
+        assertFalse(protocol.isDeviceReady(data))
     }
 
     // --- Frame builders ---
