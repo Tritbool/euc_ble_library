@@ -7,11 +7,15 @@ import org.junit.jupiter.api.Test
 class ProtocolParityContractTest {
 
     @Test
-    fun `kingsong explicitly marks unsupported speed limit command`() {
+    fun `kingsong supports speed limit and alarm commands`() {
         val protocol = KingsongProtocol()
 
-        assertEquals(CommandSupport.UNSUPPORTED, protocol.getCommandSupport(CommandType.SET_SPEED_LIMIT))
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.SET_SPEED_LIMIT))
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.SET_ALARM_SPEED))
         assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.SET_PEDALS_MODE))
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.CALIBRATE))
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.REQUEST_SERIAL))
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.REQUEST_FIRMWARE))
     }
 
     @Test
