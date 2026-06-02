@@ -24,6 +24,10 @@ import java.util.UUID
 /**
  * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
  * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
+ *
+ * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/temp2), 0xBB (name/model/version),
+ * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
+ * 0xF1/0xF2 (Smart BMS data).
  */
 class KingsongProtocol : EUCProtocol {
 
@@ -108,7 +112,12 @@ class KingsongProtocol : EUCProtocol {
         CommandType.BEEP,
         CommandType.POWER_OFF,
         CommandType.SET_PEDALS_MODE,
-        CommandType.SET_LED_MODE
+        CommandType.SET_LED_MODE,
+        CommandType.SET_SPEED_LIMIT,
+        CommandType.SET_ALARM_SPEED,
+        CommandType.CALIBRATE,
+        CommandType.REQUEST_SERIAL,
+        CommandType.REQUEST_FIRMWARE
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
@@ -146,6 +155,29 @@ class KingsongProtocol : EUCProtocol {
     private var sessionStartTimestampMs: Long? = null
     private var lastKnownPwm: Double? = null
 
+    // Stateful fields accumulated from non-A9 frames
+    private var lastKnownModel: String? = null
+    private var lastKnownFirmwareVersion: String? = null
+    private var lastKnownSerialNumber: String? = null
+    private var lastKnownTopSpeed: Double? = null
+    private var lastKnownFanStatus: Int? = null
+    private var lastKnownChargingStatus: Int? = null
+    private var lastKnownTemperature2: Double? = null
+    private var lastKnownCpuLoad: Int? = null
+    private var lastKnownSpeedLimit: Double? = null
+    private var lastKnownAlarm1Speed: Int? = null
+    private var lastKnownAlarm2Speed: Int? = null
+    private var lastKnownAlarm3Speed: Int? = null
+    private var lastKnownWheelMaxSpeed: Int? = null
+    private var lastKnownWheelDistance: Double? = null
+    private var lastKnownTotalDistance: Double? = null
+
+    // BMS cell data: bmsIndex (1 or 2) -> array of cell voltages
+    private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+    companion object {
+        private const val MAX_BMS_CELLS = 30
+    }
+
     init {
         // Start observing frames asynchronously and process them
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -155,60 +187,10 @@ class KingsongProtocol : EUCProtocol {
         }
     }
 
-    /**
-     * KingSong reverse‑engineered protocol (résumé)
-     *
-     * Observations générales
-     *  - Les paquets KingSong observés commencent typiquement par l'en‑tête \`0xAA 0x55\`.
-     *  - Les champs multi‑octets sont encodés en Little Endian (LE).
-     *  - Les unités courantes :
-     *      - Tension : 0.1 V (ex: valeur 356 -> 35.6 V)
-     *      - Vitesse : 0.1 km/h (ex: valeur 300 -> 30.0 km/h)
-     *      - Distance : uint32 LE en mètres (conserver en m ou convertir en km selon le modèle)
-     *      - Courant : 0.1 A (peut être signé selon le firmware)
-     *      - Température : 0.1 °C (peut être signé selon le firmware)
-     *  - Taille minimale : généralement ~20 octets, mais certaines variantes peuvent être plus courtes.
-     *  - Flux BLE/Serial peut être fragmenté; prévoir resynchronisation sur \`0xAA 0x55\`.
-     *
-     * Format résumé (extrait / à adapter selon firmware)
-     *  - Bytes 0-1 : Header \`0xAA 0x55\`
-     *  - Bytes 2-3 : Voltage (uint16 LE, 0.1 V units)
-     *  - Bytes 4-5 : Speed (uint16 LE, 0.1 km/h units)
-     *  - Bytes 6-9 : Distance (uint32 LE, mètres)
-     *  - Bytes 10-11: Current (uint16 LE, 0.1 A units) — vérifier signedness sur les firmwares
-     *  - Bytes 12-13: Temperature (uint16 LE, 0.1 °C units) — vérifier signedness
-     *  - Byte 14    : Status flags (bit flags: ex. bit0 = charging)
-     *  - Byte 15    : Battery percentage (0-100)
-     *  - Bytes 16-..: Données additionnelles / statut / padding
-     *
-     * Exemples observés (hex)
-     *  - Paquet type : \`AA 55 64 01 2C 01 40 42 0F 00 E8 03 14 00 01 64 ...\`
-     *
-     * Variantes et notes pratiques
-     *  - Certaines stacks/adaptateurs peuvent émettre paquets différents (headers autres que
-     *    \`0xAA 0x55\`) ou reformater le flux. Rendre le parser tolérant aux variantes.
-     *  - Tester/détecter la signedness du courant/température (valeurs plausibles négatives).
-     *  - Distance : conserver en mètres côté décodage et convertir au besoin dans le modèle
-     *    (le code actuel convertit en km pour l'API externe).
-     *  - Ne pas faire d'hypothèses strictes sur la longueur exacte : valider la présence des
-     *    offsets avant lecture et ignorer/ignorer partiellement les paquets trop courts.
-     *  - Kingsong n'envoie généralement pas les tensions de cellules BMS dans ces paquets,
-     *    mais d'autres modèles/firmwares peuvent les ajouter en queue : parser dynamiquement
-     *    si des paires 16 bits supplémentaires sont présentes.
-     *
-     * Recommandations de parsing
-     *  - Synchroniser sur l'en‑tête \`0xAA 0x55\` puis valider longueur minimale.
-     *  - Lire en LE pour tous les entiers multi‑octets.
-     *  - Convertir les valeurs fixes (diviser par 10 pour tension/vitesse/courant/temp).
-     *  - Tester les flags via \`(statusByte and 0x01) != 0\` pour la charge, etc.
-     *  - Être défensif : entourer les lectures par des vérifications d'indice et catcher
-     *    les exceptions pour éviter de planter le décodeur.
-     */
     private fun parseFrame(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
 
         val headerIdx = run {
-            // trouver l'en-tête dans la trame (souvent 0)
             for (i in 0..(data.size - 2)) {
                 if (data[i] == header1[0] && data[i + 1] == header1[1]) return@run i
                 if (data[i] == header2[0] && data[i + 1] == header2[1]) return@run i
@@ -218,15 +200,38 @@ class KingsongProtocol : EUCProtocol {
         if (headerIdx < 0) return null
 
         if (data.size - headerIdx < MIN_LENGTH) {
-            // pas assez d'octets
             return null
         }
 
         val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
         return when (messageType) {
             0xA9 -> parseTypeA9(data, headerIdx)
+            0xB9 -> {
+                parseTypeB9(data, headerIdx)
+                null
+            }
+            0xBB -> {
+                parseTypeBB(data, headerIdx)
+                null
+            }
+            0xB3 -> {
+                parseTypeB3(data, headerIdx)
+                null
+            }
             0xF5 -> {
                 parseTypeF5(data, headerIdx)
+                null
+            }
+            0xF6 -> {
+                parseTypeF6(data, headerIdx)
+                null
+            }
+            0xA4, 0xB5 -> {
+                parseTypeA4B5(data, headerIdx)
+                null
+            }
+            0xF1, 0xF2 -> {
+                parseTypeBMS(data, headerIdx, messageType)
                 null
             }
             else -> null
@@ -241,7 +246,7 @@ class KingsongProtocol : EUCProtocol {
             val speed = if (ensureRange(data, base + 4, 2))
                 ByteUtils.getUnsignedShortLE(data, base + 4) / 100.0 else 0.0
 
-            val distance = if (ensureRange(data, base + 6, 4))
+            val totalDistRaw = if (ensureRange(data, base + 6, 4))
                 ByteUtils.getUnsignedIntLE(data, base + 6).toDouble() else 0.0
 
             val current = if (ensureRange(data, base + 10, 2))
@@ -258,20 +263,26 @@ class KingsongProtocol : EUCProtocol {
                 estimateBatteryPercent(voltage)
             }
 
-            // === Filtres de plage "raisonnable" pour Kingsong ===
-
-            if (voltage !in 40.0..150.0) return null
+            // === Sanity filters ===
+            if (voltage !in 40.0..180.0) return null
             if (speed !in 0.0..80.0) return null
             if (temperature !in -40.0..100.0) return null
             if (current !in -200.0..200.0) return null
 
             val isCharging = (statusByte and 0x01) != 0
 
+            // Mode detection (legacy: byte 15 == 0xE0 means mode is in byte 14)
+            if (ensureRange(data, base + 15, 1) && ByteUtils.getUnsignedByte(data, base + 15) == 0xE0) {
+                // pedals mode is in byte 14 — but only when byte 15 is the mode marker
+                // This conflicts with battery %; in legacy KS the battery is sent separately.
+                // We don't alter battery here, but note it for reference.
+            }
+
+            lastKnownTotalDistance = totalDistRaw
+
             val power = voltage * current
             val now = System.currentTimeMillis()
             val rideTimeSeconds = deriveRideTimeSeconds(now)
-
-            val model = "KingSong"
 
             return EUCData(
                 speed = speed,
@@ -279,29 +290,177 @@ class KingsongProtocol : EUCProtocol {
                 current = current,
                 temperature = temperature,
                 batteryLevel = batteryLevel,
-                distance = distance,
+                distance = lastKnownWheelDistance ?: totalDistRaw,
                 power = power,
                 pwm = lastKnownPwm,
                 timestamp = now,
                 rawData = data,
                 manufacturer = manufacturer,
-                model = model,
-                serialNumber = null,
-                firmwareVersion = null,
+                model = lastKnownModel ?: "KingSong",
+                serialNumber = lastKnownSerialNumber,
+                firmwareVersion = lastKnownFirmwareVersion,
                 isCharging = isCharging,
                 rideTime = rideTimeSeconds,
-                cellVoltages = null,
+                cellVoltages = getCombinedCellVoltages(),
                 motorTemperature = null,
+                totalDistance = lastKnownTotalDistance,
+                topSpeed = lastKnownTopSpeed,
+                fanStatus = lastKnownFanStatus,
+                chargingStatus = lastKnownChargingStatus,
+                temperature2 = lastKnownTemperature2,
+                cpuLoad = lastKnownCpuLoad,
+                speedLimit = lastKnownSpeedLimit,
+                alarm1Speed = lastKnownAlarm1Speed,
+                alarm2Speed = lastKnownAlarm2Speed,
+                alarm3Speed = lastKnownAlarm3Speed,
+                wheelMaxSpeed = lastKnownWheelMaxSpeed,
+                wheelDistance = lastKnownWheelDistance
             )
         } catch (_: Exception) {
             return null
         }
     }
 
+    /**
+     * Frame 0xB9: Distance/Time/Fan/ChargingStatus/Temperature2
+     * Legacy: wheelDistance(uint32 LE @2), topSpeed(uint16 LE @8), fanStatus(@12),
+     *         chargingStatus(@13), temperature2(uint16 LE @14)
+     */
+    private fun parseTypeB9(data: ByteArray, base: Int) {
+        if (ensureRange(data, base + 2, 4)) {
+            lastKnownWheelDistance = ByteUtils.getUnsignedIntLE(data, base + 2).toDouble()
+        }
+        if (ensureRange(data, base + 8, 2)) {
+            lastKnownTopSpeed = ByteUtils.getUnsignedShortLE(data, base + 8) / 100.0
+        }
+        if (ensureRange(data, base + 12, 1)) {
+            lastKnownFanStatus = ByteUtils.getUnsignedByte(data, base + 12)
+        }
+        if (ensureRange(data, base + 13, 1)) {
+            lastKnownChargingStatus = ByteUtils.getUnsignedByte(data, base + 13)
+        }
+        if (ensureRange(data, base + 14, 2)) {
+            lastKnownTemperature2 = ByteUtils.getUnsignedShortLE(data, base + 14) / 100.0
+        }
+    }
+
+    /**
+     * Frame 0xBB: Name/Model/Version
+     * Bytes 2..15: null-terminated ASCII name string (e.g. "KS-16X-1234")
+     * Model is derived from name parts; version from last segment.
+     */
+    private fun parseTypeBB(data: ByteArray, base: Int) {
+        if (!ensureRange(data, base + 2, 14)) return
+        var end = 0
+        for (i in 0 until 14) {
+            if (data[base + 2 + i] == 0.toByte()) break
+            end++
+        }
+        if (end == 0) return
+        val name = String(data, base + 2, end).trim()
+        val parts = name.split("-")
+        if (parts.size >= 2) {
+            lastKnownModel = parts.dropLast(1).joinToString("-")
+            try {
+                val versionInt = parts.last().toInt()
+                lastKnownFirmwareVersion = "%.2f".format(versionInt / 100.0)
+            } catch (_: NumberFormatException) {
+                // version part not numeric, keep model as full name
+                lastKnownModel = name
+            }
+        } else {
+            lastKnownModel = name
+        }
+    }
+
+    /**
+     * Frame 0xB3: Serial Number
+     * Bytes 2..15 (14 bytes) + bytes 17..19 (3 bytes) = 17-char serial
+     */
+    private fun parseTypeB3(data: ByteArray, base: Int) {
+        if (!ensureRange(data, base + 2, 14)) return
+        if (!ensureRange(data, base + 17, 3)) return
+        val snBytes = ByteArray(17)
+        System.arraycopy(data, base + 2, snBytes, 0, 14)
+        System.arraycopy(data, base + 17, snBytes, 14, 3)
+        lastKnownSerialNumber = String(snBytes).trimEnd('\u0000').trim()
+    }
+
     private fun parseTypeF5(data: ByteArray, base: Int) {
+        if (ensureRange(data, base + 14, 1)) {
+            lastKnownCpuLoad = ByteUtils.getUnsignedByte(data, base + 14)
+        }
         if (!ensureRange(data, base + 15, 1)) return
         val outputByte = ByteUtils.getUnsignedByte(data, base + 15)
         lastKnownPwm = outputByte / 100.0
+    }
+
+    /**
+     * Frame 0xF6: Speed limit
+     * uint16 LE @2, in 0.01 km/h units
+     */
+    private fun parseTypeF6(data: ByteArray, base: Int) {
+        if (!ensureRange(data, base + 2, 2)) return
+        lastKnownSpeedLimit = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0
+    }
+
+    /**
+     * Frame 0xA4 / 0xB5: Alarm speeds and max speed
+     * alarm1 @4, alarm2 @6, alarm3 @8, maxSpeed @10 (all single bytes)
+     */
+    private fun parseTypeA4B5(data: ByteArray, base: Int) {
+        if (ensureRange(data, base + 4, 1)) {
+            lastKnownAlarm1Speed = ByteUtils.getUnsignedByte(data, base + 4)
+        }
+        if (ensureRange(data, base + 6, 1)) {
+            lastKnownAlarm2Speed = ByteUtils.getUnsignedByte(data, base + 6)
+        }
+        if (ensureRange(data, base + 8, 1)) {
+            lastKnownAlarm3Speed = ByteUtils.getUnsignedByte(data, base + 8)
+        }
+        if (ensureRange(data, base + 10, 1)) {
+            lastKnownWheelMaxSpeed = ByteUtils.getUnsignedByte(data, base + 10)
+        }
+    }
+
+    /**
+     * Frame 0xF1/0xF2: Smart BMS data
+     * BMS number = messageType - 0xF0 (1 or 2)
+     * Page number @17 determines what data is in the payload:
+     *   0x00: voltage, current, remaining/factory cap, cycles
+     *   0x01: temperatures (6 probes + MOS temp)
+     *   0x02-0x06: cell voltages (7 cells per page)
+     */
+    private fun parseTypeBMS(data: ByteArray, base: Int, messageType: Int) {
+        val bmsIndex = messageType - 0xF0
+        if (!ensureRange(data, base + 17, 1)) return
+        val pageNum = ByteUtils.getUnsignedByte(data, base + 17)
+
+        when (pageNum) {
+            0x02, 0x03, 0x04, 0x05, 0x06 -> {
+                val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELLS) }
+                val startCell = (pageNum - 0x02) * 7
+                for (i in 0 until 7) {
+                    val offset = base + 2 + i * 2
+                    if (ensureRange(data, offset, 2)) {
+                        val cellIndex = startCell + i
+                        if (cellIndex < MAX_BMS_CELLS) {
+                            cells[cellIndex] = ByteUtils.getUnsignedShortLE(data, offset) / 1000.0
+                        }
+                    }
+                }
+            }
+            // Pages 0x00 (summary) and 0x01 (temps) are parsed but not stored in EUCData yet
+            // since EUCData doesn't have a dedicated BMS summary model. Cell voltages are enough for now.
+        }
+    }
+
+    private fun getCombinedCellVoltages(): List<Double>? {
+        if (bmsCellPages.isEmpty()) return null
+        val combined = bmsCellPages.values
+            .flatMap { it.asList() }
+            .filter { it > 0.0 }
+        return combined.ifEmpty { null }
     }
 
     private fun deriveRideTimeSeconds(nowMs: Long): Long {
@@ -364,9 +523,53 @@ class KingsongProtocol : EUCProtocol {
                 }
                 buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
             }
+            CommandType.SET_SPEED_LIMIT -> {
+                // KingSong alarm/speed command: pack alarm1/2/3 + maxSpeed into one frame (0x85)
+                // value is expected to be the max speed; alarms must be set via SET_ALARM_SPEED
+                val maxSpeed = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                buildAlarmSpeedCommand(
+                    alarm1 = lastKnownAlarm1Speed ?: 0,
+                    alarm2 = lastKnownAlarm2Speed ?: 0,
+                    alarm3 = lastKnownAlarm3Speed ?: 0,
+                    maxSpeed = maxSpeed
+                )
+            }
+            CommandType.SET_ALARM_SPEED -> {
+                // value is expected to be a Map or IntArray [alarm1, alarm2, alarm3]
+                val speeds = when (value) {
+                    is IntArray -> value
+                    is List<*> -> (value.filterIsInstance<Int>()).toIntArray()
+                    else -> return byteArrayOf()
+                }
+                if (speeds.size < 3) return byteArrayOf()
+                buildAlarmSpeedCommand(
+                    alarm1 = speeds[0].coerceIn(0, 100),
+                    alarm2 = speeds[1].coerceIn(0, 100),
+                    alarm3 = speeds[2].coerceIn(0, 100),
+                    maxSpeed = lastKnownWheelMaxSpeed ?: 0
+                )
+            }
+            CommandType.CALIBRATE -> buildLegacyCommand(command = 0x89)
+            CommandType.REQUEST_SERIAL -> buildLegacyCommand(command = 0x63)
+            CommandType.REQUEST_FIRMWARE -> buildLegacyCommand(command = 0x9B)
 
             else -> byteArrayOf()
         }
+    }
+
+    private fun buildAlarmSpeedCommand(alarm1: Int, alarm2: Int, alarm3: Int, maxSpeed: Int): ByteArray {
+        val data = byteArrayOf(
+            0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x85.toByte(), 0x14, 0x5A, 0x5A
+        )
+        data[2] = alarm1.toByte()
+        data[4] = alarm2.toByte()
+        data[6] = alarm3.toByte()
+        data[8] = maxSpeed.toByte()
+        return data
     }
 
     private fun buildLegacyCommand(
@@ -387,6 +590,37 @@ class KingsongProtocol : EUCProtocol {
         data[16] = command.toByte()
         data[17] = payload17.toByte()
         return data
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+        return ProtocolPollingPlan(
+            enabled = true,
+            startupQueries = listOf(
+                ProtocolQuerySpec("ks.request-name", CommandType.REQUEST_FIRMWARE, maxRetries = 3),
+                ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, initialDelayMs = 200L, maxRetries = 3),
+                ProtocolQuerySpec("ks.request-alarms", CommandType.CUSTOM, buildLegacyCommand(command = 0x98), initialDelayMs = 400L, maxRetries = 2)
+            ),
+            periodicQueries = emptyList()
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+        if (data.size < MIN_LENGTH) return false
+        val headerIdx = run {
+            for (i in 0..(data.size - 2)) {
+                if (data[i] == header1[0] && data[i + 1] == header1[1]) return@run i
+                if (data[i] == header2[0] && data[i + 1] == header2[1]) return@run i
+            }
+            -1
+        }
+        if (headerIdx < 0 || data.size - headerIdx < MIN_LENGTH) return false
+        val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
+        return when (query.commandType) {
+            CommandType.REQUEST_FIRMWARE -> messageType == 0xBB
+            CommandType.REQUEST_SERIAL -> messageType == 0xB3
+            CommandType.CUSTOM -> messageType == 0xA4 || messageType == 0xB5
+            else -> false
+        }
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {

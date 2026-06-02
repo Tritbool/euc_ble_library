@@ -32,7 +32,18 @@ data class EUCData(
     val ledMode: Int?=null,
     val lightMode: Int?=null,
     val alertFlags: Int?=null,
-    val wheelAlarm: Boolean?=null
+    val wheelAlarm: Boolean?=null,
+    val topSpeed: Double?=null,           // session top speed in km/h
+    val fanStatus: Int?=null,             // fan on/off status
+    val chargingStatus: Int?=null,        // charging status byte
+    val temperature2: Double?=null,       // secondary temperature (e.g. motor/board)
+    val cpuLoad: Int?=null,               // CPU load percentage
+    val speedLimit: Double?=null,         // configured speed limit in km/h
+    val alarm1Speed: Int?=null,           // alarm 1 speed threshold
+    val alarm2Speed: Int?=null,           // alarm 2 speed threshold
+    val alarm3Speed: Int?=null,           // alarm 3 speed threshold
+    val wheelMaxSpeed: Int?=null,         // max speed setting
+    val wheelDistance: Double?=null       // trip distance (wheel-reported)
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
