@@ -524,8 +524,8 @@ class KingsongProtocol : EUCProtocol {
                 buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
             }
             CommandType.SET_SPEED_LIMIT -> {
-                // KingSong alarm/speed command: pack alarm1/2/3 + maxSpeed into one frame (0x85)
-                // value is expected to be the max speed; alarms must be set via SET_ALARM_SPEED
+                // KingSong uses a combined command (0x85) that sets alarms + max speed together.
+                // SET_SPEED_LIMIT updates the max speed while preserving current alarm values.
                 val maxSpeed = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildAlarmSpeedCommand(
                     alarm1 = lastKnownAlarm1Speed ?: 0,
@@ -596,7 +596,7 @@ class KingsongProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec("ks.request-name", CommandType.REQUEST_FIRMWARE, maxRetries = 3),
+                ProtocolQuerySpec("ks.request-name-version", CommandType.REQUEST_FIRMWARE, maxRetries = 3),
                 ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, initialDelayMs = 200L, maxRetries = 3),
                 ProtocolQuerySpec("ks.request-alarms", CommandType.CUSTOM, buildLegacyCommand(command = 0x98), initialDelayMs = 400L, maxRetries = 2)
             ),
