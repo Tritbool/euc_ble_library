@@ -4,6 +4,7 @@ import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.frames.ByteByByteFrameParser
 import com.euc.ble.frames.FrameReassembler
+import com.euc.ble.models.BMSData
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,9 @@ import kotlin.math.roundToInt
  * - For long frames (len > 38), trailing CRC32 is expected
  */
 open class LeaperkimProtocol : EUCProtocol {
+    companion object {
+        private const val LEAPERKIM_MAX_BMS_CELLS = 42
+    }
 
     override val manufacturer: String = "Leaperkim"
     override val supportedModels: List<String> = listOf(
@@ -142,6 +146,9 @@ open class LeaperkimProtocol : EUCProtocol {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
     @Volatile private var lastMajorVersion: Int? = null
+    private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+    private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
+    private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
 
     init {
         scope.launch {
@@ -198,6 +205,10 @@ open class LeaperkimProtocol : EUCProtocol {
         val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 20)
         val pwmRaw = ByteUtils.tryGetUnsignedShortBE(frame, 34) ?: 0
         val chargeMode = ByteUtils.tryGetUnsignedShortBE(frame, 22) ?: 0
+        val autoOffSeconds = ByteUtils.tryGetUnsignedShortBE(frame, 20) ?: 0
+        val speedAlertRaw = ByteUtils.tryGetUnsignedShortBE(frame, 24) ?: 0
+        val speedTiltBackRaw = ByteUtils.tryGetUnsignedShortBE(frame, 26) ?: 0
+        val pedalsMode = ByteUtils.tryGetUnsignedShortBE(frame, 30)
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0
 
         val voltage = voltageRaw / 100.0
@@ -214,6 +225,9 @@ open class LeaperkimProtocol : EUCProtocol {
 
         val majorVersion = extractMajorVersion(versionRaw)
         lastMajorVersion = majorVersion
+        if (majorVersion >= 5) {
+            parseSmartBms(frame)
+        }
         val model = modelByMajorVersion(majorVersion)
         val battery = estimateBatteryPercent(voltageRaw, majorVersion)
 
@@ -239,11 +253,86 @@ open class LeaperkimProtocol : EUCProtocol {
             firmwareVersion = if (versionRaw > 0) formatVersion(versionRaw) else null,
             isCharging = chargeMode > 0,
             rideTime = rideTimeSeconds,
-            cellVoltages = null,
+            cellVoltages = getCombinedCellVoltages(),
             motorTemperature = null,
             totalDistance = totalDistanceKm,
-            angle = angle
+            angle = angle,
+            pedalsMode = pedalsMode,
+            autoPowerOffMinutes = autoOffSeconds.takeIf { it > 0 }?.let { it / 60 },
+            tiltBackSpeed = speedTiltBackRaw.takeIf { it > 0 }?.let { it * 10 },
+            alarm1Speed = speedAlertRaw.takeIf { it > 0 }?.let { it * 10 }
         )
+    }
+
+    private fun parseSmartBms(frame: ByteArray) {
+        val packetNum = ByteUtils.tryGetUnsignedByte(frame, 46) ?: return
+        val bmsIndex = if (packetNum < 4) 1 else 2
+        val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(LEAPERKIM_MAX_BMS_CELLS) }
+        when (packetNum) {
+            0, 4 -> {
+                val bms1CurrentRaw = ByteUtils.tryGetSignedShortBE(frame, 69)
+                val bms2CurrentRaw = ByteUtils.tryGetSignedShortBE(frame, 71)
+                bms1CurrentRaw?.let { bmsCurrents[1] = it / 100.0 }
+                bms2CurrentRaw?.let { bmsCurrents[2] = it / 100.0 }
+            }
+            1, 5 -> {
+                for (i in 0 until 15) {
+                    val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue
+                    cells[i] = raw / 1000.0
+                }
+            }
+            2, 6 -> {
+                for (i in 0 until 15) {
+                    val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue
+                    val index = i + 15
+                    if (index in cells.indices) {
+                        cells[index] = raw / 1000.0
+                    }
+                }
+            }
+            3, 7 -> {
+                for (i in 0 until 12) {
+                    val raw = ByteUtils.tryGetUnsignedShortBE(frame, 59 + i * 2) ?: continue
+                    val index = i + 30
+                    if (index in cells.indices) {
+                        cells[index] = raw / 1000.0
+                    }
+                }
+                val temps = buildList {
+                    for (i in 0 until 6) {
+                        val raw = ByteUtils.tryGetSignedShortBE(frame, 47 + i * 2) ?: continue
+                        add(raw / 100.0)
+                    }
+                }
+                if (temps.isNotEmpty()) {
+                    bmsTemperatures[bmsIndex] = temps
+                }
+            }
+        }
+    }
+
+    private fun getCombinedCellVoltages(): List<Double>? {
+        if (bmsCellPages.isEmpty()) return null
+        val combined = bmsCellPages.values
+            .flatMap { it.asList() }
+            .filter { it > 0.0 }
+        return combined.ifEmpty { null }
+    }
+
+    fun getBMSData(): List<BMSData> {
+        val allIndices = (bmsCellPages.keys + bmsTemperatures.keys + bmsCurrents.keys).distinct().sorted()
+        return allIndices.map { index ->
+            BMSData(
+                bmsIndex = index,
+                voltage = null,
+                current = bmsCurrents[index],
+                remainingCapacity = null,
+                factoryCapacity = null,
+                cycles = null,
+                temperatures = bmsTemperatures[index],
+                cellVoltages = bmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
+            )
+        }
     }
 
     private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
@@ -341,6 +430,9 @@ open class LeaperkimProtocol : EUCProtocol {
 
     override fun close() {
         scope.cancel()
+        bmsCellPages.clear()
+        bmsTemperatures.clear()
+        bmsCurrents.clear()
         _channel.close()
     }
 }
