@@ -183,6 +183,16 @@ class LeaperkimProtocolTest {
         assertEquals(40, telemetry.tiltBackSpeed)
     }
 
+    private suspend fun waitForBmsCellCount(expected: Int) {
+        withTimeout(5_000L) {
+            while (true) {
+                val count = protocol.getBMSData().firstOrNull()?.cellVoltages?.size ?: 0
+                if (count >= expected) return@withTimeout
+                kotlinx.coroutines.delay(10)
+            }
+        }
+    }
+
     @Test
     fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runBlocking {
         val page1 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
@@ -202,8 +212,14 @@ class LeaperkimProtocolTest {
         }
 
         protocol.decode(page1)
+        waitForBmsCellCount(15)
+
         protocol.decode(page2)
+        waitForBmsCellCount(30)
+
         protocol.decode(page3)
+        waitForBmsCellCount(42)
+
 
         val bmsData = protocol.getBMSData()
         assertEquals(1, bmsData.size)
