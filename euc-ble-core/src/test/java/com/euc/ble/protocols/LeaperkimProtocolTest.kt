@@ -127,6 +127,41 @@ class LeaperkimProtocolTest {
         assertArrayEquals("SETs".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
     }
 
+    @Test
+    fun createCommandResetTrip() {
+        assertArrayEquals("CLEARMETER".encodeToByteArray(), protocol.createCommand(CommandType.RESET_TRIP, Unit))
+    }
+
+    @Test
+    fun decodeValidFrameEmitsAngle() = runBlocking {
+        val frame = createLeaperkimFrame(
+            voltageRaw = 10000,
+            speedRaw = 500,
+            angleRaw = 350 // 3.50 degrees
+        )
+
+        protocol.decode(frame)
+
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        assertNotNull(telemetry.angle)
+        assertEquals(3.50, telemetry.angle!!, 0.01)
+    }
+
+    @Test
+    fun decodeValidFrameWithZeroAngle() = runBlocking {
+        val frame = createLeaperkimFrame(
+            voltageRaw = 10000,
+            speedRaw = 500,
+            angleRaw = 0
+        )
+
+        protocol.decode(frame)
+
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        assertNotNull(telemetry.angle)
+        assertEquals(0.0, telemetry.angle!!, 0.01)
+    }
+
     private fun createLeaperkimFrame(
         len: Int = defaultFrameLength,
         voltageRaw: Int = defaultVoltageRaw,
@@ -135,6 +170,7 @@ class LeaperkimProtocolTest {
         totalDistanceRaw: Long = 0,
         currentRaw: Int = 0,
         temperatureRaw: Int = defaultTemperatureRaw,
+        angleRaw: Int? = null,
         pwmRaw: Int = 0,
         chargeMode: Int = 0,
         versionRaw: Int = defaultVersionRaw
@@ -161,6 +197,10 @@ class LeaperkimProtocolTest {
         frame[17] = (currentRaw and 0xFF).toByte()
         frame[18] = ((temperatureRaw shr 8) and 0xFF).toByte()
         frame[19] = (temperatureRaw and 0xFF).toByte()
+        if (angleRaw != null) {
+            frame[20] = ((angleRaw shr 8) and 0xFF).toByte()
+            frame[21] = (angleRaw and 0xFF).toByte()
+        }
         frame[34] = ((pwmRaw shr 8) and 0xFF).toByte()
         frame[35] = (pwmRaw and 0xFF).toByte()
 

@@ -122,6 +122,7 @@ enum class CommandType {
     REQUEST_SERIAL,
     REQUEST_FIRMWARE,
     REQUEST_BATTERY_INFO,
+    RESET_TRIP,
     CUSTOM
 }
 

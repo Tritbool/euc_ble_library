@@ -153,7 +153,9 @@ class GotwayProtocol : EUCProtocol {
         CommandType.LIGHT_OFF,
         CommandType.BEEP,
         CommandType.POWER_OFF,
-        CommandType.LIGHT_BRIGHTNESS
+        CommandType.LIGHT_BRIGHTNESS,
+        CommandType.REQUEST_SERIAL,
+        CommandType.REQUEST_FIRMWARE
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)
@@ -432,7 +434,32 @@ class GotwayProtocol : EUCProtocol {
                     byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x04, brightness)
                 } else byteArrayOf()
             }
+            CommandType.REQUEST_SERIAL -> "N".encodeToByteArray()
+            CommandType.REQUEST_FIRMWARE -> "V".encodeToByteArray()
             else -> byteArrayOf()
+        }
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+        return ProtocolPollingPlan(
+            enabled = true,
+            startupQueries = listOf(
+                ProtocolQuerySpec(id = "gotway.request-model", commandType = CommandType.REQUEST_SERIAL, maxRetries = 3),
+                ProtocolQuerySpec(id = "gotway.request-firmware", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 200L, maxRetries = 3)
+            ),
+            periodicQueries = emptyList()
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+        // Gotway responds to "N" and "V" with ASCII strings (not framed telemetry)
+        if (data.isEmpty()) return false
+        // If the response starts with the standard frame header 0x55 0xAA, it's telemetry not a query response
+        if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) return false
+        // ASCII responses to name/version queries
+        return when (query.commandType) {
+            CommandType.REQUEST_SERIAL, CommandType.REQUEST_FIRMWARE -> true
+            else -> false
         }
     }
 

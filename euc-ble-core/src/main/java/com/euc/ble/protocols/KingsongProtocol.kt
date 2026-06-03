@@ -3,6 +3,7 @@ package com.euc.ble.protocols
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.frames.ByteByByteFrameParser
+import com.euc.ble.models.BMSData
 import com.euc.ble.frames.FrameReassembler
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
@@ -174,6 +175,19 @@ class KingsongProtocol : EUCProtocol {
 
     // BMS cell data: bmsIndex (1 or 2) -> array of cell voltages
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+    // BMS summary data from page 0x00: bmsIndex -> [voltage, current, remainingCapacity, factoryCapacity, cycles]
+    private val bmsSummary: MutableMap<Int, BMSSummary> = mutableMapOf()
+    // BMS temperature data from page 0x01: bmsIndex -> list of temperature values in °C
+    private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
+
+    private data class BMSSummary(
+        val voltage: Double,       // volts
+        val current: Double,       // amps
+        val remainingCapacity: Int, // mAh
+        val factoryCapacity: Int,  // mAh
+        val cycles: Int            // charge cycles
+    )
+
     companion object {
         private const val MAX_BMS_CELLS = 30
     }
@@ -437,6 +451,37 @@ class KingsongProtocol : EUCProtocol {
         val pageNum = ByteUtils.getUnsignedByte(data, base + 17)
 
         when (pageNum) {
+            0x00 -> {
+                // Page 0x00: BMS voltage, current, remaining capacity, factory capacity, cycles
+                if (!ensureRange(data, base + 2, 10)) return
+                val bmsVoltage = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0
+                val bmsCurrent = ByteUtils.getSignedShortLE(data, base + 4) / 100.0
+                val remainingCapacity = ByteUtils.getUnsignedShortLE(data, base + 6)
+                val factoryCapacity = ByteUtils.getUnsignedShortLE(data, base + 8)
+                val cycles = ByteUtils.getUnsignedShortLE(data, base + 10)
+                bmsSummary[bmsIndex] = BMSSummary(
+                    voltage = bmsVoltage,
+                    current = bmsCurrent,
+                    remainingCapacity = remainingCapacity,
+                    factoryCapacity = factoryCapacity,
+                    cycles = cycles
+                )
+            }
+            0x01 -> {
+                // Page 0x01: BMS temperatures (6 probes + MOS temp)
+                val temps = mutableListOf<Double>()
+                for (i in 0 until 7) {
+                    val offset = base + 2 + i * 2
+                    if (ensureRange(data, offset, 2)) {
+                        val raw = ByteUtils.getSignedShortLE(data, offset)
+                        // Temperature is in 0.1°C units
+                        temps.add(raw / 10.0)
+                    }
+                }
+                if (temps.isNotEmpty()) {
+                    bmsTemperatures[bmsIndex] = temps
+                }
+            }
             0x02, 0x03, 0x04, 0x05, 0x06 -> {
                 val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELLS) }
                 val startCell = (pageNum - 0x02) * 7
@@ -450,8 +495,6 @@ class KingsongProtocol : EUCProtocol {
                     }
                 }
             }
-            // Pages 0x00 (summary) and 0x01 (temps) are parsed but not stored in EUCData yet
-            // since EUCData doesn't have a dedicated BMS summary model. Cell voltages are enough for now.
         }
     }
 
@@ -461,6 +504,31 @@ class KingsongProtocol : EUCProtocol {
             .flatMap { it.asList() }
             .filter { it > 0.0 }
         return combined.ifEmpty { null }
+    }
+
+    /**
+     * Returns the current BMS data snapshots for all detected battery packs.
+     * Each entry represents one BMS unit (typically 1 or 2 for dual-battery wheels).
+     * Data is accumulated from frame types 0xF1/0xF2 pages 0x00 (summary), 0x01 (temperatures),
+     * and 0x02-0x06 (cell voltages).
+     */
+    fun getBMSData(): List<BMSData> {
+        val allIndices = (bmsSummary.keys + bmsTemperatures.keys + bmsCellPages.keys).distinct().sorted()
+        return allIndices.map { index ->
+            val summary = bmsSummary[index]
+            val temps = bmsTemperatures[index]
+            val cells = bmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
+            BMSData(
+                bmsIndex = index,
+                voltage = summary?.voltage,
+                current = summary?.current,
+                remainingCapacity = summary?.remainingCapacity,
+                factoryCapacity = summary?.factoryCapacity,
+                cycles = summary?.cycles,
+                temperatures = temps,
+                cellVoltages = cells
+            )
+        }
     }
 
     private fun deriveRideTimeSeconds(nowMs: Long): Long {
