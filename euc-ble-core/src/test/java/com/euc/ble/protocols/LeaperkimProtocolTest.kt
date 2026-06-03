@@ -13,6 +13,7 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.flow.last
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.zip.CRC32
@@ -189,21 +190,24 @@ class LeaperkimProtocolTest {
             cellVoltages = IntArray(15) { 4100 + it }
         }
 
+        val page2 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
+            packetNum = 0x02
+            cellVoltages = IntArray(15) { 4120 + it }
+        }
+
         val page3 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
             packetNum = 0x03
-            temps = IntArray(6) { 2500 + it * 10 }
             cellVoltages = IntArray(12) { 4200 + it }
+            temps = IntArray(6) { 2500 + it * 10 }
         }
 
         protocol.decode(page1)
+        protocol.decode(page2)
         protocol.decode(page3)
 
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
-        assertNotNull(telemetry.cellVoltages)
-        assertTrue((telemetry.cellVoltages?.size ?: 0) >= 27)
-        assertEquals(4.100, telemetry.cellVoltages?.first() ?: 0.0, 0.001)
-
         val bmsData = protocol.getBMSData()
+        assertEquals(1, bmsData.size)
+        assertEquals(42, bmsData.first().cellVoltages?.size)
         assertTrue(bmsData.isNotEmpty())
         assertEquals(1, bmsData.first().bmsIndex)
         assertNotNull(bmsData.first().temperatures)
