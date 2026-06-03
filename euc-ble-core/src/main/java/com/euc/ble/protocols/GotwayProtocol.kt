@@ -131,6 +131,10 @@ class GotwayProtocol : EUCProtocol {
     private var lastKnownTotalDistance: Double? = null
     private var lastKnownMotorTemperature: Double? = null
     private var lastKnownPwm: Double? = null
+    private var lastKnownModel: String? = null
+    private var lastKnownFirmwareVersion: String? = null
+    private var gotwayFirmwareVariant: String? = null
+    private var typeAUsesHardwarePwm = false
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
 
     init {
@@ -183,11 +187,16 @@ class GotwayProtocol : EUCProtocol {
         lastKnownTotalDistance = null
         lastKnownMotorTemperature = null
         lastKnownPwm = null
+        lastKnownModel = null
+        lastKnownFirmwareVersion = null
+        gotwayFirmwareVariant = null
+        typeAUsesHardwarePwm = false
         _channel.close()
     }
 
     override fun decode(data: ByteArray): EUCData? {
         _rawFrameFlow.tryEmit(data.clone())
+        parseLegacyAsciiMetadata(data)
         // Let the reassembler handle the incoming bytes asynchronously
         runBlocking(Dispatchers.IO) {
             frameReassembler.processIncomingBytes(data)
@@ -253,7 +262,11 @@ class GotwayProtocol : EUCProtocol {
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
-        val pwmFromTypeA = abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0
+        val pwmFromTypeA = if (typeAUsesHardwarePwm) {
+            abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble())
+        } else {
+            abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0
+        }
         lastKnownPwm = pwmFromTypeA
         val power = voltage * current
         val batteryLevel = estimateBatteryLevel(voltage)
@@ -271,9 +284,9 @@ class GotwayProtocol : EUCProtocol {
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = "Gotway (Type A)",
+            model = lastKnownModel ?: "Gotway (Type A)",
             serialNumber = null,
-            firmwareVersion = null,
+            firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,
             isCharging = false, // Not available in this frame
             rideTime = 0,
             cellVoltages = getCombinedCellVoltages(),
@@ -318,9 +331,9 @@ class GotwayProtocol : EUCProtocol {
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = "Gotway (Type B)",
+            model = lastKnownModel ?: "Gotway (Type B)",
             serialNumber = null,
-            firmwareVersion = null,
+            firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,
             isCharging = false,
             rideTime = 0,
             cellVoltages = null,
@@ -396,9 +409,9 @@ class GotwayProtocol : EUCProtocol {
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = "Gotway (Type 7)",
+            model = lastKnownModel ?: "Gotway (Type 7)",
             serialNumber = null,
-            firmwareVersion = null,
+            firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,
             isCharging = false,
             rideTime = 0,
             cellVoltages = getCombinedCellVoltages(),
@@ -420,6 +433,41 @@ class GotwayProtocol : EUCProtocol {
             .flatMap { it.asList() }
             .filter { it > 0.0 }
         return combined.ifEmpty { null }
+    }
+
+    private fun parseLegacyAsciiMetadata(data: ByteArray) {
+        if (data.isEmpty()) return
+        if (data.size >= 2 && data[0] == HEADER[0] && data[1] == HEADER[1]) return
+        val message = data.decodeToString().trim()
+        if (message.isEmpty()) return
+        when {
+            message.startsWith("NAME", ignoreCase = true) -> {
+                val name = message.substringAfter("NAME", "").trim()
+                if (name.isNotEmpty()) {
+                    lastKnownModel = name
+                }
+            }
+            message.startsWith("GW", ignoreCase = true) -> {
+                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
+                gotwayFirmwareVariant = "Begode"
+                typeAUsesHardwarePwm = false
+            }
+            message.startsWith("JN", ignoreCase = true) -> {
+                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
+                gotwayFirmwareVariant = "ExtremeBull"
+                typeAUsesHardwarePwm = false
+            }
+            message.startsWith("CF", ignoreCase = true) -> {
+                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
+                gotwayFirmwareVariant = "Freestyl3r"
+                typeAUsesHardwarePwm = true
+            }
+            message.startsWith("BF", ignoreCase = true) -> {
+                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
+                gotwayFirmwareVariant = "SV"
+                typeAUsesHardwarePwm = true
+            }
+        }
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {

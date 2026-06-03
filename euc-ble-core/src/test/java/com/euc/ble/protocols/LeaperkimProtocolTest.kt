@@ -15,6 +15,7 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.util.zip.CRC32
 
 class LeaperkimProtocolTest {
 
@@ -162,6 +163,63 @@ class LeaperkimProtocolTest {
         assertEquals(0.0, telemetry.angle!!, 0.01)
     }
 
+    @Test
+    fun decodeLegacySettingsFieldsAreMapped() = runBlocking {
+        val frame = createLeaperkimFrame(
+            versionRaw = 5000,
+            pedalsModeRaw = 2,
+            autoOffSecondsRaw = 600,
+            speedAlertRaw = 3,
+            speedTiltBackRaw = 4
+        )
+
+        protocol.decode(frame)
+
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        assertEquals(2, telemetry.pedalsMode)
+        assertEquals(10, telemetry.autoPowerOffMinutes)
+        assertEquals(30, telemetry.alarm1Speed)
+        assertEquals(40, telemetry.tiltBackSpeed)
+    }
+
+    @Test
+    fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runBlocking {
+        val page1 = createLeaperkimFrame(len = 76, versionRaw = 5000)
+        page1[46] = 0x01
+        for (i in 0 until 15) {
+            val raw = 4100 + i
+            page1[53 + i * 2] = ((raw shr 8) and 0xFF).toByte()
+            page1[54 + i * 2] = (raw and 0xFF).toByte()
+        }
+
+        val page3 = createLeaperkimFrame(len = 76, versionRaw = 5000)
+        page3[46] = 0x03
+        for (i in 0 until 12) {
+            val raw = 4200 + i
+            page3[59 + i * 2] = ((raw shr 8) and 0xFF).toByte()
+            page3[60 + i * 2] = (raw and 0xFF).toByte()
+        }
+        for (i in 0 until 6) {
+            val tempRaw = 2500 + i * 10
+            page3[47 + i * 2] = ((tempRaw shr 8) and 0xFF).toByte()
+            page3[48 + i * 2] = (tempRaw and 0xFF).toByte()
+        }
+
+        protocol.decode(page1)
+        protocol.decode(page3)
+
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        assertNotNull(telemetry.cellVoltages)
+        assertTrue((telemetry.cellVoltages?.size ?: 0) >= 27)
+        assertEquals(4.100, telemetry.cellVoltages?.first() ?: 0.0, 0.001)
+
+        val bmsData = protocol.getBMSData()
+        assertTrue(bmsData.isNotEmpty())
+        assertEquals(1, bmsData.first().bmsIndex)
+        assertNotNull(bmsData.first().temperatures)
+        assertEquals(25.0, bmsData.first().temperatures?.first() ?: 0.0, 0.01)
+    }
+
     private fun createLeaperkimFrame(
         len: Int = defaultFrameLength,
         voltageRaw: Int = defaultVoltageRaw,
@@ -173,7 +231,11 @@ class LeaperkimProtocolTest {
         angleRaw: Int? = null,
         pwmRaw: Int = 0,
         chargeMode: Int = 0,
-        versionRaw: Int = defaultVersionRaw
+        versionRaw: Int = defaultVersionRaw,
+        autoOffSecondsRaw: Int = 0,
+        speedAlertRaw: Int = 0,
+        speedTiltBackRaw: Int = 0,
+        pedalsModeRaw: Int = 0
     ): ByteArray {
         val frame = ByteArray(len + 4)
         frame[0] = 0xDC.toByte()
@@ -198,19 +260,34 @@ class LeaperkimProtocolTest {
         frame[18] = ((temperatureRaw shr 8) and 0xFF).toByte()
         frame[19] = (temperatureRaw and 0xFF).toByte()
         if (angleRaw != null) {
-            frame[20] = ((angleRaw shr 8) and 0xFF).toByte()
-            frame[21] = (angleRaw and 0xFF).toByte()
+            frame[32] = ((angleRaw shr 8) and 0xFF).toByte()
+            frame[33] = (angleRaw and 0xFF).toByte()
         }
         frame[34] = ((pwmRaw shr 8) and 0xFF).toByte()
         frame[35] = (pwmRaw and 0xFF).toByte()
 
+        frame[20] = ((autoOffSecondsRaw shr 8) and 0xFF).toByte()
+        frame[21] = (autoOffSecondsRaw and 0xFF).toByte()
         frame[22] = ((chargeMode shr 8) and 0xFF).toByte()
         frame[23] = (chargeMode and 0xFF).toByte()
+        frame[24] = ((speedAlertRaw shr 8) and 0xFF).toByte()
+        frame[25] = (speedAlertRaw and 0xFF).toByte()
+        frame[26] = ((speedTiltBackRaw shr 8) and 0xFF).toByte()
+        frame[27] = (speedTiltBackRaw and 0xFF).toByte()
         frame[28] = ((versionRaw shr 8) and 0xFF).toByte()
         frame[29] = (versionRaw and 0xFF).toByte()
+        frame[30] = ((pedalsModeRaw shr 8) and 0xFF).toByte()
+        frame[31] = (pedalsModeRaw and 0xFF).toByte()
 
-        // Keep parser-sensitive bytes valid.
-        frame[30] = 0x00
+        if (len > 38) {
+            val crc = CRC32()
+            crc.update(frame, 0, len)
+            val value = crc.value
+            frame[len] = ((value shr 24) and 0xFF).toByte()
+            frame[len + 1] = ((value shr 16) and 0xFF).toByte()
+            frame[len + 2] = ((value shr 8) and 0xFF).toByte()
+            frame[len + 3] = (value and 0xFF).toByte()
+        }
         return frame
     }
 }

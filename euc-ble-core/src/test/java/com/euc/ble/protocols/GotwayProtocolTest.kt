@@ -494,6 +494,50 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun testDecodeTypeAUsesHardwarePwmWhenCustomFirmwareIsDetected() = runBlocking {
+        protocol.decode("NAME Begode Master".encodeToByteArray())
+        protocol.decode("CF1.0.3".encodeToByteArray())
+        val frame = createGotwayFrame(
+            voltageRaw = 6720,
+            speedRaw = 833,
+            distanceRaw = 1000,
+            currentRaw = 250,
+            tempRaw = 2500,
+            pwmRaw = 136,
+            frameType = 0x00
+        )
+
+        protocol.decode(frame)
+
+        val result = withTimeout(10000) { protocol.dataFlow.first() }
+        assertEquals(136.0, result.pwm ?: 0.0, 0.01)
+        assertEquals("Begode Master", result.model)
+        assertEquals("1.0.3", result.firmwareVersion)
+    }
+
+    @Test
+    fun testDecodeTypeATelemetryCarriesLegacyFirmwareMetadata() = runBlocking {
+        protocol.decode("NAME Nikola Plus".encodeToByteArray())
+        protocol.decode("GW2.5.1".encodeToByteArray())
+        val frame = createGotwayFrame(
+            voltageRaw = 6720,
+            speedRaw = 833,
+            distanceRaw = 1000,
+            currentRaw = 250,
+            tempRaw = 2500,
+            pwmRaw = 136,
+            frameType = 0x00
+        )
+
+        protocol.decode(frame)
+
+        val result = withTimeout(10000) { protocol.dataFlow.first() }
+        assertEquals("Nikola Plus", result.model)
+        assertEquals("2.5.1", result.firmwareVersion)
+        assertEquals(13.6, result.pwm ?: 0.0, 0.01)
+    }
+
+    @Test
     fun testDecodeType7UsesLatestType1VoltageAndPublishesMotorTemperature() = runBlocking {
         val type1 = createGotwayFrameType1(batteryVoltageTenth = 1201) // 120.1V
         val type7 = createGotwayFrameType7(batteryCurrentRaw = 556, motorTempRaw = 35, truePwmRaw = 82)
