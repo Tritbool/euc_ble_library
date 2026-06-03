@@ -704,6 +704,56 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun testCreateCommandRequestSerial() {
+        val command = protocol.createCommand(CommandType.REQUEST_SERIAL, Unit)
+        assertArrayEquals("N".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandRequestFirmware() {
+        val command = protocol.createCommand(CommandType.REQUEST_FIRMWARE, Unit)
+        assertArrayEquals("V".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testGetPollingPlanIsEnabled() {
+        val plan = protocol.getPollingPlan()
+        assertTrue(plan.enabled)
+        assertTrue(plan.startupQueries.isNotEmpty())
+        assertEquals(2, plan.startupQueries.size)
+        assertEquals(CommandType.REQUEST_SERIAL, plan.startupQueries[0].commandType)
+        assertEquals(CommandType.REQUEST_FIRMWARE, plan.startupQueries[1].commandType)
+        assertTrue(plan.periodicQueries.isEmpty())
+    }
+
+    @Test
+    fun testMatchesQueryResponseReturnsTrueForAsciiResponse() {
+        val query = ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val asciiResponse = "GW_MSX_PRO".encodeToByteArray()
+        assertTrue(protocol.matchesQueryResponse(query, asciiResponse))
+    }
+
+    @Test
+    fun testMatchesQueryResponseReturnsFalseForTelemetryFrame() {
+        val query = ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val telemetryFrame = createGotwayFrame(voltageRaw = 6720, speedRaw = 833, distanceRaw = 1000, currentRaw = 250, tempRaw = 2500)
+        assertFalse(protocol.matchesQueryResponse(query, telemetryFrame))
+    }
+
+    @Test
+    fun testMatchesQueryResponseReturnsFalseForEmptyData() {
+        val query = ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        assertFalse(protocol.matchesQueryResponse(query, byteArrayOf()))
+    }
+
+    @Test
+    fun testMatchesQueryResponseReturnsFalseForUnrelatedCommand() {
+        val query = ProtocolQuerySpec("gotway.beep", CommandType.BEEP, maxRetries = 1)
+        val asciiResponse = "GW_MSX".encodeToByteArray()
+        assertFalse(protocol.matchesQueryResponse(query, asciiResponse))
+    }
+
+    @Test
     fun testIsDeviceReady() {
         val readyData = MockBLEUtils.createMockEUCData(
             voltage = 67.2,

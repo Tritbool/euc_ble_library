@@ -139,6 +139,17 @@ class InMotionProtocolTest {
         )
     }
 
+    @Test
+    fun getPollingPlanHasStartupAndPeriodicQueries() {
+        val plan = protocol.getPollingPlan()
+        assertTrue(plan.enabled)
+        assertTrue(plan.startupQueries.size >= 3)
+        assertTrue(plan.periodicQueries.isNotEmpty())
+        // Verify startup queries include serial and firmware
+        assertTrue(plan.startupQueries.any { it.commandType == CommandType.REQUEST_SERIAL })
+        assertTrue(plan.startupQueries.any { it.commandType == CommandType.REQUEST_FIRMWARE })
+    }
+
     private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")

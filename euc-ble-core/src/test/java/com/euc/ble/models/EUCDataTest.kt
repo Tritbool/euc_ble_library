@@ -379,4 +379,78 @@ class EUCDataTest {
         assertEquals(-100.0, negativeData.power, 0.01)
         assertEquals(-5.0, negativeData.motorTemperature?:0.0, 0.01)
     }
+
+    @Test
+    fun testEUCDataAngleField() {
+        // Test angle field with a value
+        val dataWithAngle = EUCData(
+            speed = 20.0,
+            voltage = 67.0,
+            current = 5.0,
+            temperature = 30.0,
+            batteryLevel = 80,
+            distance = 5.0,
+            power = 335.0,
+            timestamp = 1234567890L,
+            rawData = byteArrayOf(),
+            manufacturer = "InMotion",
+            model = "V12",
+            serialNumber = null,
+            firmwareVersion = null,
+            isCharging = false,
+            rideTime = 600,
+            cellVoltages = null,
+            motorTemperature = null,
+            angle = 3.5
+        )
+
+        assertEquals(3.5, dataWithAngle.angle ?: 0.0, 0.01)
+
+        // Test angle null by default
+        val dataNoAngle = EUCData(
+            speed = 20.0,
+            voltage = 67.0,
+            current = 5.0,
+            temperature = 30.0,
+            batteryLevel = 80,
+            distance = 5.0,
+            power = 335.0,
+            timestamp = 1234567890L,
+            rawData = byteArrayOf(),
+            manufacturer = "Test",
+            model = "TestModel",
+            serialNumber = null,
+            firmwareVersion = null,
+            isCharging = false,
+            rideTime = 600,
+            cellVoltages = null,
+            motorTemperature = null,
+        )
+
+        assertNull(dataNoAngle.angle)
+
+        // Test negative angle (tilted backward)
+        val dataNegativeAngle = EUCData(
+            speed = 20.0,
+            voltage = 67.0,
+            current = 5.0,
+            temperature = 30.0,
+            batteryLevel = 80,
+            distance = 5.0,
+            power = 335.0,
+            timestamp = 1234567890L,
+            rawData = byteArrayOf(),
+            manufacturer = "Test",
+            model = "TestModel",
+            serialNumber = null,
+            firmwareVersion = null,
+            isCharging = false,
+            rideTime = 600,
+            cellVoltages = null,
+            motorTemperature = null,
+            angle = -2.5
+        )
+
+        assertEquals(-2.5, dataNegativeAngle.angle ?: 0.0, 0.01)
+    }
 }

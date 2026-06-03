@@ -48,4 +48,29 @@ class ProtocolParityContractTest {
         assertTrue("ninebot-z.bms1" in startupIds)
         assertTrue(plan.periodicQueries.any { it.id == "ninebot-z.realtime" })
     }
+
+    @Test
+    fun `gotway supports request serial and firmware commands`() {
+        val protocol = GotwayProtocol()
+
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.REQUEST_SERIAL))
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.REQUEST_FIRMWARE))
+    }
+
+    @Test
+    fun `gotway exposes startup polling plan`() {
+        val protocol = GotwayProtocol()
+        val plan = protocol.getPollingPlan()
+
+        assertTrue(plan.enabled)
+        assertTrue(plan.startupQueries.isNotEmpty())
+        assertTrue(plan.periodicQueries.isEmpty())
+    }
+
+    @Test
+    fun `leaperkim supports reset trip command`() {
+        val protocol = LeaperkimProtocol()
+
+        assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(CommandType.RESET_TRIP))
+    }
 }

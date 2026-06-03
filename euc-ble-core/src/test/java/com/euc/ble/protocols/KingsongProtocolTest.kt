@@ -257,6 +257,62 @@ class KingsongProtocolTest {
     // --- Tests for BMS frames (0xF1/0xF2) ---
 
     @Test
+    fun decodeBmsPage00SummaryIsStoredInGetBMSData() = runBlocking {
+        // Page 0x00: voltage=84.00V, current=-2.50A, remaining=5000mAh, factory=6000mAh, cycles=42
+        protocol.decode(createBmsPage00Frame(
+            messageType = 0xF1,
+            bmsVoltageRaw = 8400,
+            bmsCurrentRaw = -250,
+            remainingCapacity = 5000,
+            factoryCapacity = 6000,
+            cycles = 42
+        ))
+        val bmsDataList = protocol.getBMSData()
+        assertTrue(bmsDataList.isNotEmpty())
+        val bms = bmsDataList.first()
+        assertEquals(1, bms.bmsIndex)
+        assertEquals(84.0, bms.voltage ?: -1.0, 0.01)
+        assertEquals(-2.5, bms.current ?: -1.0, 0.01)
+        assertEquals(5000, bms.remainingCapacity)
+        assertEquals(6000, bms.factoryCapacity)
+        assertEquals(42, bms.cycles)
+    }
+
+    @Test
+    fun decodeBmsPage01TemperaturesIsStoredInGetBMSData() = runBlocking {
+        // Page 0x01: 7 temperature probes at 0.1°C units
+        protocol.decode(createBmsPage01Frame(
+            messageType = 0xF1,
+            temperatures = intArrayOf(250, 260, 270, 280, 290, 300, 310)
+        ))
+        val bmsDataList = protocol.getBMSData()
+        assertTrue(bmsDataList.isNotEmpty())
+        val bms = bmsDataList.first()
+        assertNotNull(bms.temperatures)
+        assertEquals(7, bms.temperatures!!.size)
+        assertEquals(25.0, bms.temperatures!![0], 0.01)
+        assertEquals(31.0, bms.temperatures!![6], 0.01)
+    }
+
+    @Test
+    fun getBMSDataCombinesSummaryTempsAndCells() = runBlocking {
+        // Send summary, temperatures, and cell voltages for BMS 1
+        protocol.decode(createBmsPage00Frame(messageType = 0xF1, bmsVoltageRaw = 8400, bmsCurrentRaw = 100, remainingCapacity = 4000, factoryCapacity = 5000, cycles = 10))
+        protocol.decode(createBmsPage01Frame(messageType = 0xF1, temperatures = intArrayOf(250, 260, 270, 280, 290, 300, 310)))
+        protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x02, cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)))
+
+        val bmsDataList = protocol.getBMSData()
+        assertEquals(1, bmsDataList.size)
+        val bms = bmsDataList[0]
+        assertEquals(1, bms.bmsIndex)
+        assertNotNull(bms.voltage)
+        assertNotNull(bms.temperatures)
+        assertNotNull(bms.cellVoltages)
+        assertEquals(7, bms.cellVoltages!!.size)
+        assertEquals(4.2, bms.cellVoltages!![0], 0.001)
+    }
+
+    @Test
     fun decodeBmsCellVoltagesPage02() = runBlocking {
         // Page 0x02: first 7 cell voltages for BMS 1 (0xF1)
         protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x02, cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)))
@@ -488,6 +544,55 @@ class KingsongProtocolTest {
         frame[8] = alarm3.toByte()
         frame[10] = maxSpeed.toByte()
         frame[16] = 0xA4.toByte()
+        return frame
+    }
+
+    private fun createBmsPage00Frame(
+        messageType: Int,
+        bmsVoltageRaw: Int = 0,
+        bmsCurrentRaw: Int = 0,
+        remainingCapacity: Int = 0,
+        factoryCapacity: Int = 0,
+        cycles: Int = 0
+    ): ByteArray {
+        val frame = ByteArray(20)
+        frame[0] = 0xAA.toByte()
+        frame[1] = 0x55.toByte()
+        // Voltage LE at offset 2
+        frame[2] = (bmsVoltageRaw and 0xFF).toByte()
+        frame[3] = ((bmsVoltageRaw shr 8) and 0xFF).toByte()
+        // Current LE at offset 4
+        frame[4] = (bmsCurrentRaw and 0xFF).toByte()
+        frame[5] = ((bmsCurrentRaw shr 8) and 0xFF).toByte()
+        // Remaining capacity LE at offset 6
+        frame[6] = (remainingCapacity and 0xFF).toByte()
+        frame[7] = ((remainingCapacity shr 8) and 0xFF).toByte()
+        // Factory capacity LE at offset 8
+        frame[8] = (factoryCapacity and 0xFF).toByte()
+        frame[9] = ((factoryCapacity shr 8) and 0xFF).toByte()
+        // Cycles LE at offset 10
+        frame[10] = (cycles and 0xFF).toByte()
+        frame[11] = ((cycles shr 8) and 0xFF).toByte()
+        frame[16] = messageType.toByte()
+        frame[17] = 0x00.toByte() // page 0x00
+        return frame
+    }
+
+    private fun createBmsPage01Frame(
+        messageType: Int,
+        temperatures: IntArray
+    ): ByteArray {
+        val frame = ByteArray(20)
+        frame[0] = 0xAA.toByte()
+        frame[1] = 0x55.toByte()
+        for (i in temperatures.indices) {
+            if (i >= 7) break
+            val offset = 2 + i * 2
+            frame[offset] = (temperatures[i] and 0xFF).toByte()
+            frame[offset + 1] = ((temperatures[i] shr 8) and 0xFF).toByte()
+        }
+        frame[16] = messageType.toByte()
+        frame[17] = 0x01.toByte() // page 0x01
         return frame
     }
 }
