@@ -196,7 +196,12 @@ class WheelLogGotwayTest {
         delay(frameProcessingDelayMs)
         collectorJob.cancel()
 
-        val typeBFrames = decoded.filter { it.model == "Gotway (Type B)" }
+        val typeBFrames = decoded.filter {frame ->
+            val raw = frame.rawData
+            val actualFrameType = raw[frameTypeOffset].toInt() and 0xFF
+            actualFrameType == typeBFrameType
+
+        }
         assertTrue("No Type B frames decoded from WheelLog capture", typeBFrames.isNotEmpty())
 
         typeBFrames.forEach { data ->
