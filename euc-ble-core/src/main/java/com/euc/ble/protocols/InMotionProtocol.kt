@@ -528,7 +528,7 @@ class InMotionProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec(id = "inmotion.car-type", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 0L, maxRetries = 3),
+                ProtocolQuerySpec(id = "inmotion.main-info-init", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 0L, maxRetries = 3),
                 ProtocolQuerySpec(id = "inmotion.serial", commandType = CommandType.REQUEST_SERIAL, initialDelayMs = 200L, maxRetries = 3),
                 ProtocolQuerySpec(id = "inmotion.firmware-version", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 400L, maxRetries = 3),
                 ProtocolQuerySpec(id = "inmotion.realtime-init", commandType = CommandType.REQUEST_BATTERY_INFO, initialDelayMs = 600L, maxRetries = 2)

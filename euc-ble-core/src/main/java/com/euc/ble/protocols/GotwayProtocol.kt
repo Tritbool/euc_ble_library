@@ -444,8 +444,8 @@ class GotwayProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec(id = "gotway.request-name", commandType = CommandType.REQUEST_SERIAL, maxRetries = 3),
-                ProtocolQuerySpec(id = "gotway.request-version", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 200L, maxRetries = 3)
+                ProtocolQuerySpec(id = "gotway.request-model", commandType = CommandType.REQUEST_SERIAL, maxRetries = 3),
+                ProtocolQuerySpec(id = "gotway.request-firmware", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 200L, maxRetries = 3)
             ),
             periodicQueries = emptyList()
         )
