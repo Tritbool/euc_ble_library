@@ -43,7 +43,8 @@ data class EUCData(
     val alarm2Speed: Int?=null,           // alarm 2 speed threshold
     val alarm3Speed: Int?=null,           // alarm 3 speed threshold
     val wheelMaxSpeed: Int?=null,         // max speed setting
-    val wheelDistance: Double?=null       // trip distance (wheel-reported)
+    val wheelDistance: Double?=null,       // trip distance (wheel-reported)
+    val angle: Double?=null                // pitch/tilt angle in degrees (null if unavailable)
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

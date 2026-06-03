@@ -65,9 +65,29 @@ class InMotionProtocol : EUCProtocol {
         CommandType.REQUEST_BATTERY_INFO
     )
 
-    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)
-    override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC)
+    override fun getServiceUUID(): UUID {
+        return if (lastDetectedDialect == Dialect.V2) {
+            UUID.fromString(BLEConstants.INMOTION_V2_SERVICE_UUID)
+        } else {
+            UUID.fromString(BLEConstants.INMOTION_SERVICE_UUID)
+        }
+    }
+
+    override fun getDataCharacteristicUUID(): UUID {
+        return if (lastDetectedDialect == Dialect.V2) {
+            UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
+        } else {
+            UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)
+        }
+    }
+
+    override fun getWriteCharacteristicUUID(): UUID {
+        return if (lastDetectedDialect == Dialect.V2) {
+            UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC)
+        } else {
+            UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC)
+        }
+    }
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
@@ -435,6 +455,7 @@ class InMotionProtocol : EUCProtocol {
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
+        val pitchAngle = ByteUtils.tryGetSignedShortLE(payload, 10)?.let { it / 100.0 }
         val pwm = (ByteUtils.tryGetSignedShortLE(payload, 14)?.toDouble() ?: 0.0) / 100.0
         val distanceKm = (ByteUtils.getUnsignedShortLE(payload, 28) * 10.0) / 1000.0
 
@@ -470,7 +491,8 @@ class InMotionProtocol : EUCProtocol {
             rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = boardTemp.toDouble(),
-            totalDistance = totalDistanceKm
+            totalDistance = totalDistanceKm,
+            angle = pitchAngle
         )
     }
 
@@ -506,8 +528,10 @@ class InMotionProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec(id = "inmotion.main-info", commandType = CommandType.REQUEST_FIRMWARE, maxRetries = 3),
-                ProtocolQuerySpec(id = "inmotion.realtime-init", commandType = CommandType.REQUEST_BATTERY_INFO, maxRetries = 2)
+                ProtocolQuerySpec(id = "inmotion.car-type", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 0L, maxRetries = 3),
+                ProtocolQuerySpec(id = "inmotion.serial", commandType = CommandType.REQUEST_SERIAL, initialDelayMs = 200L, maxRetries = 3),
+                ProtocolQuerySpec(id = "inmotion.firmware-version", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 400L, maxRetries = 3),
+                ProtocolQuerySpec(id = "inmotion.realtime-init", commandType = CommandType.REQUEST_BATTERY_INFO, initialDelayMs = 600L, maxRetries = 2)
             ),
             periodicQueries = listOf(
                 ProtocolQuerySpec(

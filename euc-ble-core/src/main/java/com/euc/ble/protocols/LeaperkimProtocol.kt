@@ -43,6 +43,7 @@ open class LeaperkimProtocol : EUCProtocol {
         CommandType.LIGHT_OFF,
         CommandType.BEEP,
         CommandType.SET_PEDALS_MODE,
+        CommandType.RESET_TRIP,
         CommandType.CUSTOM
     )
 
@@ -194,6 +195,7 @@ open class LeaperkimProtocol : EUCProtocol {
         val totalDistanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 12) ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(frame, 16) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(frame, 18) ?: return null
+        val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 20)
         val pwmRaw = ByteUtils.tryGetUnsignedShortBE(frame, 34) ?: 0
         val chargeMode = ByteUtils.tryGetUnsignedShortBE(frame, 22) ?: 0
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0
@@ -203,6 +205,7 @@ open class LeaperkimProtocol : EUCProtocol {
         val current = currentRaw / 100.0
         val temperature = tempRaw / 100.0
         val pwm = pwmRaw / 100.0
+        val angle = angleRaw?.let { it / 100.0 }
 
         if (voltage !in 20.0..180.0) return null
         if (speed !in -120.0..120.0) return null
@@ -238,7 +241,8 @@ open class LeaperkimProtocol : EUCProtocol {
             rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = null,
-            totalDistance = totalDistanceKm
+            totalDistance = totalDistanceKm,
+            angle = angle
         )
     }
 
@@ -318,6 +322,7 @@ open class LeaperkimProtocol : EUCProtocol {
                     else -> byteArrayOf()
                 }
             }
+            CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
             CommandType.CUSTOM -> {
                 when (value) {
                     is ByteArray -> value.clone()

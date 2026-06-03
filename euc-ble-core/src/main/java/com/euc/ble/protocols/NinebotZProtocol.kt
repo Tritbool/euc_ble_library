@@ -53,9 +53,9 @@ class NinebotZProtocol : EUCProtocol {
         CommandType.CUSTOM
     )
 
-    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_READ_CHARACTERISTIC)
-    override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_WRITE_CHARACTERISTIC)
+    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_SERVICE_UUID)
+    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_READ_CHARACTERISTIC)
+    override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_WRITE_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
