@@ -184,25 +184,15 @@ class LeaperkimProtocolTest {
 
     @Test
     fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runBlocking {
-        val page1 = createLeaperkimFrame(len = 76, versionRaw = 5000)
-        page1[46] = 0x01
-        for (i in 0 until 15) {
-            val raw = 4100 + i
-            page1[53 + i * 2] = ((raw shr 8) and 0xFF).toByte()
-            page1[54 + i * 2] = (raw and 0xFF).toByte()
+        val page1 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
+            packetNum = 0x01
+            cellVoltages = IntArray(15) { 4100 + it }
         }
 
-        val page3 = createLeaperkimFrame(len = 76, versionRaw = 5000)
-        page3[46] = 0x03
-        for (i in 0 until 12) {
-            val raw = 4200 + i
-            page3[59 + i * 2] = ((raw shr 8) and 0xFF).toByte()
-            page3[60 + i * 2] = (raw and 0xFF).toByte()
-        }
-        for (i in 0 until 6) {
-            val tempRaw = 2500 + i * 10
-            page3[47 + i * 2] = ((tempRaw shr 8) and 0xFF).toByte()
-            page3[48 + i * 2] = (tempRaw and 0xFF).toByte()
+        val page3 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
+            packetNum = 0x03
+            temps = IntArray(6) { 2500 + it * 10 }
+            cellVoltages = IntArray(12) { 4200 + it }
         }
 
         protocol.decode(page1)
@@ -290,4 +280,52 @@ class LeaperkimProtocolTest {
         }
         return frame
     }
+
+    private fun createSmartBmsFrame(
+        len: Int,
+        versionRaw: Int,
+        build: SmartBmsFrameBuilder.() -> Unit
+    ): ByteArray {
+        val builder = SmartBmsFrameBuilder().apply(build)
+        val frame = createLeaperkimFrame(len = len, versionRaw = versionRaw)
+
+        frame[46] = builder.packetNum.toByte()
+
+        builder.cellVoltages.forEachIndexed { i, raw ->
+            val offset = when (builder.packetNum) {
+                0x01, 0x05 -> 53 + i * 2
+                0x02, 0x06 -> 53 + i * 2
+                0x03, 0x07 -> 59 + i * 2
+                else -> 53 + i * 2
+            }
+            frame[offset] = ((raw shr 8) and 0xFF).toByte()
+            frame[offset + 1] = (raw and 0xFF).toByte()
+        }
+
+        builder.temps.forEachIndexed { i, raw ->
+            val offset = 47 + i * 2
+            frame[offset] = ((raw shr 8) and 0xFF).toByte()
+            frame[offset + 1] = (raw and 0xFF).toByte()
+        }
+
+        return appendCrc(frame, len)
+    }
+
+    private fun appendCrc(frame: ByteArray, len: Int): ByteArray {
+        if (len <= 38) return frame
+        val crc = CRC32()
+        crc.update(frame, 0, len)
+        val value = crc.value
+        frame[len] = ((value shr 24) and 0xFF).toByte()
+        frame[len + 1] = ((value shr 16) and 0xFF).toByte()
+        frame[len + 2] = ((value shr 8) and 0xFF).toByte()
+        frame[len + 3] = (value and 0xFF).toByte()
+        return frame
+    }
+
+    private data class SmartBmsFrameBuilder(
+        var packetNum: Int = 0,
+        var cellVoltages: IntArray = intArrayOf(),
+        var temps: IntArray = intArrayOf()
+    )
 }
