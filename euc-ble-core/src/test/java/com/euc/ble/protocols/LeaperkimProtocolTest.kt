@@ -260,8 +260,8 @@ class LeaperkimProtocolTest {
         frame[18] = ((temperatureRaw shr 8) and 0xFF).toByte()
         frame[19] = (temperatureRaw and 0xFF).toByte()
         if (angleRaw != null) {
-            frame[20] = ((angleRaw shr 8) and 0xFF).toByte()
-            frame[21] = (angleRaw and 0xFF).toByte()
+            frame[32] = ((angleRaw shr 8) and 0xFF).toByte()
+            frame[33] = (angleRaw and 0xFF).toByte()
         }
         frame[34] = ((pwmRaw shr 8) and 0xFF).toByte()
         frame[35] = (pwmRaw and 0xFF).toByte()

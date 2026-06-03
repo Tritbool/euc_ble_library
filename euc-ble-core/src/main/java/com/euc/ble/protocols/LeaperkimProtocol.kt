@@ -202,7 +202,7 @@ open class LeaperkimProtocol : EUCProtocol {
         val totalDistanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 12) ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(frame, 16) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(frame, 18) ?: return null
-        val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 20)
+        val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 32)
         val pwmRaw = ByteUtils.tryGetUnsignedShortBE(frame, 34) ?: 0
         val chargeMode = ByteUtils.tryGetUnsignedShortBE(frame, 22) ?: 0
         val autoOffSeconds = ByteUtils.tryGetUnsignedShortBE(frame, 20) ?: 0
