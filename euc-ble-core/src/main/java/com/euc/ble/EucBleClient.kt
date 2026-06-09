@@ -37,7 +37,7 @@ class EucBleClient(
     context: Context,
     logger: Logger = AndroidLogger()
 ) {
-    private val bleManager = BLEManager(context, logger)
+    internal val bleManager = BLEManager(context, logger)
 
     init {
         registerBuiltInProtocols()

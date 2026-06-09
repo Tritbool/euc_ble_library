@@ -18,6 +18,8 @@ import android.os.Handler
 import android.os.Looper
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
+import androidx.annotation.VisibleForTesting
+import androidx.annotation.VisibleForTesting.Companion.PRIVATE
 import com.euc.ble.exceptions.BLEException
 import com.euc.ble.integration.BleBackendEvent
 import com.euc.ble.integration.BleBackendListener
@@ -74,8 +76,10 @@ class BLEManager internal constructor(
     private val maxReconnectDelayMs: Long = 30_000L
 
     // Protocol management
-    private val protocols: MutableList<EUCProtocol> = mutableListOf()
-    private var currentProtocol: EUCProtocol? = null
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal val protocols: MutableList<EUCProtocol> = mutableListOf()
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal var currentProtocol: EUCProtocol? = null
     private var metadataMatchedProtocols: List<EUCProtocol> = emptyList()
     private var frameCandidateProtocols: List<EUCProtocol> = emptyList()
     private var queryOrchestrationJob: Job? = null
@@ -614,7 +618,9 @@ class BLEManager internal constructor(
         handleIncomingBytes(data)
     }
 
-    private fun handleIncomingBytes(data: ByteArray) {
+    @VisibleForTesting(otherwise = PRIVATE)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    internal fun handleIncomingBytes(data: ByteArray) {
         _rawFrameFlow.tryEmit(data.clone())
         if (currentProtocol == null) {
             maybeSelectProtocolFromFrame(data)
@@ -628,7 +634,7 @@ class BLEManager internal constructor(
             }
         }
     }
-
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun maybeSelectProtocolFromFrame(data: ByteArray) {
         if (currentProtocol != null) return
         val candidates = if (frameCandidateProtocols.isNotEmpty()) frameCandidateProtocols else protocols
@@ -690,7 +696,7 @@ class BLEManager internal constructor(
             bluetoothGatt?.setCharacteristicNotification(char, true)
         }
     }
-
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun startPollingOrchestration(protocol: EUCProtocol) {
         cancelPollingOrchestration()
         val plan = protocol.getPollingPlan()
@@ -720,7 +726,8 @@ class BLEManager internal constructor(
         pendingQueries.clear()
     }
 
-    private fun startDataFlowCollection(protocol: EUCProtocol) {
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun startDataFlowCollection(protocol: EUCProtocol) {
         cancelDataFlowCollection()
         dataFlowCollectorJob = coroutineScope.launch {
             protocol.dataFlow.collect { d ->
@@ -728,12 +735,13 @@ class BLEManager internal constructor(
             }
         }
     }
-
-    private fun cancelDataFlowCollection() {
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun cancelDataFlowCollection() {
         dataFlowCollectorJob?.cancel()
         dataFlowCollectorJob = null
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun setActiveProtocol(protocol: EUCProtocol, reason: String) {
         if (currentProtocol === protocol) return
         currentProtocol = protocol
@@ -741,14 +749,15 @@ class BLEManager internal constructor(
         startPollingOrchestration(protocol)
         startDataFlowCollection(protocol)
     }
-
-    private fun prepareProtocolCandidates(device: EUCDevice) {
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun prepareProtocolCandidates(device: EUCDevice) {
         metadataMatchedProtocols = protocols.filter { protocol ->
             protocol.canHandle(device)
         }
         frameCandidateProtocols = metadataMatchedProtocols.ifEmpty { protocols.toList() }
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private suspend fun executeQueryWithRetry(protocol: EUCProtocol, query: ProtocolQuerySpec) {
         val retryCount = query.maxRetries.coerceAtLeast(0)
         val totalAttempts = retryCount + MIN_QUERY_ATTEMPTS

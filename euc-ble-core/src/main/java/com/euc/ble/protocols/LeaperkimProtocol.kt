@@ -52,10 +52,13 @@ open class LeaperkimProtocol : EUCProtocol {
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_READ_CHARACTERISTIC)
-    override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)
+    override fun getDataCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.LEAPERKIM_READ_CHARACTERISTIC)
 
-    override open fun canHandle(device: EUCDevice): Boolean {
+    override fun getWriteCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)
+
+    override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
                 device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN ||
@@ -69,8 +72,8 @@ open class LeaperkimProtocol : EUCProtocol {
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
         if (chunk.size < 3) return false
         return (chunk[0].toInt() and 0xFF) == 0xDC &&
-            (chunk[1].toInt() and 0xFF) == 0x5A &&
-            (chunk[2].toInt() and 0xFF) == 0x5C
+                (chunk[1].toInt() and 0xFF) == 0x5A &&
+                (chunk[2].toInt() and 0xFF) == 0x5C
     }
 
     private enum class ParseState {
@@ -152,7 +155,8 @@ open class LeaperkimProtocol : EUCProtocol {
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
     private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
-    @Volatile private var lastMajorVersion: Int? = null
+    @Volatile
+    private var lastMajorVersion: Int? = null
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
     private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
@@ -282,12 +286,14 @@ open class LeaperkimProtocol : EUCProtocol {
                 bms1CurrentRaw?.let { bmsCurrents[1] = it / 100.0 }
                 bms2CurrentRaw?.let { bmsCurrents[2] = it / 100.0 }
             }
+
             1, 5 -> {
                 for (i in 0 until 15) {
                     val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue
                     cells[i] = raw / 1000.0
                 }
             }
+
             2, 6 -> {
                 for (i in 0 until 15) {
                     val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue
@@ -297,6 +303,7 @@ open class LeaperkimProtocol : EUCProtocol {
                     }
                 }
             }
+
             3, 7 -> {
                 for (i in 0 until 12) {
                     val raw = ByteUtils.tryGetUnsignedShortBE(frame, 59 + i * 2) ?: continue
@@ -327,7 +334,8 @@ open class LeaperkimProtocol : EUCProtocol {
     }
 
     fun getBMSData(): List<BMSData> {
-        val allIndices = (bmsCellPages.keys + bmsTemperatures.keys + bmsCurrents.keys).distinct().sorted()
+        val allIndices =
+            (bmsCellPages.keys + bmsTemperatures.keys + bmsCurrents.keys).distinct().sorted()
         return allIndices.map { index ->
             BMSData(
                 bmsIndex = index,
@@ -410,6 +418,7 @@ open class LeaperkimProtocol : EUCProtocol {
                     )
                 }
             }
+
             CommandType.SET_PEDALS_MODE -> {
                 when ((value as? Int)?.coerceIn(0, 2)) {
                     0 -> "SETh".encodeToByteArray()
@@ -418,6 +427,7 @@ open class LeaperkimProtocol : EUCProtocol {
                     else -> byteArrayOf()
                 }
             }
+
             CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
             CommandType.CUSTOM -> {
                 when (value) {
