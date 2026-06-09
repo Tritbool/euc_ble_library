@@ -66,6 +66,13 @@ open class LeaperkimProtocol : EUCProtocol {
                 name.contains("Lynx", ignoreCase = true)
     }
 
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+        if (chunk.size < 3) return false
+        return (chunk[0].toInt() and 0xFF) == 0xDC &&
+            (chunk[1].toInt() and 0xFF) == 0x5A &&
+            (chunk[2].toInt() and 0xFF) == 0x5C
+    }
+
     private enum class ParseState {
         UNKNOWN,
         LENGTH_SEARCH,

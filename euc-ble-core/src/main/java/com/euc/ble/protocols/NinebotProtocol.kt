@@ -85,6 +85,16 @@ class NinebotProtocol : EUCProtocol {
             name.startsWith("Z6", ignoreCase = true)
     }
 
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+        if (chunk.isEmpty()) return false
+        val first = chunk[0].toInt() and 0xFF
+        if (first == FRAME_HEADER) return true
+        if (chunk.size >= 2 && first == WHEELLOG_HEADER_FIRST &&
+            (chunk[1].toInt() and 0xFF) == WHEELLOG_HEADER_SECOND
+        ) return true
+        return false
+    }
+
     override fun decode(data: ByteArray): EUCData? {
         _rawFrameFlow.tryEmit(data.clone())
         parseLegacyFrame(data)?.let { decoded ->

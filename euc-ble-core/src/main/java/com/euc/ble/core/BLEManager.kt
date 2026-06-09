@@ -77,6 +77,7 @@ class BLEManager internal constructor(
     private val protocols: MutableList<EUCProtocol> = mutableListOf()
     private var currentProtocol: EUCProtocol? = null
     private var queryOrchestrationJob: Job? = null
+    private var dataFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
     
     // Callbacks
@@ -236,6 +237,7 @@ class BLEManager internal constructor(
         reconnectJob = null
         reconnectRetryCount = 0
         cancelPollingOrchestration()
+        cancelDataFlowCollection()
 
         connectionJob?.cancel()
         bluetoothGatt?.disconnect()
@@ -562,6 +564,7 @@ class BLEManager internal constructor(
                 enableNotifications(protocol.getDataCharacteristicUUID())
                 connectionCallback?.onServicesDiscovered(gatt.services)
                 startPollingOrchestration(protocol)
+                startDataFlowCollection(protocol)
             } ?: run {
                 errorCallback?.onError(BLEException("No protocol found for this device"))
                 disconnect()
@@ -598,8 +601,7 @@ class BLEManager internal constructor(
         currentProtocol?.let { protocol ->
             try {
                 matchPendingQueries(protocol, data)
-                val eucData = protocol.decode(data)
-                eucData?.let { d -> dataCallback?.onDataReceived(d) }
+                protocol.decode(data)
             } catch (e: Exception) {
                 errorCallback?.onError(BLEException("Data decoding failed: ${e.message}"))
             }
@@ -676,6 +678,20 @@ class BLEManager internal constructor(
         queryOrchestrationJob?.cancel()
         queryOrchestrationJob = null
         pendingQueries.clear()
+    }
+
+    private fun startDataFlowCollection(protocol: EUCProtocol) {
+        cancelDataFlowCollection()
+        dataFlowCollectorJob = coroutineScope.launch {
+            protocol.dataFlow.collect { d ->
+                dataCallback?.onDataReceived(d)
+            }
+        }
+    }
+
+    private fun cancelDataFlowCollection() {
+        dataFlowCollectorJob?.cancel()
+        dataFlowCollectorJob = null
     }
 
     private suspend fun executeQueryWithRetry(protocol: EUCProtocol, query: ProtocolQuerySpec) {

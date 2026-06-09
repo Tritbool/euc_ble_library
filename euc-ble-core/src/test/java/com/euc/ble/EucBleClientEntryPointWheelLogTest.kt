@@ -5,6 +5,9 @@ import com.euc.ble.core.BLEManager
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.core.NoOpLogger
 import com.euc.ble.protocols.EUCProtocol
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.concurrent.atomic.AtomicInteger
 
 @SlowTest
 class EucBleClientEntryPointWheelLogTest {
@@ -37,7 +41,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun entryPointDistributesRawWheelLogFramesToExpectedProtocol() {
+    fun entryPointDistributesRawWheelLogFramesToExpectedProtocol() = runBlocking {
         val fixtures = listOf(
             RoutingFixture("KingsongProtocol", "Kingsong", "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv"),
             RoutingFixture("GotwayProtocol", "Gotway", "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"),
@@ -51,19 +55,40 @@ class EucBleClientEntryPointWheelLogTest {
             val frames = loadFrames(fixture.resourcePath, maxFrames = 2_000)
             assertTrue(frames.isNotEmpty(), "Expected WheelLog frames in ${fixture.resourcePath}")
 
-            val decodeCounts = registeredProtocolClasses.associateWith { protocolClass ->
-                val protocol = instantiateProtocol(protocolClass)
-                try {
-                    frames.count { frame -> protocol.decode(frame) != null }
-                } finally {
-                    protocol.close()
-                }
-            }
-
             val expectedClass = registeredProtocolClasses.firstOrNull {
                 it.simpleName == fixture.expectedProtocolSimpleName
             }
             assertTrue(expectedClass != null, "Expected ${fixture.expectedProtocolSimpleName} to be registered by EucBleClient")
+
+            // Instantiate all registered protocols for this fixture run
+            val entries = registeredProtocolClasses.map { cls -> cls to instantiateProtocol(cls) }
+            val counts = entries.associate { (cls, _) -> cls to AtomicInteger(0) }
+            val collectedManufacturers = mutableListOf<String>()
+
+            // Launch one async collector per protocol in parallel
+            val collectJobs = entries.map { (cls, protocol) ->
+                launch {
+                    protocol.dataFlow.collect { eucData ->
+                        counts[cls]!!.incrementAndGet()
+                        if (cls == expectedClass) {
+                            synchronized(collectedManufacturers) {
+                                collectedManufacturers.add(eucData.manufacturer)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Feed all frames to every protocol simultaneously
+            frames.forEach { frame -> entries.forEach { (_, p) -> p.decode(frame) } }
+
+            // Allow all async frame processing pipelines to drain
+            delay(5_000L)
+
+            collectJobs.forEach { it.cancel() }
+            entries.forEach { (_, p) -> p.close() }
+
+            val decodeCounts = counts.mapValues { (_, c) -> c.get() }
 
             val expectedDecodeCount = decodeCounts[expectedClass] ?: 0
             val maxDecodeCount = decodeCounts.values.maxOrNull() ?: 0
@@ -77,18 +102,10 @@ class EucBleClientEntryPointWheelLogTest {
                 "Expected ${fixture.expectedProtocolSimpleName} to be the dominant decoder for ${fixture.resourcePath}, counts=$decodeCounts"
             )
 
-            val expectedProtocol = instantiateProtocol(expectedClass!!)
-            try {
-                val manufacturers = frames.mapNotNull { frame ->
-                    expectedProtocol.decode(frame)?.manufacturer
-                }
-                assertTrue(
-                    manufacturers.any { it.equals(fixture.expectedManufacturer, ignoreCase = true) },
-                    "Expected ${fixture.expectedProtocolSimpleName} decoded manufacturer to contain ${fixture.expectedManufacturer}"
-                )
-            } finally {
-                expectedProtocol.close()
-            }
+            assertTrue(
+                collectedManufacturers.any { it.equals(fixture.expectedManufacturer, ignoreCase = true) },
+                "Expected ${fixture.expectedProtocolSimpleName} decoded manufacturer to contain ${fixture.expectedManufacturer}"
+            )
         }
     }
 

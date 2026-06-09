@@ -131,6 +131,15 @@ class KingsongProtocol : EUCProtocol {
                 device.name.contains("KingSong", ignoreCase = true)
     }
 
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+        if (chunk.size < 2) return false
+        for (i in 0..chunk.size - 2) {
+            val a = chunk[i].toInt() and 0xFF
+            val b = chunk[i + 1].toInt() and 0xFF
+            if ((a == 0xAA && b == 0x55) || (a == 0x55 && b == 0xAA)) return true
+        }
+        return false
+    }
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
