@@ -151,10 +151,10 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     private fun createTestDevice(name: String, manufacturerId: Int): EUCDevice {
-        val stableHash = (name.fold(0L) { acc, c -> acc * 131L + c.code } and 0xFFFFFFFFL)
+        val addressSeed = (name.fold(0L) { acc, c -> acc * 131L + c.code } and 0xFFFFFFFFL)
         val bytes = ByteArray(6) { index ->
             val shift = (5 - index) * 8
-            ((stableHash shr shift) and 0xFF).toByte()
+            ((addressSeed shr shift) and 0xFF).toByte()
         }
         val address = bytes.joinToString(":") { byte -> "%02X".format(byte) }
         return EUCDevice(
