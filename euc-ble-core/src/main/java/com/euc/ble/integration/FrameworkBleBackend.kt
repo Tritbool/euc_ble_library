@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import java.util.UUID
 
-class FrameworkBleBackend(
+internal class FrameworkBleBackend(
     private val bleManager: BLEManager,
     private val ownsScope: Boolean = true,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

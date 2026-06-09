@@ -1,6 +1,5 @@
 package com.euc.ble.protocols
 
-import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
 import kotlin.math.roundToInt
 
@@ -13,9 +12,7 @@ class NosfetProtocol : LeaperkimProtocol() {
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
-                device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN ||
-                name.contains("Nosfet", ignoreCase = true) ||
+        return name.contains("Nosfet", ignoreCase = true) ||
                 name.contains("Apex", ignoreCase = true) ||
                 name.contains("Aero", ignoreCase = true) ||
                 name.contains("Aeon", ignoreCase = true)

@@ -9,7 +9,7 @@ import java.util.UUID
  * Contract expected from a WheelLog legacy BLE implementation.
  * This allows wrapping legacy code without changing app business/UI layers.
  */
-interface LegacyBleEngine {
+internal interface LegacyBleEngine {
     fun initialize()
     fun setListener(listener: BleBackendListener?)
     fun startScan()
@@ -27,7 +27,7 @@ interface LegacyBleEngine {
     fun registerProtocol(protocol: EUCProtocol) {}
 }
 
-class LegacyBleBackend(
+internal class LegacyBleBackend(
     private val legacyEngine: LegacyBleEngine
 ) : BleBackend {
     override val type: BleBackendType = BleBackendType.LEGACY
