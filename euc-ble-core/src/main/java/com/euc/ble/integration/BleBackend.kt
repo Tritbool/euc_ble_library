@@ -12,7 +12,7 @@ internal enum class BleBackendType {
     FRAMEWORK
 }
 
-internal sealed interface BleBackendEvent {
+sealed interface BleBackendEvent {
     data object ScanStarted : BleBackendEvent
     data class DeviceDiscovered(val device: EUCDevice) : BleBackendEvent
     data class ScanCompleted(val devices: List<EUCDevice>) : BleBackendEvent
@@ -36,7 +36,7 @@ internal sealed interface BleBackendEvent {
     data class Error(val error: BLEException) : BleBackendEvent
 }
 
-internal fun interface BleBackendListener {
+fun interface BleBackendListener {
     fun onEvent(event: BleBackendEvent)
 }
 
