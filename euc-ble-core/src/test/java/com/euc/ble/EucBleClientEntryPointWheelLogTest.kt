@@ -258,9 +258,13 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     private fun fakeDevice(name: String, manufacturerId: Int = 0): EUCDevice {
+        val seed = name.fold(0L) { acc, char -> (acc * 131L + char.code) and 0xFFFFFFFFFFFFL }
+        val address = (5 downTo 0).joinToString(":") { index ->
+            ((seed shr (index * 8)) and 0xFF).toString(16).padStart(2, '0')
+        }
         return EUCDevice(
             name = name,
-            address = "00:11:22:33:44:${name.hashCode().ushr(24).toString(16).padStart(2, '0')}",
+            address = address,
             manufacturerId = manufacturerId,
             rssi = -42
         )
