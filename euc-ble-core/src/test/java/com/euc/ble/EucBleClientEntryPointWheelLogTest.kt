@@ -46,6 +46,7 @@ class EucBleClientEntryPointWheelLogTest {
             maxFrames = 300,
             expectedFrames = 1
         )
+    }
 
         assertEquals("GotwayProtocol", currentProtocolSimpleName())
         assertTrue(decoded.isNotEmpty())
@@ -183,5 +184,15 @@ class EucBleClientEntryPointWheelLogTest {
             }
         }
         return frames
+    }
+
+    companion object {
+        private const val EXPECTED_DECODED_FRAME_COUNT = 200
+        private const val COLLECTOR_SUBSCRIBE_DELAY_MS = 150L
+        private const val DECODE_TIMEOUT_MS = 15_000L
+        // Small prime commonly used in simple rolling hashes to spread values cheaply in tests.
+        private const val DEVICE_ADDRESS_HASH_PRIME = 131L
+        // Keep only 48 bits so the generated synthetic address always fits the 6-byte MAC format.
+        private const val MAC_ADDRESS_MASK = 0xFFFFFFFFFFFFL
     }
 }
