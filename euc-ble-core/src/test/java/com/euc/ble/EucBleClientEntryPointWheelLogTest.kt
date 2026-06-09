@@ -59,7 +59,7 @@ class EucBleClientEntryPointWheelLogTest {
         assertClientDecodesWheelLog(
             ClientFixture(
                 expectedProtocolSimpleName = "KingsongProtocol",
-                device = fakeDevice("KS-16X", BLEConstants.MANUFACTURER_KINGSONG),
+                device = createTestDevice("KS-16X", BLEConstants.MANUFACTURER_KINGSONG),
                 expectedManufacturers = setOf("KingSong"),
                 resourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv",
                 maxFrames = 4_000
@@ -76,7 +76,7 @@ class EucBleClientEntryPointWheelLogTest {
         assertClientDecodesWheelLog(
             ClientFixture(
                 expectedProtocolSimpleName = "GotwayProtocol",
-                device = fakeDevice("Begode Nikola"),
+                device = createTestDevice("Begode Nikola"),
                 expectedManufacturers = setOf("Gotway", "Begode"),
                 resourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv",
                 maxFrames = 2_000
@@ -92,7 +92,7 @@ class EucBleClientEntryPointWheelLogTest {
         assertClientDecodesWheelLog(
             ClientFixture(
                 expectedProtocolSimpleName = "InMotionProtocol",
-                device = fakeDevice("V8S", BLEConstants.MANUFACTURER_INMOTION),
+                device = createTestDevice("V8S", BLEConstants.MANUFACTURER_INMOTION),
                 expectedManufacturers = setOf("InMotion"),
                 resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv",
                 maxFrames = 2_000
@@ -109,7 +109,7 @@ class EucBleClientEntryPointWheelLogTest {
         assertClientDecodesWheelLog(
             ClientFixture(
                 expectedProtocolSimpleName = "NinebotProtocol",
-                device = fakeDevice("Ninebot One"),
+                device = createTestDevice("Ninebot One"),
                 expectedManufacturers = setOf("Ninebot"),
                 resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_09_09_11_02_51.csv",
                 maxFrames = 5_000
@@ -126,7 +126,7 @@ class EucBleClientEntryPointWheelLogTest {
         assertClientDecodesWheelLog(
             ClientFixture(
                 expectedProtocolSimpleName = "LeaperkimProtocol",
-                device = fakeDevice("Patton-S", BLEConstants.MANUFACTURER_LEAPERKIM),
+                device = createTestDevice("Patton-S", BLEConstants.MANUFACTURER_LEAPERKIM),
                 expectedManufacturers = setOf("Leaperkim"),
                 resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
                 maxFrames = 15_000
@@ -143,7 +143,7 @@ class EucBleClientEntryPointWheelLogTest {
         assertClientDecodesWheelLog(
             ClientFixture(
                 expectedProtocolSimpleName = "NosfetProtocol",
-                device = fakeDevice("Nosfet Aero"),
+                device = createTestDevice("Nosfet Aero"),
                 expectedManufacturers = setOf("Nosfet"),
                 resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
                 maxFrames = 3_000
@@ -257,7 +257,7 @@ class EucBleClientEntryPointWheelLogTest {
         }
     }
 
-    private fun fakeDevice(name: String, manufacturerId: Int = 0): EUCDevice {
+    private fun createTestDevice(name: String, manufacturerId: Int = 0): EUCDevice {
         val seed = name.fold(0L) { acc, char -> (acc * DEVICE_ADDRESS_HASH_PRIME + char.code) and MAC_ADDRESS_MASK }
         val address = (5 downTo 0).joinToString(":") { index ->
             ((seed shr (index * 8)) and 0xFF).toString(16).padStart(2, '0')
@@ -296,7 +296,9 @@ class EucBleClientEntryPointWheelLogTest {
         private const val EXPECTED_DECODED_FRAME_COUNT = 200
         private const val COLLECTOR_SUBSCRIBE_DELAY_MS = 150L
         private const val DECODE_TIMEOUT_MS = 15_000L
+        // Small prime commonly used in simple rolling hashes to spread values cheaply in tests.
         private const val DEVICE_ADDRESS_HASH_PRIME = 131L
+        // Keep only 48 bits so the generated synthetic address always fits the 6-byte MAC format.
         private const val MAC_ADDRESS_MASK = 0xFFFFFFFFFFFFL
     }
 }
