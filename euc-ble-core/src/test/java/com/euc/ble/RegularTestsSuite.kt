@@ -23,7 +23,6 @@ import org.junit.platform.suite.api.Suite
 @Suite
 @SelectClasses(
     FrameReassemblerStaticFlowTest::class,
-    EucBleClientEntryPointWheelLogTest::class,
     ByteUtilsTest::class,
     ByteUtilsSafeAccessTest::class,
     EUCDataTest::class,

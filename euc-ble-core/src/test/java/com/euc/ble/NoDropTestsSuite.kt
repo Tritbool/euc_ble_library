@@ -33,7 +33,8 @@ import org.junit.platform.suite.api.Suite
     KingsongNoDropTest::class,
     LeaperkimNoDropTest::class,
     NosfetNoDropTest::class,
-    NinebotNoDropTest::class
+    NinebotNoDropTest::class,
+    EucBleClientEntryPointWheelLogTest::class
 )
 
 class NoDropTestsSuite {
