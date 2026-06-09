@@ -122,6 +122,10 @@ class InMotionProtocol : EUCProtocol {
             name.startsWith("P6", ignoreCase = true)
     }
 
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+        if (chunk.size < 2) return false
+        return (chunk[0].toInt() and 0xFF) == 0xAA && (chunk[1].toInt() and 0xFF) == 0xAA
+    }
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null

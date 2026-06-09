@@ -174,6 +174,17 @@ class GotwayProtocol : EUCProtocol {
                 device.name.contains("Nikola", ignoreCase = true)
     }
 
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+        if (chunk.size < 2) return false
+        val hasHeader = (chunk[0].toInt() and 0xFF) == 0x55 && (chunk[1].toInt() and 0xFF) == 0xAA
+        val hasFooter = chunk.size >= 4 &&
+            (chunk[chunk.size - 4].toInt() and 0xFF) == 0x5A &&
+            (chunk[chunk.size - 3].toInt() and 0xFF) == 0x5A &&
+            (chunk[chunk.size - 2].toInt() and 0xFF) == 0x5A &&
+            (chunk[chunk.size - 1].toInt() and 0xFF) == 0x5A
+        return hasHeader || hasFooter
+    }
+
     override fun close() {
         scope.cancel()
         smartBmsCellPages.clear()

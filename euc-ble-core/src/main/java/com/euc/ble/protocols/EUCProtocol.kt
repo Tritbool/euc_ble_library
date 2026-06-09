@@ -48,6 +48,16 @@ interface EUCProtocol : Closeable {
     fun decode(data: ByteArray): EUCData?
 
     /**
+     * Optional fast header check: returns true if [chunk] appears to contain frames belonging
+     * to this protocol, based on magic-byte patterns alone.  The default returns false (opt-out).
+     * Protocols override this to enable frame-header-based routing without full decoding.
+     *
+     * Note: header-based routing is a hint only.  [canHandle] (device-name / manufacturer-ID)
+     * remains the authoritative gate for protocol selection at connection time.
+     */
+    fun looksLikeMyFrames(chunk: ByteArray): Boolean = false
+
+    /**
      * Get the UUID for the data characteristic
      */
     fun getDataCharacteristicUUID(): UUID

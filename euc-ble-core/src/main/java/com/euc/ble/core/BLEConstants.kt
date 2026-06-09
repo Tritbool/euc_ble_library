@@ -58,4 +58,18 @@ object BLEConstants {
 
     // Helper functions
     fun String.toUUID(): UUID = UUID.fromString(this)
+
+    // Frame header magic bytes for each protocol — used by looksLikeMyFrames() implementations
+    // and available as a canonical reference to avoid scattering magic bytes across protocol files.
+    val KINGSONG_FRAME_HEADER_1: ByteArray = byteArrayOf(0xAA.toByte(), 0x55.toByte())
+    // Note: KINGSONG_FRAME_HEADER_2 and GOTWAY_FRAME_HEADER share the same byte sequence (0x55 0xAA).
+    // Header bytes alone cannot disambiguate Kingsong from Gotway; canHandle() (device name /
+    // manufacturer ID) and the presence of the Gotway 5A5A5A5A footer remain the primary gates.
+    val KINGSONG_FRAME_HEADER_2: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())
+    val GOTWAY_FRAME_HEADER: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())
+    val GOTWAY_FRAME_FOOTER: ByteArray = byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
+    val INMOTION_FRAME_HEADER: ByteArray = byteArrayOf(0xAA.toByte(), 0xAA.toByte())
+    const val NINEBOT_FRAME_FIRST_BYTE: Int = 0x55
+    val NINEBOT_WHEELLOG_FRAME_HEADER: ByteArray = byteArrayOf(0x5A.toByte(), 0xA5.toByte())
+    val LEAPERKIM_FRAME_HEADER: ByteArray = byteArrayOf(0xDC.toByte(), 0x5A.toByte(), 0x5C.toByte())
 }
