@@ -82,7 +82,11 @@ class EucBleClientEntryPointWheelLogTest {
             // Feed all frames to every protocol simultaneously
             frames.forEach { frame -> entries.forEach { (_, p) -> p.decode(frame) } }
 
-            // Allow all async frame processing pipelines to drain
+            // Allow all async frame processing pipelines to drain.
+            // Protocols that use FrameReassembler (Kingsong, Gotway, Leaperkim) enqueue data on IO
+            // threads via runBlocking(IO); the delay gives the coroutine scheduler time to flush
+            // all pending channel emissions before the collectors are cancelled.
+            // This mirrors the oracle drain pattern used in ProtocolNoDropTestBase.
             delay(5_000L)
 
             collectJobs.forEach { it.cancel() }

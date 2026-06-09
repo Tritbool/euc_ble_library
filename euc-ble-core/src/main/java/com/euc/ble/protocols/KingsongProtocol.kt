@@ -133,12 +133,9 @@ class KingsongProtocol : EUCProtocol {
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
         if (chunk.size < 2) return false
-        for (i in 0..chunk.size - 2) {
-            val a = chunk[i].toInt() and 0xFF
-            val b = chunk[i + 1].toInt() and 0xFF
-            if ((a == 0xAA && b == 0x55) || (a == 0x55 && b == 0xAA)) return true
-        }
-        return false
+        val a = chunk[0].toInt() and 0xFF
+        val b = chunk[1].toInt() and 0xFF
+        return (a == 0xAA && b == 0x55) || (a == 0x55 && b == 0xAA)
     }
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
