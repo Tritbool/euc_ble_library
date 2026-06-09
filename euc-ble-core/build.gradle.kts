@@ -5,7 +5,6 @@ import org.gradle.testing.jacoco.tasks.JacocoReport
 plugins {
     id("com.android.library") version "9.1.0"
     id("jacoco")
-    id("org.jetbrains.kotlin.android") version "2.3.0"
 }
 
 jacoco {
