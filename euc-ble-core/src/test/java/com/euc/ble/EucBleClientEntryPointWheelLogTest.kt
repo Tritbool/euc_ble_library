@@ -1,13 +1,20 @@
 package com.euc.ble
 
 import android.content.Context
+import com.euc.ble.core.BLEConstants
 import com.euc.ble.core.BLEManager
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.core.DataCallback
 import com.euc.ble.core.NoOpLogger
+import com.euc.ble.models.EUCData
+import com.euc.ble.models.EUCDevice
 import com.euc.ble.protocols.EUCProtocol
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -20,109 +27,243 @@ import java.util.concurrent.atomic.AtomicInteger
 
 @SlowTest
 class EucBleClientEntryPointWheelLogTest {
-    private data class RoutingFixture(
+    private data class ClientFixture(
         val expectedProtocolSimpleName: String,
-        val expectedManufacturer: String,
-        val resourcePath: String
+        val device: EUCDevice,
+        val expectedManufacturers: Set<String>,
+        val resourcePath: String,
+        val maxFrames: Int,
+        val decodedFrameCount: Int = EXPECTED_DECODED_FRAME_COUNT,
+        val additionalAssertions: (List<EUCData>) -> Unit = {}
     )
 
     private lateinit var client: EucBleClient
-    private lateinit var registeredProtocolClasses: List<Class<out EUCProtocol>>
+    private lateinit var bleManager: BLEManager
+    private lateinit var registeredProtocols: List<EUCProtocol>
 
     @BeforeEach
     fun setUp() {
         client = EucBleClient(mock<Context>(), NoOpLogger())
-        registeredProtocolClasses = extractRegisteredProtocols(client).map { it.javaClass as Class<out EUCProtocol> }
+        bleManager = extractBleManager(client)
+        registeredProtocols = extractRegisteredProtocols(bleManager)
     }
 
     @AfterEach
     fun tearDown() {
-        extractRegisteredProtocols(client).forEach { it.close() }
+        cancelDataFlowCollection(bleManager)
+        registeredProtocols.forEach { it.close() }
     }
 
     @Test
-    fun entryPointDistributesRawWheelLogFramesToExpectedProtocol() = runBlocking {
-        val fixtures = listOf(
-            RoutingFixture("KingsongProtocol", "Kingsong", "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv"),
-            RoutingFixture("GotwayProtocol", "Gotway", "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"),
-            RoutingFixture("InMotionProtocol", "Inmotion", "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv"),
-            RoutingFixture("NinebotProtocol", "Ninebot", "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_09_09_11_02_51.csv"),
-            RoutingFixture("LeaperkimProtocol", "Leaperkim", "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv"),
-            RoutingFixture("NosfetProtocol", "Nosfet", "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv")
+    fun kingsongWheelLogIsHandledByKingsongProtocolOnly() = runBlocking {
+        assertClientDecodesWheelLog(
+            ClientFixture(
+                expectedProtocolSimpleName = "KingsongProtocol",
+                device = fakeDevice("KS-16X", BLEConstants.MANUFACTURER_KINGSONG),
+                expectedManufacturers = setOf("KingSong"),
+                resourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv",
+                maxFrames = 4_000
+            ) { decoded ->
+                assertTrue(decoded.all { it.voltage in 60.0..130.0 })
+                assertTrue(decoded.all { it.batteryLevel in 0..100 })
+                assertTrue(decoded.all { it.rideTime >= 0 })
+            }
+        )
+    }
+
+    @Test
+    fun gotwayWheelLogIsHandledByGotwayProtocolOnly() = runBlocking {
+        assertClientDecodesWheelLog(
+            ClientFixture(
+                expectedProtocolSimpleName = "GotwayProtocol",
+                device = fakeDevice("Begode Nikola"),
+                expectedManufacturers = setOf("Gotway", "Begode"),
+                resourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv",
+                maxFrames = 2_000
+            ) { decoded ->
+                assertTrue(decoded.all { it.batteryLevel in 0..100 })
+                assertTrue(decoded.any { it.model.contains("Type", ignoreCase = true) })
+            }
+        )
+    }
+
+    @Test
+    fun inmotionWheelLogIsHandledByInMotionProtocolOnly() = runBlocking {
+        assertClientDecodesWheelLog(
+            ClientFixture(
+                expectedProtocolSimpleName = "InMotionProtocol",
+                device = fakeDevice("V8S", BLEConstants.MANUFACTURER_INMOTION),
+                expectedManufacturers = setOf("InMotion"),
+                resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv",
+                maxFrames = 2_000
+            ) { decoded ->
+                assertTrue(decoded.any { it.model.contains("V8S", ignoreCase = true) })
+                assertTrue(decoded.all { it.voltage in 40.0..100.0 })
+                assertTrue(decoded.all { it.batteryLevel in 0..100 })
+            }
+        )
+    }
+
+    @Test
+    fun ninebotWheelLogIsHandledByNinebotProtocolOnly() = runBlocking {
+        assertClientDecodesWheelLog(
+            ClientFixture(
+                expectedProtocolSimpleName = "NinebotProtocol",
+                device = fakeDevice("Ninebot One"),
+                expectedManufacturers = setOf("Ninebot"),
+                resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_09_09_11_02_51.csv",
+                maxFrames = 5_000
+            ) { decoded ->
+                assertTrue(decoded.any { it.model.contains("Ninebot", ignoreCase = true) })
+                assertTrue(decoded.all { it.voltage in 20.0..150.0 })
+                assertTrue(decoded.all { it.batteryLevel in 0..100 })
+            }
+        )
+    }
+
+    @Test
+    fun leaperkimWheelLogIsHandledByLeaperkimProtocolOnly() = runBlocking {
+        assertClientDecodesWheelLog(
+            ClientFixture(
+                expectedProtocolSimpleName = "LeaperkimProtocol",
+                device = fakeDevice("Patton-S", BLEConstants.MANUFACTURER_LEAPERKIM),
+                expectedManufacturers = setOf("Leaperkim"),
+                resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
+                maxFrames = 15_000
+            ) { decoded ->
+                assertTrue(decoded.any { it.model.contains("Patton", ignoreCase = true) })
+                assertTrue(decoded.all { it.voltage in 90.0..160.0 })
+                assertTrue(decoded.all { it.batteryLevel in 0..100 })
+            }
+        )
+    }
+
+    @Test
+    fun nosfetWheelLogIsHandledByNosfetProtocolOnly() = runBlocking {
+        assertClientDecodesWheelLog(
+            ClientFixture(
+                expectedProtocolSimpleName = "NosfetProtocol",
+                device = fakeDevice("Nosfet Aero"),
+                expectedManufacturers = setOf("Nosfet"),
+                resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
+                maxFrames = 3_000
+            ) { decoded ->
+                assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
+                assertTrue(decoded.all { it.batteryLevel in 0..100 })
+                assertTrue(decoded.all { it.rideTime >= 0 })
+            }
+        )
+    }
+
+    private suspend fun assertClientDecodesWheelLog(fixture: ClientFixture) = coroutineScope {
+        val frames = loadFrames(fixture.resourcePath, fixture.maxFrames)
+        assertTrue(frames.isNotEmpty(), "Expected WheelLog frames in ${fixture.resourcePath}")
+
+        val matchingProtocols = registeredProtocols.filter { it.canHandle(fixture.device) }
+        assertEquals(
+            1,
+            matchingProtocols.size,
+            "Expected exactly one built-in protocol for ${fixture.device.name}, matches=${matchingProtocols.map { it.javaClass.simpleName }}"
         )
 
-        fixtures.forEach { fixture ->
-            val frames = loadFrames(fixture.resourcePath, maxFrames = 2_000)
-            assertTrue(frames.isNotEmpty(), "Expected WheelLog frames in ${fixture.resourcePath}")
+        val selectedProtocol = matchingProtocols.single()
+        assertEquals(fixture.expectedProtocolSimpleName, selectedProtocol.javaClass.simpleName)
 
-            val expectedClass = registeredProtocolClasses.firstOrNull {
-                it.simpleName == fixture.expectedProtocolSimpleName
+        val decodedFrames = Channel<EUCData>(capacity = Channel.UNLIMITED)
+        val decodedCount = AtomicInteger(0)
+
+        client.setDataCallback(object : DataCallback {
+            override fun onDataReceived(data: EUCData) {
+                decodedCount.incrementAndGet()
+                decodedFrames.trySend(data)
             }
-            assertTrue(expectedClass != null, "Expected ${fixture.expectedProtocolSimpleName} to be registered by EucBleClient")
+        })
 
-            // Instantiate all registered protocols for this fixture run
-            val entries = registeredProtocolClasses.map { cls -> cls to instantiateProtocol(cls) }
-            val counts = entries.associate { (cls, _) -> cls to AtomicInteger(0) }
-            val collectedManufacturers = mutableListOf<String>()
+        setCurrentProtocol(bleManager, selectedProtocol)
+        startDataFlowCollection(bleManager, selectedProtocol)
+        delay(COLLECTOR_SUBSCRIBE_DELAY_MS)
 
-            // Launch one async collector per protocol in parallel
-            val collectJobs = entries.map { (cls, protocol) ->
-                launch {
-                    protocol.dataFlow.collect { eucData ->
-                        counts[cls]!!.incrementAndGet()
-                        if (cls == expectedClass) {
-                            synchronized(collectedManufacturers) {
-                                collectedManufacturers.add(eucData.manufacturer)
-                            }
-                        }
+        val feedJob = launch {
+            for (frame in frames) {
+                handleIncomingBytes(bleManager, frame)
+                if (decodedCount.get() >= fixture.decodedFrameCount) {
+                    break
+                }
+            }
+        }
+
+        try {
+            val decoded = withTimeout(DECODE_TIMEOUT_MS) {
+                buildList {
+                    repeat(fixture.decodedFrameCount) {
+                        add(decodedFrames.receive())
                     }
                 }
             }
 
-            // Feed all frames to every protocol simultaneously
-            frames.forEach { frame -> entries.forEach { (_, p) -> p.decode(frame) } }
-
-            // Allow all async frame processing pipelines to drain.
-            // Protocols that use FrameReassembler (Kingsong, Gotway, Leaperkim) enqueue data on IO
-            // threads via runBlocking(IO); the delay gives the coroutine scheduler time to flush
-            // all pending channel emissions before the collectors are cancelled.
-            // This mirrors the oracle drain pattern used in ProtocolNoDropTestBase.
-            delay(5_000L)
-
-            collectJobs.forEach { it.cancel() }
-            entries.forEach { (_, p) -> p.close() }
-
-            val decodeCounts = counts.mapValues { (_, c) -> c.get() }
-
-            val expectedDecodeCount = decodeCounts[expectedClass] ?: 0
-            val maxDecodeCount = decodeCounts.values.maxOrNull() ?: 0
+            assertEquals(fixture.decodedFrameCount, decoded.size)
             assertTrue(
-                expectedDecodeCount > 0,
-                "Expected ${fixture.expectedProtocolSimpleName} to decode at least one frame from ${fixture.resourcePath}"
+                decoded.all { data ->
+                    fixture.expectedManufacturers.any { expected ->
+                        data.manufacturer.equals(expected, ignoreCase = true)
+                    }
+                },
+                "Expected only ${fixture.expectedManufacturers} data from ${fixture.expectedProtocolSimpleName}"
             )
-            assertEquals(
-                maxDecodeCount,
-                expectedDecodeCount,
-                "Expected ${fixture.expectedProtocolSimpleName} to be the dominant decoder for ${fixture.resourcePath}, counts=$decodeCounts"
-            )
-
-            assertTrue(
-                collectedManufacturers.any { it.equals(fixture.expectedManufacturer, ignoreCase = true) },
-                "Expected ${fixture.expectedProtocolSimpleName} decoded manufacturer to contain ${fixture.expectedManufacturer}"
-            )
+            fixture.additionalAssertions(decoded)
+        } finally {
+            feedJob.join()
+            cancelDataFlowCollection(bleManager)
+            decodedFrames.close()
         }
     }
 
-    private fun extractRegisteredProtocols(client: EucBleClient): List<EUCProtocol> {
+    private fun extractBleManager(client: EucBleClient): BLEManager {
         val bleManagerField = EucBleClient::class.java.getDeclaredField("bleManager").apply { isAccessible = true }
-        val bleManager = bleManagerField.get(client) as BLEManager
+        return bleManagerField.get(client) as BLEManager
+    }
+
+    private fun extractRegisteredProtocols(bleManager: BLEManager): List<EUCProtocol> {
         val protocolsField = BLEManager::class.java.getDeclaredField("protocols").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST")
         return (protocolsField.get(bleManager) as List<EUCProtocol>)
     }
 
-    private fun instantiateProtocol(protocolClass: Class<out EUCProtocol>): EUCProtocol {
-        return protocolClass.getDeclaredConstructor().newInstance()
+    private fun setCurrentProtocol(bleManager: BLEManager, protocol: EUCProtocol) {
+        BLEManager::class.java.getDeclaredField("currentProtocol").apply {
+            isAccessible = true
+            set(bleManager, protocol)
+        }
+    }
+
+    private fun startDataFlowCollection(bleManager: BLEManager, protocol: EUCProtocol) {
+        BLEManager::class.java.getDeclaredMethod("startDataFlowCollection", EUCProtocol::class.java).apply {
+            isAccessible = true
+            invoke(bleManager, protocol)
+        }
+    }
+
+    private fun cancelDataFlowCollection(bleManager: BLEManager) {
+        BLEManager::class.java.getDeclaredMethod("cancelDataFlowCollection").apply {
+            isAccessible = true
+            invoke(bleManager)
+        }
+    }
+
+    private fun handleIncomingBytes(bleManager: BLEManager, frame: ByteArray) {
+        BLEManager::class.java.getDeclaredMethod("handleIncomingBytes", ByteArray::class.java).apply {
+            isAccessible = true
+            invoke(bleManager, frame)
+        }
+    }
+
+    private fun fakeDevice(name: String, manufacturerId: Int = 0): EUCDevice {
+        return EUCDevice(
+            name = name,
+            address = "00:11:22:33:44:${name.hashCode().ushr(24).toString(16).padStart(2, '0')}",
+            manufacturerId = manufacturerId,
+            rssi = -42
+        )
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int): List<ByteArray> {
@@ -145,5 +286,11 @@ class EucBleClientEntryPointWheelLogTest {
             }
         }
         return frames
+    }
+
+    companion object {
+        private const val EXPECTED_DECODED_FRAME_COUNT = 200
+        private const val COLLECTOR_SUBSCRIBE_DELAY_MS = 150L
+        private const val DECODE_TIMEOUT_MS = 15_000L
     }
 }
