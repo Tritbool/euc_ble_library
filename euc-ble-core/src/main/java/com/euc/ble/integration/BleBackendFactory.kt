@@ -1,6 +1,6 @@
 package com.euc.ble.integration
 
-object BleBackendFactory {
+internal object BleBackendFactory {
     fun fromFlag(
         useLegacy: Boolean,
         frameworkBackend: BleBackend,

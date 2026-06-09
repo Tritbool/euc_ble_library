@@ -7,12 +7,12 @@ import com.euc.ble.models.EUCDevice
 import com.euc.ble.protocols.EUCProtocol
 import java.util.UUID
 
-enum class BleBackendType {
+internal enum class BleBackendType {
     LEGACY,
     FRAMEWORK
 }
 
-sealed interface BleBackendEvent {
+internal sealed interface BleBackendEvent {
     data object ScanStarted : BleBackendEvent
     data class DeviceDiscovered(val device: EUCDevice) : BleBackendEvent
     data class ScanCompleted(val devices: List<EUCDevice>) : BleBackendEvent
@@ -36,11 +36,11 @@ sealed interface BleBackendEvent {
     data class Error(val error: BLEException) : BleBackendEvent
 }
 
-fun interface BleBackendListener {
+internal fun interface BleBackendListener {
     fun onEvent(event: BleBackendEvent)
 }
 
-interface BleBackend {
+internal interface BleBackend {
     val type: BleBackendType
 
     fun initialize()

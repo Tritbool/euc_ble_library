@@ -45,7 +45,10 @@ import java.util.concurrent.ConcurrentHashMap
  * Main BLE Manager for Electric Unicycles
  * Handles device scanning, connection, and data processing
  */
-class BLEManager(private val context: Context, private val logger: Logger = AndroidLogger()) : BluetoothGattCallback() {
+class BLEManager internal constructor(
+    private val context: Context,
+    private val logger: Logger = AndroidLogger()
+) : BluetoothGattCallback() {
     companion object {
         private const val MIN_QUERY_ATTEMPTS = 1
         private const val MIN_QUERY_TIMEOUT_MS = 200L
@@ -270,6 +273,17 @@ class BLEManager(private val context: Context, private val logger: Logger = Andr
             )
         }
         return payload
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun sendCommand(commandType: CommandType, value: Any = Unit) {
+        val protocol = currentProtocol ?: run {
+            errorCallback?.onError(BLEException("No protocol selected; cannot send command"))
+            return
+        }
+        val payload = createCommand(commandType, value)
+        if (payload.isEmpty()) return
+        sendCommand(payload, protocol.getWriteCharacteristicUUID())
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)

@@ -5,7 +5,7 @@ import com.euc.ble.models.EUCDevice
 import com.euc.ble.protocols.EUCProtocol
 import java.util.UUID
 
-class SwitchableBleBackend(
+internal class SwitchableBleBackend(
     private val frameworkBackend: BleBackend,
     private val legacyBackend: BleBackend,
     initialType: BleBackendType = BleBackendType.FRAMEWORK
