@@ -258,7 +258,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     private fun fakeDevice(name: String, manufacturerId: Int = 0): EUCDevice {
-        val seed = name.fold(0L) { acc, char -> (acc * 131L + char.code) and 0xFFFFFFFFFFFFL }
+        val seed = name.fold(0L) { acc, char -> (acc * DEVICE_ADDRESS_HASH_PRIME + char.code) and MAC_ADDRESS_MASK }
         val address = (5 downTo 0).joinToString(":") { index ->
             ((seed shr (index * 8)) and 0xFF).toString(16).padStart(2, '0')
         }
@@ -296,5 +296,7 @@ class EucBleClientEntryPointWheelLogTest {
         private const val EXPECTED_DECODED_FRAME_COUNT = 200
         private const val COLLECTOR_SUBSCRIBE_DELAY_MS = 150L
         private const val DECODE_TIMEOUT_MS = 15_000L
+        private const val DEVICE_ADDRESS_HASH_PRIME = 131L
+        private const val MAC_ADDRESS_MASK = 0xFFFFFFFFFFFFL
     }
 }
