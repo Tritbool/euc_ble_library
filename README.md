@@ -12,6 +12,12 @@ It handles protocol registration internally, so client code must not register br
 val client = EucBleClient(context)
 
 client.setConnectionCallback(object : ConnectionCallback() {
+    override fun onConnected() {
+        // connected
+    }
+})
+
+client.setScanCallback(object : ScanCallback {
     override fun onDeviceDiscovered(device: EUCDevice) {
         client.connect(device)
     }

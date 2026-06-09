@@ -12,10 +12,12 @@ class NosfetProtocol : LeaperkimProtocol() {
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
-        return name.contains("Nosfet", ignoreCase = true) ||
+        val matchesNosfetFamily =
+            name.contains("Nosfet", ignoreCase = true) ||
                 name.contains("Apex", ignoreCase = true) ||
                 name.contains("Aero", ignoreCase = true) ||
                 name.contains("Aeon", ignoreCase = true)
+        return matchesNosfetFamily
     }
 
     override fun modelByMajorVersion(version: Int): String {
