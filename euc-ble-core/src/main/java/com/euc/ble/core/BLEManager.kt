@@ -76,6 +76,8 @@ class BLEManager internal constructor(
     // Protocol management
     private val protocols: MutableList<EUCProtocol> = mutableListOf()
     private var currentProtocol: EUCProtocol? = null
+    private var metadataMatchedProtocols: List<EUCProtocol> = emptyList()
+    private var frameCandidateProtocols: List<EUCProtocol> = emptyList()
     private var queryOrchestrationJob: Job? = null
     private var dataFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
@@ -245,6 +247,8 @@ class BLEManager internal constructor(
         bluetoothGatt = null
         currentDevice = null
         currentProtocol = null
+        metadataMatchedProtocols = emptyList()
+        frameCandidateProtocols = emptyList()
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
         connectionCallback?.onDisconnected()
     }
@@ -554,20 +558,34 @@ class BLEManager internal constructor(
         super.onServicesDiscovered(gatt, status)
         
         if (status == BluetoothGatt.GATT_SUCCESS) {
-            // Find the appropriate protocol for this device
-            currentProtocol = protocols.find { protocol ->
-                protocol.canHandle(currentDevice!!)
+            val device = currentDevice
+            if (device == null) {
+                errorCallback?.onError(BLEException("No connected device available for protocol selection"))
+                disconnect()
+                return
             }
-            
-            currentProtocol?.let { protocol ->
-                // Enable notifications for data characteristics
-                enableNotifications(protocol.getDataCharacteristicUUID())
-                connectionCallback?.onServicesDiscovered(gatt.services)
-                startPollingOrchestration(protocol)
-                startDataFlowCollection(protocol)
-            } ?: run {
+
+            prepareProtocolCandidates(device)
+
+            if (frameCandidateProtocols.isEmpty()) {
                 errorCallback?.onError(BLEException("No protocol found for this device"))
                 disconnect()
+                return
+            }
+
+            frameCandidateProtocols
+                .map { it.getDataCharacteristicUUID() }
+                .distinct()
+                .forEach { characteristicUuid ->
+                    enableNotifications(characteristicUuid)
+                }
+            connectionCallback?.onServicesDiscovered(gatt.services)
+
+            when {
+                metadataMatchedProtocols.size == 1 ->
+                    setActiveProtocol(metadataMatchedProtocols.single(), "metadata")
+                frameCandidateProtocols.size == 1 ->
+                    setActiveProtocol(frameCandidateProtocols.single(), "single candidate")
             }
         } else {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -598,6 +616,9 @@ class BLEManager internal constructor(
 
     private fun handleIncomingBytes(data: ByteArray) {
         _rawFrameFlow.tryEmit(data.clone())
+        if (currentProtocol == null) {
+            maybeSelectProtocolFromFrame(data)
+        }
         currentProtocol?.let { protocol ->
             try {
                 matchPendingQueries(protocol, data)
@@ -605,6 +626,25 @@ class BLEManager internal constructor(
             } catch (e: Exception) {
                 errorCallback?.onError(BLEException("Data decoding failed: ${e.message}"))
             }
+        }
+    }
+
+    private fun maybeSelectProtocolFromFrame(data: ByteArray) {
+        if (currentProtocol != null) return
+        val candidates = if (frameCandidateProtocols.isNotEmpty()) frameCandidateProtocols else protocols
+        if (candidates.isEmpty()) return
+
+        val frameMatches = candidates.filter { candidate ->
+            runCatching { candidate.looksLikeMyFrames(data) }.getOrDefault(false)
+        }
+
+        when {
+            frameMatches.size == 1 ->
+                setActiveProtocol(frameMatches.single(), "frame signature")
+            metadataMatchedProtocols.size == 1 ->
+                setActiveProtocol(metadataMatchedProtocols.single(), "metadata fallback")
+            candidates.size == 1 ->
+                setActiveProtocol(candidates.single(), "single registered protocol")
         }
     }
     
@@ -692,6 +732,21 @@ class BLEManager internal constructor(
     private fun cancelDataFlowCollection() {
         dataFlowCollectorJob?.cancel()
         dataFlowCollectorJob = null
+    }
+
+    private fun setActiveProtocol(protocol: EUCProtocol, reason: String) {
+        if (currentProtocol === protocol) return
+        currentProtocol = protocol
+        logger.info("BLEManager", "Selected protocol ${protocol.javaClass.simpleName} via $reason")
+        startPollingOrchestration(protocol)
+        startDataFlowCollection(protocol)
+    }
+
+    private fun prepareProtocolCandidates(device: EUCDevice) {
+        metadataMatchedProtocols = protocols.filter { protocol ->
+            protocol.canHandle(device)
+        }
+        frameCandidateProtocols = metadataMatchedProtocols.ifEmpty { protocols.toList() }
     }
 
     private suspend fun executeQueryWithRetry(protocol: EUCProtocol, query: ProtocolQuerySpec) {
