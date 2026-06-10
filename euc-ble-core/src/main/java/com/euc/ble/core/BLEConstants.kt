@@ -30,6 +30,7 @@ object BLEConstants {
     const val INMOTION_V2_READ_CHARACTERISTIC = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
     const val INMOTION_V2_WRITE_CHARACTERISTIC = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+
     // BLE Descriptor UUIDs
     const val CCCD_DESCRIPTOR = "00002902-0000-1000-8000-00805f9b34fb"
 
@@ -49,10 +50,13 @@ object BLEConstants {
 
     // Manufacturer identifiers
     const val MANUFACTURER_KINGSONG = 0x004B
+    const val MANUFACTURER_EXTREMEBULL = 0x0045
     const val MANUFACTURER_GOTWAY = 0x0047
     const val MANUFACTURER_INMOTION = 0x0049
     const val MANUFACTURER_NINEBOT = 0x004E
+    const val MANUFACTURER_NOSFET = 0x004F
     const val MANUFACTURER_VETERAN = 0x0056
+
     // Leaperkim (Veteran branding) uses the same manufacturer identifier in WheelLog captures.
     const val MANUFACTURER_LEAPERKIM = MANUFACTURER_VETERAN
 
@@ -62,12 +66,14 @@ object BLEConstants {
     // Frame header magic bytes for each protocol — used by looksLikeMyFrames() implementations
     // and available as a canonical reference to avoid scattering magic bytes across protocol files.
     val KINGSONG_FRAME_HEADER_1: ByteArray = byteArrayOf(0xAA.toByte(), 0x55.toByte())
+
     // Note: KINGSONG_FRAME_HEADER_2 and GOTWAY_FRAME_HEADER share the same byte sequence (0x55 0xAA).
     // Header bytes alone cannot disambiguate Kingsong from Gotway; canHandle() (device name /
     // manufacturer ID) and the presence of the Gotway 5A5A5A5A footer remain the primary gates.
     val KINGSONG_FRAME_HEADER_2: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     val GOTWAY_FRAME_HEADER: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())
-    val GOTWAY_FRAME_FOOTER: ByteArray = byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
+    val GOTWAY_FRAME_FOOTER: ByteArray =
+        byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
     val INMOTION_FRAME_HEADER: ByteArray = byteArrayOf(0xAA.toByte(), 0xAA.toByte())
     const val NINEBOT_FRAME_FIRST_BYTE: Int = 0x55
     val NINEBOT_WHEELLOG_FRAME_HEADER: ByteArray = byteArrayOf(0x5A.toByte(), 0xA5.toByte())

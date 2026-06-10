@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogLeaperkimTest {
@@ -45,14 +46,14 @@ class WheelLogLeaperkimTest {
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
         val collector = async {
-            withTimeoutOrNull(8000) {
+            withTimeoutOrNull(8000.milliseconds) {
                 protocol.dataFlow.take(1200).toList()
             } ?: emptyList()
         }
 
-        delay(100)
+        delay(100.milliseconds)
         frames.forEach { protocol.decode(it.bleData) }
-        delay(300)
+        delay(300.milliseconds)
 
         val decoded = collector.await()
         assertTrue("Expected decoded Leaperkim telemetry", decoded.isNotEmpty())
@@ -71,13 +72,13 @@ class WheelLogLeaperkimTest {
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
         val collector = async {
-            withTimeoutOrNull(10000) {
+            withTimeoutOrNull(10000.milliseconds) {
                 protocol.dataFlow.take(1800).toList()
             } ?: emptyList()
         }
-        delay(100)
+        delay(100.milliseconds)
         frames.forEach { protocol.decode(it.bleData) }
-        delay(300)
+        delay(300.milliseconds)
         val decoded = collector.await()
         assertTrue("Need enough decoded frames for consistency checks", decoded.size >= 50)
 

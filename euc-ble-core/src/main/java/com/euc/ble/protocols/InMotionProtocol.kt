@@ -99,27 +99,31 @@ class InMotionProtocol : EUCProtocol {
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
 
-
     private val parseLock = Any()
     private val v2Buffer = ArrayList<Byte>()
     private val legacyBuffer = ArrayList<Byte>()
 
     private enum class Dialect { UNKNOWN, LEGACY_V1, V2 }
-    @Volatile private var lastDetectedDialect: Dialect = Dialect.UNKNOWN
 
-    @Volatile private var modelName: String = "InMotion"
-    @Volatile private var serialNumber: String? = null
-    @Volatile private var firmwareVersion: String? = null
-    @Volatile private var totalDistanceKm: Double? = null
-    @Volatile private var v2SessionStartTimestampMs: Long? = null
+    @Volatile
+    private var lastDetectedDialect: Dialect = Dialect.UNKNOWN
+
+    @Volatile
+    private var modelName: String = "InMotion"
+    @Volatile
+    private var serialNumber: String? = null
+    @Volatile
+    private var firmwareVersion: String? = null
+    @Volatile
+    private var totalDistanceKm: Double? = null
+    @Volatile
+    private var v2SessionStartTimestampMs: Long? = null
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_INMOTION ||
-            name.contains("InMotion", ignoreCase = true) ||
-            name.startsWith("V9", ignoreCase = true) ||
-            name.startsWith("V1", ignoreCase = true) ||
-            name.startsWith("P6", ignoreCase = true)
+                supportedModels.map { model -> model.contains(name, ignoreCase = true) }
+                    .reduce { a, b -> a || b }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
@@ -288,10 +292,12 @@ class InMotionProtocol : EUCProtocol {
                 parseMainInfo(payload)
                 null
             }
+
             COMMAND_TOTAL_STATS -> {
                 parseTotalStats(payload)
                 null
             }
+
             COMMAND_REAL_TIME_INFO -> parseRealTime(payload, frame)
             else -> null
         }
@@ -306,6 +312,7 @@ class InMotionProtocol : EUCProtocol {
                 parseLegacyInfo(frame)
                 null
             }
+
             0x13 -> parseLegacyRealtime(frame)
             else -> null
         }
@@ -359,21 +366,29 @@ class InMotionProtocol : EUCProtocol {
     private fun parseLegacyRealtime(frame: ByteArray): EUCData? {
         if (frame.size < 67) return null
 
-        val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, LEGACY_VOLTAGE_OFFSET) ?: return null) / 100.0
-        val current = (ByteUtils.tryGetSignedShortLE(frame, LEGACY_CURRENT_OFFSET)?.toInt() ?: 0) / 100.0
+        val voltage =
+            (ByteUtils.tryGetUnsignedShortLE(frame, LEGACY_VOLTAGE_OFFSET) ?: return null) / 100.0
+        val current =
+            (ByteUtils.tryGetSignedShortLE(frame, LEGACY_CURRENT_OFFSET)?.toInt() ?: 0) / 100.0
         val speedRaw = ByteUtils.tryGetSignedShortLE(frame, LEGACY_SPEED_OFFSET)?.toInt() ?: 0
         val speed = (speedRaw / LEGACY_SPEED_DIVISOR).coerceIn(LEGACY_SPEED_MIN, LEGACY_SPEED_MAX)
-        val tripDistanceKm = (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TRIP_DISTANCE_OFFSET)?.toDouble() ?: 0.0) / 1000.0
-        val totalDistance = (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TOTAL_DISTANCE_OFFSET)?.toDouble() ?: 0.0) / 1000.0
+        val tripDistanceKm =
+            (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TRIP_DISTANCE_OFFSET)?.toDouble()
+                ?: 0.0) / 1000.0
+        val totalDistance =
+            (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TOTAL_DISTANCE_OFFSET)?.toDouble()
+                ?: 0.0) / 1000.0
         val battery = if (frame.size > LEGACY_BATTERY_OFFSET) {
             (frame[LEGACY_BATTERY_OFFSET].toInt() and 0xFF).coerceIn(0, 100)
         } else {
-            (((voltage - LEGACY_BATTERY_BASE_VOLTAGE) / LEGACY_BATTERY_VOLTAGE_RANGE) * 100.0).roundToInt().coerceIn(0, 100)
+            (((voltage - LEGACY_BATTERY_BASE_VOLTAGE) / LEGACY_BATTERY_VOLTAGE_RANGE) * 100.0).roundToInt()
+                .coerceIn(0, 100)
         }
 
         val temperature = ByteUtils.tryGetSignedByte(frame, LEGACY_TEMP_OFFSET)?.toDouble() ?: 0.0
         val motorTemp = ByteUtils.tryGetSignedByte(frame, LEGACY_MOTOR_TEMP_OFFSET)?.toDouble()
-        val rideTimeSeconds = ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_RIDE_TIME_OFFSET)?.toLong() ?: 0L
+        val rideTimeSeconds =
+            ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_RIDE_TIME_OFFSET)?.toLong() ?: 0L
 
         if (totalDistance > 0.0) totalDistanceKm = totalDistance
 
@@ -413,11 +428,14 @@ class InMotionProtocol : EUCProtocol {
                     }
                 }
             }
+
             0x02 -> { // serial
                 if (payload.size >= 17) {
-                    serialNumber = payload.copyOfRange(1, 17).decodeToString().trim('\u0000').ifEmpty { null }
+                    serialNumber =
+                        payload.copyOfRange(1, 17).decodeToString().trim('\u0000').ifEmpty { null }
                 }
             }
+
             0x06 -> { // versions
                 if (payload.size >= 24) {
                     val drv3 = ByteUtils.getUnsignedShortLE(payload, 2)
@@ -429,7 +447,8 @@ class InMotionProtocol : EUCProtocol {
                     val ble3 = ByteUtils.getUnsignedShortLE(payload, 20)
                     val ble2 = ByteUtils.getUnsignedByte(payload, 22)
                     val ble1 = ByteUtils.getUnsignedByte(payload, 23)
-                    firmwareVersion = "Main:$main1.$main2.$main3 Drv:$drv1.$drv2.$drv3 BLE:$ble1.$ble2.$ble3"
+                    firmwareVersion =
+                        "Main:$main1.$main2.$main3 Drv:$drv1.$drv2.$drv3 BLE:$ble1.$ble2.$ble3"
                 }
             }
         }
@@ -510,20 +529,50 @@ class InMotionProtocol : EUCProtocol {
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         if (lastDetectedDialect == Dialect.LEGACY_V1) return byteArrayOf()
         return when (commandType) {
-            CommandType.LIGHT_ON -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x01))
-            CommandType.LIGHT_OFF -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x00))
+            CommandType.LIGHT_ON -> buildMessage(
+                FLAG_DEFAULT,
+                COMMAND_CONTROL,
+                byteArrayOf(0x50, 0x01)
+            )
+
+            CommandType.LIGHT_OFF -> buildMessage(
+                FLAG_DEFAULT,
+                COMMAND_CONTROL,
+                byteArrayOf(0x50, 0x00)
+            )
+
             CommandType.LIGHT_BRIGHTNESS -> {
                 val brightness = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x2b, brightness.toByte()))
             }
+
             CommandType.BEEP -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x18, 0x00))
             CommandType.LOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x01))
-            CommandType.UNLOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x00))
-            CommandType.POWER_OFF -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x77, 0x01))
+            CommandType.UNLOCK -> buildMessage(
+                FLAG_DEFAULT,
+                COMMAND_CONTROL,
+                byteArrayOf(0x31, 0x00)
+            )
+
+            CommandType.POWER_OFF -> buildMessage(
+                FLAG_DEFAULT,
+                COMMAND_CONTROL,
+                byteArrayOf(0x77, 0x01)
+            )
             // InMotion V2 returns model/serial/firmware from the same MAIN_INFO page; both queries use the same request.
             CommandType.REQUEST_SERIAL,
-            CommandType.REQUEST_FIRMWARE -> buildMessage(FLAG_INITIAL, COMMAND_MAIN_INFO, byteArrayOf())
-            CommandType.REQUEST_BATTERY_INFO -> buildMessage(FLAG_DEFAULT, COMMAND_REAL_TIME_INFO, byteArrayOf())
+            CommandType.REQUEST_FIRMWARE -> buildMessage(
+                FLAG_INITIAL,
+                COMMAND_MAIN_INFO,
+                byteArrayOf()
+            )
+
+            CommandType.REQUEST_BATTERY_INFO -> buildMessage(
+                FLAG_DEFAULT,
+                COMMAND_REAL_TIME_INFO,
+                byteArrayOf()
+            )
+
             else -> byteArrayOf()
         }
     }
@@ -532,10 +581,30 @@ class InMotionProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec(id = "inmotion.main-info-init", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 0L, maxRetries = 3),
-                ProtocolQuerySpec(id = "inmotion.serial", commandType = CommandType.REQUEST_SERIAL, initialDelayMs = 200L, maxRetries = 3),
-                ProtocolQuerySpec(id = "inmotion.firmware-version", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 400L, maxRetries = 3),
-                ProtocolQuerySpec(id = "inmotion.realtime-init", commandType = CommandType.REQUEST_BATTERY_INFO, initialDelayMs = 600L, maxRetries = 2)
+                ProtocolQuerySpec(
+                    id = "inmotion.main-info-init",
+                    commandType = CommandType.REQUEST_FIRMWARE,
+                    initialDelayMs = 0L,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.serial",
+                    commandType = CommandType.REQUEST_SERIAL,
+                    initialDelayMs = 200L,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.firmware-version",
+                    commandType = CommandType.REQUEST_FIRMWARE,
+                    initialDelayMs = 400L,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.realtime-init",
+                    commandType = CommandType.REQUEST_BATTERY_INFO,
+                    initialDelayMs = 600L,
+                    maxRetries = 2
+                )
             ),
             periodicQueries = listOf(
                 ProtocolQuerySpec(
@@ -555,6 +624,7 @@ class InMotionProtocol : EUCProtocol {
         return when (query.commandType) {
             CommandType.REQUEST_SERIAL,
             CommandType.REQUEST_FIRMWARE -> command == COMMAND_MAIN_INFO
+
             CommandType.REQUEST_BATTERY_INFO -> command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS
             else -> false
         }

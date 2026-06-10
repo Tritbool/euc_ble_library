@@ -43,7 +43,7 @@ class NinebotProtocol : EUCProtocol {
 
     override val manufacturer: String = "Ninebot"
     override val supportedModels: List<String> = listOf(
-        "S1", "S2", "S2 Pro", "A1", "A1 Pro", "Z6", "Z8", "Z10", "One S2", "One E+", "One C+"
+        "S1", "S2", "S2 Pro", "A1", "A1 Pro", "One S2", "One E+", "One C+"
     )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
@@ -77,12 +77,8 @@ class NinebotProtocol : EUCProtocol {
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT ||
-            name.contains("Ninebot", ignoreCase = true) ||
-            name.contains("Segway", ignoreCase = true) ||
-            name.startsWith("Z10", ignoreCase = true) ||
-            name.startsWith("Z8", ignoreCase = true) ||
-            name.startsWith("Z6", ignoreCase = true)
+        return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&
+            supportedModels.map{model -> model.contains(name, ignoreCase = true)}.reduce { a,b -> a || b  }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {

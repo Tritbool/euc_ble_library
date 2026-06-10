@@ -126,9 +126,10 @@ class KingsongProtocol : EUCProtocol {
         UUID.fromString(BLEConstants.KINGSONG_READ_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
+        val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_KINGSONG ||
-                device.name.startsWith("KS-", ignoreCase = true) ||
-                device.name.contains("KingSong", ignoreCase = true)
+                supportedModels.map { model -> model.contains(name, ignoreCase = true) }
+                    .reduce { a, b -> a || b }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
@@ -181,8 +182,10 @@ class KingsongProtocol : EUCProtocol {
 
     // BMS cell data: bmsIndex (1 or 2) -> array of cell voltages
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+
     // BMS summary data from page 0x00: bmsIndex -> [voltage, current, remainingCapacity, factoryCapacity, cycles]
     private val bmsSummary: MutableMap<Int, BMSSummary> = mutableMapOf()
+
     // BMS temperature data from page 0x01: bmsIndex -> list of temperature values in °C
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
 
@@ -230,30 +233,37 @@ class KingsongProtocol : EUCProtocol {
                 parseTypeB9(data, headerIdx)
                 null
             }
+
             0xBB -> {
                 parseTypeBB(data, headerIdx)
                 null
             }
+
             0xB3 -> {
                 parseTypeB3(data, headerIdx)
                 null
             }
+
             0xF5 -> {
                 parseTypeF5(data, headerIdx)
                 null
             }
+
             0xF6 -> {
                 parseTypeF6(data, headerIdx)
                 null
             }
+
             0xA4, 0xB5 -> {
                 parseTypeA4B5(data, headerIdx)
                 null
             }
+
             0xF1, 0xF2 -> {
                 parseTypeBMS(data, headerIdx, messageType)
                 null
             }
+
             else -> null
         }
     }
@@ -292,7 +302,11 @@ class KingsongProtocol : EUCProtocol {
             val isCharging = (statusByte and 0x01) != 0
 
             // Mode detection (legacy: byte 15 == 0xE0 means mode is in byte 14)
-            if (ensureRange(data, base + 15, 1) && ByteUtils.getUnsignedByte(data, base + 15) == 0xE0) {
+            if (ensureRange(data, base + 15, 1) && ByteUtils.getUnsignedByte(
+                    data,
+                    base + 15
+                ) == 0xE0
+            ) {
                 // pedals mode is in byte 14 — but only when byte 15 is the mode marker
                 // This conflicts with battery %; in legacy KS the battery is sent separately.
                 // We don't alter battery here, but note it for reference.
@@ -473,6 +487,7 @@ class KingsongProtocol : EUCProtocol {
                     cycles = cycles
                 )
             }
+
             0x01 -> {
                 // Page 0x01: BMS temperatures (6 probes + MOS temp)
                 val temps = mutableListOf<Double>()
@@ -488,6 +503,7 @@ class KingsongProtocol : EUCProtocol {
                     bmsTemperatures[bmsIndex] = temps
                 }
             }
+
             0x02, 0x03, 0x04, 0x05, 0x06 -> {
                 val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELLS) }
                 val startCell = (pageNum - 0x02) * 7
@@ -519,7 +535,8 @@ class KingsongProtocol : EUCProtocol {
      * and 0x02-0x06 (cell voltages).
      */
     fun getBMSData(): List<BMSData> {
-        val allIndices = (bmsSummary.keys + bmsTemperatures.keys + bmsCellPages.keys).distinct().sorted()
+        val allIndices =
+            (bmsSummary.keys + bmsTemperatures.keys + bmsCellPages.keys).distinct().sorted()
         return allIndices.map { index ->
             val summary = bmsSummary[index]
             val temps = bmsTemperatures[index]
@@ -572,22 +589,40 @@ class KingsongProtocol : EUCProtocol {
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {
-            CommandType.LIGHT_ON -> buildLegacyCommand(command = 0x73, payload2 = 0x13, payload3 = 0x01)
-            CommandType.LIGHT_OFF -> buildLegacyCommand(command = 0x73, payload2 = 0x12, payload3 = 0x01)
+            CommandType.LIGHT_ON -> buildLegacyCommand(
+                command = 0x73,
+                payload2 = 0x13,
+                payload3 = 0x01
+            )
+
+            CommandType.LIGHT_OFF -> buildLegacyCommand(
+                command = 0x73,
+                payload2 = 0x12,
+                payload3 = 0x01
+            )
+
             CommandType.SET_LIGHT_MODE -> {
                 val mode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
                 buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
             }
+
             CommandType.BEEP -> buildLegacyCommand(command = 0x88)
             CommandType.POWER_OFF -> buildLegacyCommand(command = 0x40)
             CommandType.SET_PEDALS_MODE -> {
                 val pedalsMode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
-                buildLegacyCommand(command = 0x87, payload2 = pedalsMode, payload3 = 0xE0, payload17 = 0x15)
+                buildLegacyCommand(
+                    command = 0x87,
+                    payload2 = pedalsMode,
+                    payload3 = 0xE0,
+                    payload17 = 0x15
+                )
             }
+
             CommandType.SET_LED_MODE -> {
                 val ledMode = (value as? Int)?.coerceIn(0, 0xFF) ?: return byteArrayOf()
                 buildLegacyCommand(command = 0x6C, payload2 = ledMode)
             }
+
             CommandType.LIGHT_BRIGHTNESS -> {
                 val intVal = (value as? Int) ?: return byteArrayOf()
                 val mode = when {
@@ -597,6 +632,7 @@ class KingsongProtocol : EUCProtocol {
                 }
                 buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
             }
+
             CommandType.SET_SPEED_LIMIT -> {
                 // KingSong uses a combined command (0x85) that sets alarms + max speed together.
                 // SET_SPEED_LIMIT updates the max speed while preserving current alarm values.
@@ -608,6 +644,7 @@ class KingsongProtocol : EUCProtocol {
                     maxSpeed = maxSpeed
                 )
             }
+
             CommandType.SET_ALARM_SPEED -> {
                 // value is expected to be a Map or IntArray [alarm1, alarm2, alarm3]
                 val speeds = when (value) {
@@ -623,6 +660,7 @@ class KingsongProtocol : EUCProtocol {
                     maxSpeed = lastKnownWheelMaxSpeed ?: 0
                 )
             }
+
             CommandType.CALIBRATE -> buildLegacyCommand(command = 0x89)
             CommandType.REQUEST_SERIAL -> buildLegacyCommand(command = 0x63)
             CommandType.REQUEST_FIRMWARE -> buildLegacyCommand(command = 0x9B)
@@ -631,7 +669,12 @@ class KingsongProtocol : EUCProtocol {
         }
     }
 
-    private fun buildAlarmSpeedCommand(alarm1: Int, alarm2: Int, alarm3: Int, maxSpeed: Int): ByteArray {
+    private fun buildAlarmSpeedCommand(
+        alarm1: Int,
+        alarm2: Int,
+        alarm3: Int,
+        maxSpeed: Int
+    ): ByteArray {
         val data = byteArrayOf(
             0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00,
@@ -670,9 +713,24 @@ class KingsongProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec("ks.request-name-version", CommandType.REQUEST_FIRMWARE, maxRetries = 3),
-                ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, initialDelayMs = 200L, maxRetries = 3),
-                ProtocolQuerySpec("ks.request-alarms", CommandType.CUSTOM, buildLegacyCommand(command = 0x98), initialDelayMs = 400L, maxRetries = 2)
+                ProtocolQuerySpec(
+                    "ks.request-name-version",
+                    CommandType.REQUEST_FIRMWARE,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    "ks.request-serial",
+                    CommandType.REQUEST_SERIAL,
+                    initialDelayMs = 200L,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    "ks.request-alarms",
+                    CommandType.CUSTOM,
+                    buildLegacyCommand(command = 0x98),
+                    initialDelayMs = 400L,
+                    maxRetries = 2
+                )
             ),
             periodicQueries = emptyList()
         )

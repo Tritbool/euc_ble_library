@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Main BLE Manager for Electric Unicycles
@@ -55,15 +56,16 @@ class BLEManager internal constructor(
         private const val MIN_QUERY_ATTEMPTS = 1
         private const val MIN_QUERY_TIMEOUT_MS = 200L
     }
-    
+
     // Configuration
     private var scanTimeout: Long = BLEConstants.DEFAULT_SCAN_TIMEOUT_MS
     private var connectionTimeout: Long = BLEConstants.DEFAULT_CONNECTION_TIMEOUT_MS
     private var autoReconnect: Boolean = true
     private var maxRetries: Int = 3
-    
+
     // State management
-    private var connectionState: BLEConstants.ConnectionState = BLEConstants.ConnectionState.DISCONNECTED
+    private var connectionState: BLEConstants.ConnectionState =
+        BLEConstants.ConnectionState.DISCONNECTED
     private var currentDevice: EUCDevice? = null
     private var bluetoothGatt: BluetoothGatt? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -78,6 +80,7 @@ class BLEManager internal constructor(
     // Protocol management
     @VisibleForTesting(otherwise = PRIVATE)
     internal val protocols: MutableList<EUCProtocol> = mutableListOf()
+
     @VisibleForTesting(otherwise = PRIVATE)
     internal var currentProtocol: EUCProtocol? = null
     private var metadataMatchedProtocols: List<EUCProtocol> = emptyList()
@@ -85,7 +88,7 @@ class BLEManager internal constructor(
     private var queryOrchestrationJob: Job? = null
     private var dataFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
-    
+
     // Callbacks
     private var scanCallback: ScanCallback? = null
     private var connectionCallback: ConnectionCallback? = null
@@ -120,7 +123,7 @@ class BLEManager internal constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = _queryTraceFlow.asSharedFlow()
-    
+
     // Coroutine management
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
     private var scanJob: Job? = null
@@ -132,10 +135,10 @@ class BLEManager internal constructor(
         val attempt: Int,
         val sentAtMs: Long
     )
-    
+
     // Device cache
     private val discoveredDevices = ConcurrentHashMap<String, EUCDevice>()
-    
+
     /**
      * Initialize the BLE Manager
      */
@@ -149,14 +152,14 @@ class BLEManager internal constructor(
             logger.info("BLEManager", "Bluetooth adapter initialized successfully")
         }
     }
-    
+
     /**
      * Register a protocol for device detection and data processing
      */
     fun registerProtocol(protocol: EUCProtocol) {
         protocols.add(protocol)
     }
-    
+
     /**
      * Start scanning for EUC devices
      */
@@ -164,33 +167,33 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun startScan() {
         logger.info("BLEManager", "Starting BLE scan")
-        
+
         if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {
             logger.warn("BLEManager", "Cannot scan while connected")
             errorCallback?.onError(BLEException("Cannot scan while connected"))
             return
         }
-        
+
         if (!isBluetoothEnabled()) {
             logger.error("BLEManager", "Bluetooth is disabled")
             errorCallback?.onError(BLEException("Bluetooth is disabled"))
             return
         }
-        
+
         discoveredDevices.clear()
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
-        
+
         scanJob = coroutineScope.launch {
             withContext(Dispatchers.IO) { startBleScan() }
         }
-        
+
         // Set timeout for scanning
         Handler(Looper.getMainLooper()).postDelayed({
             logger.info("BLEManager", "Scan timeout reached")
             stopScan()
         }, scanTimeout)
     }
-    
+
     /**
      * Stop scanning for devices
      */
@@ -201,7 +204,7 @@ class BLEManager internal constructor(
         scanCallback = null
         connectionCallback?.onScanCompleted(discoveredDevices.values.toList())
     }
-    
+
     /**
      * Connect to a specific device
      */
@@ -232,7 +235,7 @@ class BLEManager internal constructor(
             }
         }, connectionTimeout)
     }
-    
+
     /**
      * Disconnect from current device
      */
@@ -256,7 +259,7 @@ class BLEManager internal constructor(
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
         connectionCallback?.onDisconnected()
     }
-    
+
     /**
      * Send a command to the connected device
      */
@@ -329,41 +332,41 @@ class BLEManager internal constructor(
             errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
         }
     }
-    
+
     /**
      * Get current connection state
      */
     fun getConnectionState(): BLEConstants.ConnectionState = connectionState
-    
+
     /**
      * Get currently connected device
      */
     fun getConnectedDevice(): EUCDevice? = currentDevice
-    
+
     /**
      * Check if Bluetooth is enabled
      */
     fun isBluetoothEnabled(): Boolean {
         return bluetoothAdapter?.isEnabled == true
     }
-    
+
     // Setters for configuration
     fun setScanTimeout(timeout: Long) {
         this.scanTimeout = timeout
     }
-    
+
     fun setConnectionTimeout(timeout: Long) {
         this.connectionTimeout = timeout
     }
-    
+
     fun setAutoReconnect(enabled: Boolean) {
         this.autoReconnect = enabled
     }
-    
+
     fun setMaxRetries(retries: Int) {
         this.maxRetries = retries
     }
-    
+
     // Callback setters
     fun setScanCallback(callback: ScanCallback) {
         this.scanCallback = callback
@@ -372,15 +375,15 @@ class BLEManager internal constructor(
     fun setConnectionCallback(callback: ConnectionCallback) {
         this.connectionCallback = callback
     }
-    
+
     fun setDataCallback(callback: DataCallback) {
         this.dataCallback = callback
     }
-    
+
     fun setErrorCallback(callback: ErrorCallback) {
         this.errorCallback = callback
     }
-    
+
     // Private implementation methods
     @RequiresApi(Build.VERSION_CODES.M)
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
@@ -388,35 +391,36 @@ class BLEManager internal constructor(
 
     private fun startBleScan() {
         val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
-        
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
             .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
             .build()
-        
+
         scanCallback = object : ScanCallback() {
             @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 processScanResult(result)
             }
-            
-            override fun onScanFailed( errorCode: Int) {
+
+            override fun onScanFailed(errorCode: Int) {
                 errorCallback?.onError(BLEException("Scan failed with error: $errorCode"))
             }
         }
-        
+
         scanner.startScan(null, settings, scanCallback)
         connectionCallback?.onScanStarted()
     }
-    
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun processScanResult(result: ScanResult) {
         data class WheelManufacturerData(
             val manufacturerId: Int,
             val data: ByteArray?
         )
+
         val device = result.device
         val scanRecord = result.scanRecord
         val foundManufacturerData: WheelManufacturerData? = sequenceOf(
@@ -431,16 +435,16 @@ class BLEManager internal constructor(
                 ?.getManufacturerSpecificData(id)
                 ?.let { bytes -> WheelManufacturerData(id, bytes) }
         }
-        
+
         val eucDevice = EUCDevice(
             bluetoothDevice = device,
             name = device.name ?: "Unknown EUC",
             address = device.address,
-            manufacturerId = foundManufacturerData?.manufacturerId?:0 ,
+            manufacturerId = foundManufacturerData?.manufacturerId ?: 0,
             manufacturerData = foundManufacturerData?.data,
             rssi = result.rssi
         )
-        
+
         // Check if this device is supported by any protocol
         val supportingProtocol = protocols.find { it.canHandle(eucDevice) }
         if (supportingProtocol != null) {
@@ -458,7 +462,7 @@ class BLEManager internal constructor(
             disconnect()
         }
     }
-    
+
     private fun getCharacteristic(uuid: UUID): BluetoothGattCharacteristic? {
         return bluetoothGatt?.services?.flatMap { service ->
             service.characteristics
@@ -466,7 +470,7 @@ class BLEManager internal constructor(
             characteristic.uuid == uuid
         }
     }
-    
+
     // BluetoothGattCallback implementations
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -483,6 +487,7 @@ class BLEManager internal constructor(
                 // Discover services
                 gatt.discoverServices()
             }
+
             BluetoothProfile.STATE_DISCONNECTED -> {
                 cancelPollingOrchestration()
                 connectionState = BLEConstants.ConnectionState.DISCONNECTED
@@ -495,9 +500,11 @@ class BLEManager internal constructor(
                     reconnectRetryCount = 0
                 }
             }
+
             BluetoothProfile.STATE_CONNECTING -> {
                 connectionState = BLEConstants.ConnectionState.CONNECTING
             }
+
             BluetoothProfile.STATE_DISCONNECTING -> {
                 connectionState = BLEConstants.ConnectionState.DISCONNECTING
             }
@@ -560,7 +567,7 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
         super.onServicesDiscovered(gatt, status)
-        
+
         if (status == BluetoothGatt.GATT_SUCCESS) {
             val device = currentDevice
             if (device == null) {
@@ -588,6 +595,7 @@ class BLEManager internal constructor(
             when {
                 metadataMatchedProtocols.size == 1 ->
                     setActiveProtocol(metadataMatchedProtocols.single(), "metadata")
+
                 frameCandidateProtocols.size == 1 ->
                     setActiveProtocol(frameCandidateProtocols.single(), "single candidate")
             }
@@ -611,7 +619,10 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     @Suppress("DEPRECATION")
-    override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+    override fun onCharacteristicChanged(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic
+    ) {
         super.onCharacteristicChanged(gatt, characteristic)
         val raw = characteristic.value ?: return
         val data = raw.clone()
@@ -634,10 +645,12 @@ class BLEManager internal constructor(
             }
         }
     }
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun maybeSelectProtocolFromFrame(data: ByteArray) {
         if (currentProtocol != null) return
-        val candidates = if (frameCandidateProtocols.isNotEmpty()) frameCandidateProtocols else protocols
+        val candidates =
+            if (frameCandidateProtocols.isNotEmpty()) frameCandidateProtocols else protocols
         if (candidates.isEmpty()) return
 
         val frameMatches = candidates.filter { candidate ->
@@ -647,24 +660,89 @@ class BLEManager internal constructor(
         when {
             frameMatches.size == 1 ->
                 setActiveProtocol(frameMatches.single(), "frame signature")
+
             metadataMatchedProtocols.size == 1 ->
                 setActiveProtocol(metadataMatchedProtocols.single(), "metadata fallback")
+
             candidates.size == 1 ->
                 setActiveProtocol(candidates.single(), "single registered protocol")
+
+            frameMatches.size == 2 -> {
+                val manuf1 = frameMatches[0].manufacturer
+                val manuf2 = frameMatches[1].manufacturer
+
+                // CANNOT DECIDE BETWEEN LK AND NOSFET
+                if (manuf1.equals("Leaperkim", ignoreCase = true) && manuf2.equals(
+                        "Nosfet",
+                        ignoreCase = true
+                    ) ||
+                    manuf2.equals("Leaperkim", ignoreCase = true) && manuf1.equals(
+                        "Nosfet",
+                        ignoreCase = true
+                    )
+                ) {
+                    setActiveProtocol(protocols.find {
+                        it.manufacturer.equals(
+                            "Leaperkim",
+                            ignoreCase = true
+                        )
+                    }!!, "frame signature tie-break LK/Nosfet")
+                }
+
+                // CANNOT DECIDE BETWEEN GW AND EB
+                if (manuf1.equals("ExtremeBull", ignoreCase = true) && manuf2.equals(
+                        "GOTWAY",
+                        ignoreCase = true
+                    ) ||
+                    manuf2.equals("Gotway", ignoreCase = true) && manuf1.equals(
+                        "ExtremeBull",
+                        ignoreCase = true
+                    )
+                ) {
+                    setActiveProtocol(protocols.find {
+                        it.manufacturer.equals(
+                            "Gotway",
+                            ignoreCase = true
+                        )
+                    }!!, "frame signature tie-break EB/GW")
+                }
+
+                // CANNOT DECIDE BETWEEN NINEBOT AND NINEBOTZ
+                if (manuf1.equals("ninebot", ignoreCase = true) && manuf2.equals(
+                        "ninebot",
+                        ignoreCase = true
+                    ) ||
+                    manuf2.equals("ninebot", ignoreCase = true) && manuf1.equals(
+                        "ninebot",
+                        ignoreCase = true
+                    )
+                ) {
+                    setActiveProtocol(protocols.find {
+                        it.supportedModels.contains(
+                            "Z10"
+                        )
+                    }!!, "frame signature tie-break Ninebot/NinebotZ")
+                }
+
+            }
         }
     }
-    
-    override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+
+    override fun onCharacteristicWrite(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        status: Int
+    ) {
         super.onCharacteristicWrite(gatt, characteristic, status)
-        
+
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Characteristic write failed: $status"))
         }
     }
-    
+
     override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
         super.onMtuChanged(gatt, mtu, status)
-        
+
         if (status == BluetoothGatt.GATT_SUCCESS) {
             connectionCallback?.onMtuChanged(mtu)
         } else {
@@ -678,7 +756,8 @@ class BLEManager internal constructor(
         characteristic?.let { char ->
             val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)
             val descriptor = char.getDescriptor(cccdUuid) ?: return@let
-            val enableValue = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // copie défensive
+            val enableValue =
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // copie défensive
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // Utiliser la nouvelle surcharge API 33+
@@ -696,6 +775,7 @@ class BLEManager internal constructor(
             bluetoothGatt?.setCharacteristicNotification(char, true)
         }
     }
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun startPollingOrchestration(protocol: EUCProtocol) {
         cancelPollingOrchestration()
@@ -709,11 +789,11 @@ class BLEManager internal constructor(
 
             plan.periodicQueries.forEach { query ->
                 launch {
-                    if (query.initialDelayMs > 0L) delay(query.initialDelayMs)
+                    if (query.initialDelayMs > 0L) delay(query.initialDelayMs.milliseconds)
                     while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
                         executeQueryWithRetry(protocol, query)
                         if (query.intervalMs <= 0L) break
-                        delay(query.intervalMs)
+                        delay(query.intervalMs.milliseconds)
                     }
                 }
             }
@@ -735,6 +815,7 @@ class BLEManager internal constructor(
             }
         }
     }
+
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun cancelDataFlowCollection() {
         dataFlowCollectorJob?.cancel()
@@ -749,6 +830,7 @@ class BLEManager internal constructor(
         startPollingOrchestration(protocol)
         startDataFlowCollection(protocol)
     }
+
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun prepareProtocolCandidates(device: EUCDevice) {
         metadataMatchedProtocols = protocols.filter { protocol ->
@@ -767,7 +849,7 @@ class BLEManager internal constructor(
             if (!sent) return
 
             val timeoutMs = query.responseTimeoutMs.coerceAtLeast(MIN_QUERY_TIMEOUT_MS)
-            delay(timeoutMs)
+            delay(timeoutMs.milliseconds)
 
             if (!pendingQueries.containsKey(query.id)) {
                 return
@@ -798,7 +880,7 @@ class BLEManager internal constructor(
                         message = "Retry scheduled in ${query.retryBackoffMs}ms"
                     )
                 )
-                if (query.retryBackoffMs > 0L) delay(query.retryBackoffMs)
+                if (query.retryBackoffMs > 0L) delay(query.retryBackoffMs.milliseconds)
             } else {
                 emitQueryTrace(
                     QueryTraceEvent(
@@ -816,7 +898,11 @@ class BLEManager internal constructor(
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun sendProtocolQuery(protocol: EUCProtocol, query: ProtocolQuerySpec, attempt: Int): Boolean {
+    private fun sendProtocolQuery(
+        protocol: EUCProtocol,
+        query: ProtocolQuerySpec,
+        attempt: Int
+    ): Boolean {
         if (protocol.getCommandSupport(query.commandType) == CommandSupport.UNSUPPORTED) {
             emitQueryTrace(
                 QueryTraceEvent(
@@ -908,7 +994,7 @@ class BLEManager internal constructor(
             "phase=${event.phase} protocol=${event.protocol} query=${event.queryId} command=${event.commandType} attempt=${event.attempt} latencyMs=${event.latencyMs ?: -1} message=${event.message ?: ""}"
         )
     }
-    
+
     // Cleanup
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun cleanup() {

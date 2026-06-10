@@ -24,10 +24,13 @@ class NinebotZProtocol : EUCProtocol {
         private const val WHEELLOG_SERIAL_TYPE = 0x10
         private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
 
-        private val QUERY_BLE_VERSION = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x1C)
+        private val QUERY_BLE_VERSION =
+            byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x1C)
         private val QUERY_AUTH_KEY = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x1D)
-        private val QUERY_PARAMS_PAGE_1 = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x20)
-        private val QUERY_PARAMS_PAGE_2 = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x21)
+        private val QUERY_PARAMS_PAGE_1 =
+            byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x20)
+        private val QUERY_PARAMS_PAGE_2 =
+            byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x21)
         private val QUERY_BMS_1 = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x24)
         private val QUERY_BMS_2 = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x25)
     }
@@ -35,7 +38,8 @@ class NinebotZProtocol : EUCProtocol {
     private val delegate = NinebotProtocol()
 
     override val manufacturer: String = "Ninebot"
-    override val supportedModels: List<String> = listOf("Z6", "Z8", "Z10", "Ninebot Z-series")
+    override val supportedModels: List<String> =
+        listOf("Z6", "Z8", "Z10", "Ninebot Z-series", "Ninebot Z")
     override val dataFlow: Flow<EUCData> = delegate.dataFlow
     override val rawFrameFlow: Flow<ByteArray> = delegate.rawFrameFlow
     override val supportedCommandTypes: Set<CommandType> = setOf(
@@ -54,18 +58,17 @@ class NinebotZProtocol : EUCProtocol {
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_READ_CHARACTERISTIC)
-    override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_WRITE_CHARACTERISTIC)
+    override fun getDataCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.NINEBOT_Z_READ_CHARACTERISTIC)
+
+    override fun getWriteCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.NINEBOT_Z_WRITE_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&
-            (
-                name.startsWith("Z10", ignoreCase = true) ||
-                    name.startsWith("Z8", ignoreCase = true) ||
-                    name.startsWith("Z6", ignoreCase = true) ||
-                    name.contains("Ninebot Z", ignoreCase = true)
-                )
+                supportedModels.map { model -> model.contains(name, ignoreCase = true) }
+                    .reduce { a, b -> a || b }
     }
 
     override fun decode(data: ByteArray): EUCData? = delegate.decode(data)
@@ -83,10 +86,12 @@ class NinebotZProtocol : EUCProtocol {
                 val speedKmh = (value as? Int)?.coerceIn(5, 60) ?: return byteArrayOf()
                 buildActionCommand(0x70, speedKmh)
             }
+
             CommandType.SET_ALARM_SPEED -> {
                 val speedKmh = (value as? Int)?.coerceIn(5, 60) ?: return byteArrayOf()
                 buildActionCommand(0x71, speedKmh)
             }
+
             CommandType.CALIBRATE -> buildActionCommand(0x7A, 0x01)
             CommandType.REQUEST_SERIAL -> buildQueryCommand(0x10)
             CommandType.REQUEST_FIRMWARE -> buildQueryCommand(0x1A)
@@ -100,18 +105,58 @@ class NinebotZProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec("ninebot-z.ble-version", CommandType.CUSTOM, QUERY_BLE_VERSION, maxRetries = 2),
-                ProtocolQuerySpec("ninebot-z.auth-key", CommandType.CUSTOM, QUERY_AUTH_KEY, maxRetries = 3),
+                ProtocolQuerySpec(
+                    "ninebot-z.ble-version",
+                    CommandType.CUSTOM,
+                    QUERY_BLE_VERSION,
+                    maxRetries = 2
+                ),
+                ProtocolQuerySpec(
+                    "ninebot-z.auth-key",
+                    CommandType.CUSTOM,
+                    QUERY_AUTH_KEY,
+                    maxRetries = 3
+                ),
                 ProtocolQuerySpec("ninebot-z.serial", CommandType.REQUEST_SERIAL, maxRetries = 3),
-                ProtocolQuerySpec("ninebot-z.firmware", CommandType.REQUEST_FIRMWARE, maxRetries = 3),
-                ProtocolQuerySpec("ninebot-z.params-1", CommandType.CUSTOM, QUERY_PARAMS_PAGE_1, maxRetries = 2),
-                ProtocolQuerySpec("ninebot-z.params-2", CommandType.CUSTOM, QUERY_PARAMS_PAGE_2, maxRetries = 2),
-                ProtocolQuerySpec("ninebot-z.bms1", CommandType.CUSTOM, QUERY_BMS_1, maxRetries = 2),
+                ProtocolQuerySpec(
+                    "ninebot-z.firmware",
+                    CommandType.REQUEST_FIRMWARE,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    "ninebot-z.params-1",
+                    CommandType.CUSTOM,
+                    QUERY_PARAMS_PAGE_1,
+                    maxRetries = 2
+                ),
+                ProtocolQuerySpec(
+                    "ninebot-z.params-2",
+                    CommandType.CUSTOM,
+                    QUERY_PARAMS_PAGE_2,
+                    maxRetries = 2
+                ),
+                ProtocolQuerySpec(
+                    "ninebot-z.bms1",
+                    CommandType.CUSTOM,
+                    QUERY_BMS_1,
+                    maxRetries = 2
+                ),
                 ProtocolQuerySpec("ninebot-z.bms2", CommandType.CUSTOM, QUERY_BMS_2, maxRetries = 2)
             ),
             periodicQueries = listOf(
-                ProtocolQuerySpec("ninebot-z.realtime", CommandType.REQUEST_BATTERY_INFO, intervalMs = 1000L, maxRetries = 1),
-                ProtocolQuerySpec("ninebot-z.keepalive", CommandType.CUSTOM, QUERY_PARAMS_PAGE_1, intervalMs = 5000L, maxRetries = 1)
+                ProtocolQuerySpec(
+                    "ninebot-z.realtime",
+                    CommandType.REQUEST_BATTERY_INFO,
+                    intervalMs = 1000L,
+                    maxRetries = 1
+                ),
+                ProtocolQuerySpec(
+                    "ninebot-z.keepalive",
+                    CommandType.CUSTOM,
+                    QUERY_PARAMS_PAGE_1,
+                    intervalMs = 5000L,
+                    maxRetries = 1
+                )
             )
         )
     }
@@ -160,7 +205,8 @@ class NinebotZProtocol : EUCProtocol {
         return byteArrayOf((checksum and 0xFF).toByte())
     }
 
-    override fun isDeviceReady(data: EUCData): Boolean = data.voltage > MIN_READY_VOLTAGE_V && data.batteryLevel >= MIN_READY_BATTERY_LEVEL
+    override fun isDeviceReady(data: EUCData): Boolean =
+        data.voltage > MIN_READY_VOLTAGE_V && data.batteryLevel >= MIN_READY_BATTERY_LEVEL
 
     override fun close() {
         delegate.close()

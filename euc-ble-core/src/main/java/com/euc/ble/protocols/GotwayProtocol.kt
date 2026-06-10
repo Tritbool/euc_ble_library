@@ -99,7 +99,7 @@ import kotlin.math.abs
  *    ces octets (headers différents, endianness différente) — ces variantes n'étaient
  *    pas forcément présentes lors de la rétro‑ingénierie initiale.
  */
-class GotwayProtocol : EUCProtocol {
+open class GotwayProtocol : EUCProtocol {
 
     companion object{
         const val FRAME_SIZE=24
@@ -150,7 +150,9 @@ class GotwayProtocol : EUCProtocol {
     override val supportedModels: List<String> = listOf(
         "MSuper", "MSX", "MSX Pro", "Mten3", "Mten4", "MTen5",
         "Nikola", "Nikola Plus", "Tesla", "Monster", "Monster Pro",
-        "Begode", "Begode RS", "Begode Master", "Begode Hero"
+        "Begode", "Begode RS", "Begode Master", "Begode Hero","Master Pro",
+        "blitz", "blitz pro", "mten3", "mten4", "mten5", "A1", "A2", "race",
+        "Extreme"
     )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
@@ -166,12 +168,9 @@ class GotwayProtocol : EUCProtocol {
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
+        val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_GOTWAY ||
-                device.name.contains("Gotway", ignoreCase = true) ||
-                device.name.contains("Begode", ignoreCase = true) ||
-                device.name.contains("Mten", ignoreCase = true) ||
-                device.name.contains("MSX", ignoreCase = true) ||
-                device.name.contains("Nikola", ignoreCase = true)
+                supportedModels.map{model -> model.contains(name, ignoreCase = true)}.reduce { a,b -> a || b  }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {

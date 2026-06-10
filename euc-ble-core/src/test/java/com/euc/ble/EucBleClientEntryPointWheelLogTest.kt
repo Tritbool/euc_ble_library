@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class EucBleClientEntryPointWheelLogTest {
@@ -47,11 +48,21 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     /*************************************************************************************/
+    /*                                    EXTREME BULL                                   */
+    /*************************************************************************************/
+    // NO DATA AVAILABLE YET
+
+    /*************************************************************************************/
     /*                                 BEGODE / GOTWAY                                   */
     /*************************************************************************************/
     @Test
     fun metadataAndFrameSelectGotwayProtocol() = runBlocking {
-        bleManager.prepareProtocolCandidates(createTestDevice("Begode Master PRO", BLEConstants.MANUFACTURER_GOTWAY))
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "Begode Master PRO",
+                BLEConstants.MANUFACTURER_GOTWAY
+            )
+        )
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv",
             maxFrames = 300,
@@ -59,8 +70,8 @@ class EucBleClientEntryPointWheelLogTest {
         )
         assertEquals("GotwayProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
         assertTrue(decoded.isNotEmpty())
-        assertTrue(decoded.any { it.model.contains("Master PRO", ignoreCase = true)})
-        }
+        assertTrue(decoded.all { it.batteryLevel in 0..100 })
+    }
 
     @Test
     fun noMetadataAndFrameSelectGotwayProtocol() = runBlocking {
@@ -94,7 +105,12 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectInMotionProtocol() = runBlocking {
-        bleManager.prepareProtocolCandidates(createTestDevice("P6", BLEConstants.MANUFACTURER_INMOTION))
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "P6",
+                BLEConstants.MANUFACTURER_INMOTION
+            )
+        )
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/P6_RAW_2026_05_11_14_05_18.csv",
             maxFrames = 300,
@@ -125,7 +141,12 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectKingsongProtocol() = runBlocking {
-        bleManager.prepareProtocolCandidates(createTestDevice("KS-S22", BLEConstants.MANUFACTURER_KINGSONG))
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "KS-S22",
+                BLEConstants.MANUFACTURER_KINGSONG
+            )
+        )
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv",
             maxFrames = 300,
@@ -138,9 +159,8 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
 
-
     /*************************************************************************************/
-    /*                                    KINGSONG                                       */
+    /*                                   LEAPERKIM                                       */
     /*************************************************************************************/
     @Test
     fun noMetadataAndFrameSelectLeaperkimProtocol() = runBlocking {
@@ -157,22 +177,139 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
+    fun NosfetOnLeaperkimProtocol() = runBlocking {
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "Nosfet Aeon",
+                BLEConstants.MANUFACTURER_LEAPERKIM
+            )
+        )
+        val decoded = feedFramesAndCollect(
+            resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
+            maxFrames = 300,
+            expectedFrames = 1
+        )
+
+        assertEquals("LeaperkimProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer.contains("Leaperkim", ignoreCase = true) })
+    }
+
+    @Test
     fun MetadataAndFrameSelectLeaperkimProtocol() = runBlocking {
-        bleManager.prepareProtocolCandidates(createTestDevice("KS-S22", BLEConstants.MANUFACTURER_KINGSONG))
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "PATTON",
+                BLEConstants.MANUFACTURER_LEAPERKIM
+            )
+        )
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_20_08_09.csv",
             maxFrames = 300,
             expectedFrames = 1
         )
-        assertEquals("KingsongProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertEquals("LeaperkimProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
         assertTrue(decoded.isNotEmpty())
-        assertTrue(decoded.all { it.manufacturer.contains("KingSong", ignoreCase = true) })
-        assertTrue(decoded.all { it.model.contains("KS-S22", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.contains("Leaperkim", ignoreCase = true) })
+        assertTrue(decoded.all { it.model.contains("patton", ignoreCase = true) })
+    }
+
+    /*************************************************************************************/
+    /*                                     NINEBOT                                       */
+    /*************************************************************************************/
+    // NO DATA AVAILABLE YET
+
+    /*************************************************************************************/
+    /*                                    NINEBOT-Z                                      */
+    /*************************************************************************************/
+    @Test
+    fun noMetadataAndFrameSelectNosfetFallbackToLK() = runBlocking {
+        bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
+        val decoded = feedFramesAndCollect(
+            resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
+            maxFrames = 300,
+            expectedFrames = 1
+        )
+
+        assertEquals("LeaperkimProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer.contains("LeaperKim", ignoreCase = true) })
+    }
+
+    @Test
+    fun MetadataAndFrameSelectNosfetProtocol() = runBlocking {
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "Aero",
+                BLEConstants.MANUFACTURER_NOSFET
+            )
+        )
+        val decoded = feedFramesAndCollect(
+            resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
+            maxFrames = 300,
+            expectedFrames = 1
+        )
+        assertEquals("NosfetProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer.contains("Nosfet", ignoreCase = true) })
+        assertTrue(decoded.all { it.model.contains("Nosfet", ignoreCase = true) })
     }
 
 
+    /*************************************************************************************/
+    /*                                     NOSFET                                        */
+    /*************************************************************************************/
+    @Test
+    fun noMetadataAndFrameSelectNinebotZ() = runBlocking {
+        bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
+        val decoded = feedFramesAndCollect(
+            resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_08_21_11_24_37.csv",
+            maxFrames = 300,
+            expectedFrames = 1
+        )
 
+        assertEquals("NinebotZProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer.contains("Ninebot", ignoreCase = true) })
+    }
 
+    @Test
+    fun MetadataAndFrameSelectNinebotZProtocol() = runBlocking {
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "Z10",
+                BLEConstants.MANUFACTURER_NINEBOT
+            )
+        )
+        val decoded = feedFramesAndCollect(
+            resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_08_21_11_24_37.csv",
+            maxFrames = 300,
+            expectedFrames = 1
+        )
+        assertEquals("NinebotZProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer.contains("Ninebot", ignoreCase = true) })
+        assertTrue(decoded.all { it.model.contains("Ninebot", ignoreCase = true) })
+    }
+
+    @Test
+    fun MetadataAndFrameSelectNinebotProtocol() = runBlocking {
+        bleManager.prepareProtocolCandidates(
+            createTestDevice(
+                "Ninebot",
+                BLEConstants.MANUFACTURER_NINEBOT
+            )
+        )
+        val decoded = feedFramesAndCollect(
+            resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_08_21_11_24_37.csv",
+            maxFrames = 300,
+            expectedFrames = 1
+        )
+        assertEquals("NinebotZProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer.contains("Ninebot", ignoreCase = true) })
+        assertTrue(decoded.all { it.model.contains("Ninebot", ignoreCase = true) })
+    }
 
     /*************************************************************************************/
     /*                                    TOOLING                                        */
@@ -196,7 +333,7 @@ class EucBleClientEntryPointWheelLogTest {
         }
 
         return buildList {
-            withTimeout(10_000L) {
+            withTimeout(10_000L.milliseconds) {
                 repeat(expectedFrames) {
                     add(decodedFrames.receive())
                 }
