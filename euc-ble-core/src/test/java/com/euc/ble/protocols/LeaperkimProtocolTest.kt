@@ -3,17 +3,19 @@ package com.euc.ble.protocols
 import app.cash.turbine.test
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.util.zip.CRC32
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -84,7 +86,7 @@ class LeaperkimProtocolTest {
         )
 
         protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
-            assertEquals(null, protocol.decode(frame))
+            assertTrue(protocol.decode(frame) == null)
             val telemetry = awaitItem()
             assertNotNull(telemetry)
             assertEquals("Leaperkim", telemetry.manufacturer)
@@ -98,7 +100,7 @@ class LeaperkimProtocolTest {
             assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.001)
             assertEquals("007.0.01", telemetry.firmwareVersion)
             assertEquals(100, telemetry.batteryLevel)
-            assertEquals(true, telemetry.isCharging)
+            assertTrue(telemetry.isCharging)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -106,8 +108,8 @@ class LeaperkimProtocolTest {
     @Test
     fun decodeOutOfRangeVoltageFrameIsDropped() = runTest {
         val invalidFrame = createLeaperkimFrame(voltageRaw = 19000)
-        protocol.decode(invalidFrame)
         protocol.dataFlow.test(timeout = invalidFrameCheckTimeoutMs.milliseconds) {
+            assertTrue(protocol.decode(invalidFrame) == null)
             expectNoEvents()
             cancelAndIgnoreRemainingEvents()
         }
@@ -143,7 +145,7 @@ class LeaperkimProtocolTest {
         val frame = createLeaperkimFrame(
             voltageRaw = 10000,
             speedRaw = 500,
-            angleRaw = 350 // 3.50 degrees
+            angleRaw = 350
         )
 
         protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
@@ -193,16 +195,6 @@ class LeaperkimProtocolTest {
         }
     }
 
-    private suspend fun waitForBmsCellCount(expected: Int) {
-        withTimeout(5_000L.milliseconds) {
-            while (true) {
-                val count = protocol.getBMSData().firstOrNull()?.cellVoltages?.size ?: 0
-                if (count >= expected) return@withTimeout
-                kotlinx.coroutines.delay(10.milliseconds)
-            }
-        }
-    }
-
     @Test
     fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runTest {
         val page1 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
@@ -222,21 +214,20 @@ class LeaperkimProtocolTest {
         }
 
         protocol.decode(page1)
-        waitForBmsCellCount(15)
-
         protocol.decode(page2)
-        waitForBmsCellCount(30)
-
         protocol.decode(page3)
-        waitForBmsCellCount(42)
 
         val bmsData = protocol.getBMSData()
+        val bms = bmsData.firstOrNull { it.bmsIndex == 1 }
+            ?: error("Expected BMS index 1 data after decoding pages")
+
         assertEquals(1, bmsData.size)
-        assertEquals(42, bmsData.first().cellVoltages?.size)
+        assertEquals(42, bms.cellVoltages?.size)
         assertTrue(bmsData.isNotEmpty())
-        assertEquals(1, bmsData.first().bmsIndex)
-        assertNotNull(bmsData.first().temperatures)
-        assertEquals(25.0, bmsData.first().temperatures?.first() ?: 0.0, 0.01)
+        assertEquals(1, bms.bmsIndex)
+        assertNotNull(bms.temperatures)
+        assertTrue(bms.temperatures!!.isNotEmpty())
+        assertEquals(25.0, bms.temperatures!!.first(), 0.01)
     }
 
     private fun createLeaperkimFrame(
