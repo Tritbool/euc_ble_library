@@ -1,30 +1,22 @@
 package com.euc.ble.protocols
 
+import app.cash.turbine.test
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.jupiter.api.AfterEach
-import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
-import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
-import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
-import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
-import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
-import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.util.zip.CRC32
 import kotlin.time.Duration.Companion.milliseconds
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LeaperkimProtocolTest {
 
     private val defaultFrameLength = 36
@@ -43,12 +35,14 @@ class LeaperkimProtocolTest {
 
     @BeforeEach
     fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         protocol = LeaperkimProtocol()
     }
 
     @AfterEach
     fun tearDown() {
         protocol.close()
+        Dispatchers.resetMain()
     }
 
     @Test
@@ -76,7 +70,7 @@ class LeaperkimProtocolTest {
     }
 
     @Test
-    fun decodeValidFrameEmitsTelemetry() = runBlocking {
+    fun decodeValidFrameEmitsTelemetry() = runTest {
         val frame = createLeaperkimFrame(
             voltageRaw = 12525,
             speedRaw = 1234,
@@ -89,31 +83,34 @@ class LeaperkimProtocolTest {
             versionRaw = 7001
         )
 
-        val decodeResult = protocol.decode(frame)
-        assertNull(decodeResult)
-
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
-        assertNotNull(telemetry)
-        assertEquals("Leaperkim", telemetry.manufacturer)
-        assertEquals("Patton S", telemetry.model)
-        assertEquals(125.25, telemetry.voltage, 0.01)
-        assertEquals(12.34, telemetry.speed, 0.01)
-        assertEquals(-2.50, telemetry.current, 0.01)
-        assertEquals(35.00, telemetry.temperature, 0.01)
-        assertEquals(78.50, telemetry.pwm ?: -1.0, 0.01)
-        assertEquals(54.321, telemetry.distance, 0.001)
-        assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.001)
-        assertEquals("007.0.01", telemetry.firmwareVersion)
-        assertEquals(100, telemetry.batteryLevel)
-        assertTrue(telemetry.isCharging)
+        protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
+            assertEquals(null, protocol.decode(frame))
+            val telemetry = awaitItem()
+            assertNotNull(telemetry)
+            assertEquals("Leaperkim", telemetry.manufacturer)
+            assertEquals("Patton S", telemetry.model)
+            assertEquals(125.25, telemetry.voltage, 0.01)
+            assertEquals(12.34, telemetry.speed, 0.01)
+            assertEquals(-2.50, telemetry.current, 0.01)
+            assertEquals(35.00, telemetry.temperature, 0.01)
+            assertEquals(78.50, telemetry.pwm ?: -1.0, 0.01)
+            assertEquals(54.321, telemetry.distance, 0.001)
+            assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.001)
+            assertEquals("007.0.01", telemetry.firmwareVersion)
+            assertEquals(100, telemetry.batteryLevel)
+            assertEquals(true, telemetry.isCharging)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeOutOfRangeVoltageFrameIsDropped() = runBlocking {
+    fun decodeOutOfRangeVoltageFrameIsDropped() = runTest {
         val invalidFrame = createLeaperkimFrame(voltageRaw = 19000)
         protocol.decode(invalidFrame)
-        val emitted = withTimeoutOrNull(invalidFrameCheckTimeoutMs.milliseconds) { protocol.dataFlow.first() }
-        assertNull("Out-of-range frame should not be emitted", emitted)
+        protocol.dataFlow.test(timeout = invalidFrameCheckTimeoutMs.milliseconds) {
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
@@ -142,37 +139,41 @@ class LeaperkimProtocolTest {
     }
 
     @Test
-    fun decodeValidFrameEmitsAngle() = runBlocking {
+    fun decodeValidFrameEmitsAngle() = runTest {
         val frame = createLeaperkimFrame(
             voltageRaw = 10000,
             speedRaw = 500,
             angleRaw = 350 // 3.50 degrees
         )
 
-        protocol.decode(frame)
-
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
-        assertNotNull(telemetry.angle)
-        assertEquals(3.50, telemetry.angle!!, 0.01)
+        protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
+            protocol.decode(frame)
+            val telemetry = awaitItem()
+            assertNotNull(telemetry.angle)
+            assertEquals(3.50, telemetry.angle!!, 0.01)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeValidFrameWithZeroAngle() = runBlocking {
+    fun decodeValidFrameWithZeroAngle() = runTest {
         val frame = createLeaperkimFrame(
             voltageRaw = 10000,
             speedRaw = 500,
             angleRaw = 0
         )
 
-        protocol.decode(frame)
-
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
-        assertNotNull(telemetry.angle)
-        assertEquals(0.0, telemetry.angle!!, 0.01)
+        protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
+            protocol.decode(frame)
+            val telemetry = awaitItem()
+            assertNotNull(telemetry.angle)
+            assertEquals(0.0, telemetry.angle!!, 0.01)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeLegacySettingsFieldsAreMapped() = runBlocking {
+    fun decodeLegacySettingsFieldsAreMapped() = runTest {
         val frame = createLeaperkimFrame(
             versionRaw = 5000,
             pedalsModeRaw = 2,
@@ -181,13 +182,15 @@ class LeaperkimProtocolTest {
             speedTiltBackRaw = 4
         )
 
-        protocol.decode(frame)
-
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
-        assertEquals(2, telemetry.pedalsMode)
-        assertEquals(10, telemetry.autoPowerOffMinutes)
-        assertEquals(30, telemetry.alarm1Speed)
-        assertEquals(40, telemetry.tiltBackSpeed)
+        protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
+            protocol.decode(frame)
+            val telemetry = awaitItem()
+            assertEquals(2, telemetry.pedalsMode)
+            assertEquals(10, telemetry.autoPowerOffMinutes)
+            assertEquals(30, telemetry.alarm1Speed)
+            assertEquals(40, telemetry.tiltBackSpeed)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     private suspend fun waitForBmsCellCount(expected: Int) {
@@ -201,7 +204,7 @@ class LeaperkimProtocolTest {
     }
 
     @Test
-    fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runBlocking {
+    fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runTest {
         val page1 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
             packetNum = 0x01
             cellVoltages = IntArray(15) { 4100 + it }
@@ -226,7 +229,6 @@ class LeaperkimProtocolTest {
 
         protocol.decode(page3)
         waitForBmsCellCount(42)
-
 
         val bmsData = protocol.getBMSData()
         assertEquals(1, bmsData.size)
