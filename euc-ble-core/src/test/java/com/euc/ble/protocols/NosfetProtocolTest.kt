@@ -2,17 +2,17 @@ package com.euc.ble.protocols
 
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import app.cash.turbine.test
 import org.junit.jupiter.api.AfterEach
 import com.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.seconds
 
 class NosfetProtocolTest {
 
@@ -21,16 +21,19 @@ class NosfetProtocolTest {
 
     @BeforeEach
     fun setUp() {
-        protocol = NosfetProtocol()
     }
 
     @AfterEach
     fun tearDown() {
-        protocol.close()
+        if (::protocol.isInitialized) {
+            protocol.close()
+        }
     }
 
     @Test
     fun canHandleNosfetDevicesOnly() {
+        protocol = NosfetProtocol()
+
         assertTrue(
             protocol.canHandle(
                 EUCDevice(name = "Nosfet Aero", address = "A", manufacturerId = 0, rssi = -50)
@@ -38,7 +41,12 @@ class NosfetProtocolTest {
         )
         assertTrue(
             protocol.canHandle(
-                EUCDevice(name = "Apex", address = "B", manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM, rssi = -55)
+                EUCDevice(
+                    name = "Apex",
+                    address = "B",
+                    manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM,
+                    rssi = -55
+                )
             )
         )
         assertFalse(
@@ -49,7 +57,9 @@ class NosfetProtocolTest {
     }
 
     @Test
-    fun decodeValidNosfetFrameEmitsTelemetry() = runBlocking {
+    fun decodeValidNosfetFrameEmitsTelemetry() = runTest {
+        protocol = NosfetProtocol(scope = backgroundScope)
+
         val frame = createFrame(
             voltageRaw = 12525,
             speedRaw = 1234,
@@ -62,23 +72,38 @@ class NosfetProtocolTest {
             versionRaw = 4301
         )
 
-        val decodeResult = protocol.decode(frame)
-        assertNull(decodeResult)
+        protocol.dataFlow.test(timeout = 5.seconds) {
+            val decodeResult = protocol.decode(frame)
+            assertNull(decodeResult)
 
-        val telemetry = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals("Nosfet", telemetry.manufacturer)
-        assertEquals("Nosfet Aero", telemetry.model)
-        assertEquals("043.0.01", telemetry.firmwareVersion)
-        assertEquals(100, telemetry.batteryLevel)
-        assertEquals(65.5, telemetry.pwm ?: -1.0, 0.01)
-        assertTrue(telemetry.isCharging)
+            val telemetry = awaitItem()
+            assertEquals("Nosfet", telemetry.manufacturer)
+            assertEquals("Nosfet Aero", telemetry.model)
+            assertEquals("043.0.01", telemetry.firmwareVersion)
+            assertEquals(100, telemetry.batteryLevel)
+            assertEquals(65.5, telemetry.pwm ?: -1.0, 0.01)
+            assertTrue(telemetry.isCharging)
+
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
     fun createCommandMapsKnownActions() {
-        assertArrayEquals("SetLightON".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_ON, Unit))
-        assertArrayEquals("SetLightOFF".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_OFF, Unit))
-        assertArrayEquals("b".encodeToByteArray(), protocol.createCommand(CommandType.BEEP, Unit))
+        protocol = NosfetProtocol()
+
+        assertArrayEquals(
+            "SetLightON".encodeToByteArray(),
+            protocol.createCommand(CommandType.LIGHT_ON, Unit)
+        )
+        assertArrayEquals(
+            "SetLightOFF".encodeToByteArray(),
+            protocol.createCommand(CommandType.LIGHT_OFF, Unit)
+        )
+        assertArrayEquals(
+            "b".encodeToByteArray(),
+            protocol.createCommand(CommandType.BEEP, Unit)
+        )
     }
 
     private fun createFrame(

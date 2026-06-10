@@ -1,9 +1,11 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.math.roundToInt
 
-class NosfetProtocol : LeaperkimProtocol() {
+class NosfetProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : LeaperkimProtocol(scope) {
 
     override val manufacturer: String = "Nosfet"
     override val supportedModels: List<String> = listOf(

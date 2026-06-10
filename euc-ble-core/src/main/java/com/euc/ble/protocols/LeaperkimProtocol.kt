@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
  * - Full frame size: len + 4 bytes
  * - For long frames (len > 38), trailing CRC32 is expected
  */
-open class LeaperkimProtocol : EUCProtocol {
+open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : EUCProtocol {
     companion object {
         private const val LEAPERKIM_MAX_BMS_CELLS = 42
     }
@@ -143,6 +143,22 @@ open class LeaperkimProtocol : EUCProtocol {
         streamBuffer.clear()
     }
 
+    @Volatile
+    var debugFramesObserved: Int = 0
+        private set
+
+    @Volatile
+    var debugFramesParsed: Int = 0
+        private set
+
+    @Volatile
+    var debugFramesSent: Int = 0
+        private set
+
+    @Volatile
+    var debugSendFailures: Int = 0
+        private set
+
     private val frameParser = ByteByByteFrameParser(unpacker, resetUnpacker = { resetUnpacker() })
     private val frameReassembler = FrameReassembler(frameParser)
 
@@ -154,7 +170,7 @@ open class LeaperkimProtocol : EUCProtocol {
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
-    private val scope = CoroutineScope(Dispatchers.IO)
+    //private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
     @Volatile
     private var lastMajorVersion: Int? = null
@@ -164,7 +180,7 @@ open class LeaperkimProtocol : EUCProtocol {
 
     init {
         scope.launch {
-            frameReassembler.observeFrames().collectLatest { frame ->
+            frameReassembler.observeFrames().collect { frame ->
                 processFrame(frame)
             }
         }
@@ -174,7 +190,7 @@ open class LeaperkimProtocol : EUCProtocol {
         if (data.isEmpty()) return null
         _rawFrameFlow.tryEmit(data.clone())
         updateLastKnownVersionFromRawChunk(data)
-        runBlocking(Dispatchers.IO) {
+        scope.launch {
             frameReassembler.processIncomingBytes(data)
         }
         return null
@@ -196,7 +212,17 @@ open class LeaperkimProtocol : EUCProtocol {
     }
 
     private fun processFrame(frame: ByteArray) {
-        parseFrame(frame)?.let { _channel.trySend(it) }
+        debugFramesObserved++
+        val parsed = parseFrame(frame)
+        if (parsed != null) {
+            debugFramesParsed++
+            val result = _channel.trySend(parsed)
+            if (result.isSuccess) {
+                debugFramesSent++
+            } else {
+                debugSendFailures++
+            }
+        }
     }
 
     private fun parseFrame(frame: ByteArray): EUCData? {

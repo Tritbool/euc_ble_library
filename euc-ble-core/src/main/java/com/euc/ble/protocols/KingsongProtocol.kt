@@ -30,7 +30,8 @@ import java.util.UUID
  * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
  * 0xF1/0xF2 (Smart BMS data).
  */
-class KingsongProtocol : EUCProtocol {
+class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
+    EUCProtocol {
 
 
     private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
@@ -159,7 +160,7 @@ class KingsongProtocol : EUCProtocol {
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
-    private val scope = CoroutineScope(Dispatchers.IO)
+    //private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
     private var lastKnownPwm: Double? = null
 

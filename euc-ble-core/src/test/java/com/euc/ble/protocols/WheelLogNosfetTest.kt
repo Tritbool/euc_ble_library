@@ -1,15 +1,13 @@
 package com.euc.ble.protocols
 
 import com.euc.ble.SlowTest
+import app.cash.turbine.test
 import com.euc.ble.core.ByteUtils
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
+import com.euc.ble.models.EUCData
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -26,7 +24,7 @@ class WheelLogNosfetTest {
 
     @BeforeEach
     fun setUp() {
-        protocol = NosfetProtocol()
+        //protocol = NosfetProtocol()
     }
 
     @AfterEach
@@ -36,27 +34,68 @@ class WheelLogNosfetTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun decodeRealNosfetWheelLogFrames() = runBlocking {
+    fun decodeRealNosfetWheelLogFrames_diagnostic() = runTest {
+        protocol = NosfetProtocol(scope = backgroundScope)
+
+        val frames = loadFrames("${resourceDir}RAW_2026_05_08_18_55_45.csv", maxFrames = 200)
+        assertTrue("Expected WheelLog frames", frames.isNotEmpty())
+
+        var received = 0
+
+        protocol.dataFlow.test(timeout = 100.milliseconds) {
+            // envoyer quelques frames seulement
+            frames.take(200).forEach { protocol.decode(it.bleData) }
+
+            // consommer au plus 50 items
+            repeat(50) {
+                try {
+                    awaitItem()
+                    received++
+                } catch (_: AssertionError) {
+                    // plus rien à lire avant timeout Turbine
+                                    }
+            }
+
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        println("frames size=${frames.size}")
+        println("debugFramesObserved=${(protocol as LeaperkimProtocol).debugFramesObserved}")
+        println("debugFramesParsed=${(protocol as LeaperkimProtocol).debugFramesParsed}")
+        println("debugFramesSent=${(protocol as LeaperkimProtocol).debugFramesSent}")
+        println("debugSendFailures=${(protocol as LeaperkimProtocol).debugSendFailures}")
+        println("received=$received")
+
+        assertTrue("Expected at least one decoded frame", received > 0)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun decodeRealNosfetWheelLogFrames() = runTest {
+        protocol = NosfetProtocol(scope = backgroundScope)
+
         val frames = loadFrames("${resourceDir}RAW_2026_05_08_18_55_45.csv", maxFrames = 7000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
-        val collector = async {
-            withTimeoutOrNull(8_000.milliseconds) {
-                protocol.dataFlow.take(1200).toList()
-            } ?: emptyList()
+        protocol.dataFlow.test(timeout = 60_000.milliseconds) {
+            frames.forEach { protocol.decode(it.bleData) }
+            testScheduler.advanceUntilIdle()
+
+            val decoded: List<EUCData> = buildList {
+                repeat(1200) {
+                    add(awaitItem())
+                }
+            }
+
+            assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
+            assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
+            assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
+            assertTrue(decoded.all { it.batteryLevel in 0..100 })
+            assertTrue(decoded.all { it.rideTime >= 0 })
+            assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        delay(100.milliseconds)
-        frames.forEach { protocol.decode(it.bleData) }
-        delay(300.milliseconds)
-
-        val decoded = collector.getCompleted()
-        assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
-        assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
-        assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
-        assertTrue(decoded.all { it.batteryLevel in 0..100 })
-        assertTrue(decoded.all { it.rideTime >= 0 })
-        assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {

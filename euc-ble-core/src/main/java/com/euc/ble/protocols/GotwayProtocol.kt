@@ -99,7 +99,7 @@ import kotlin.math.abs
  *    ces octets (headers différents, endianness différente) — ces variantes n'étaient
  *    pas forcément présentes lors de la rétro‑ingénierie initiale.
  */
-open class GotwayProtocol : EUCProtocol {
+open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : EUCProtocol {
 
     companion object{
         const val FRAME_SIZE=24
@@ -120,7 +120,7 @@ open class GotwayProtocol : EUCProtocol {
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
-    private val scope = CoroutineScope(Dispatchers.IO)
+    //private val scope = CoroutineScope(Dispatchers.IO)
     private var lastKnownVoltage: Double? = null
     private var lastKnownCurrent: Double? = null
     private var hasType1Voltage = false
