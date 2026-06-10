@@ -161,19 +161,15 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
 }
 
 dependencies {
-    // Minimal dependencies for BLE functionality
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-    
-    // Test dependencies (single JUnit 5 line)
+
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.platform:junit-platform-suite-api")
     testRuntimeOnly("org.junit.platform:junit-platform-suite-engine")
 
-// Coroutines Test
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0") // dernière 1.10.x [web:6][web:9][web:15]
-
-// Mockito Kotlin
-    testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0") //
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("app.cash.turbine:turbine:1.1.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
 }
