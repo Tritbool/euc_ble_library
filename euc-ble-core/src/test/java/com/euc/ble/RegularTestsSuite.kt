@@ -10,6 +10,7 @@ import com.euc.ble.protocols.InMotionProtocolTest
 import com.euc.ble.protocols.KingsongProtocolAsyncTest
 import com.euc.ble.protocols.LeaperkimProtocolTest
 import com.euc.ble.protocols.NinebotProtocolTest
+import com.euc.ble.protocols.NinebotZProtocolTest
 import com.euc.ble.protocols.NosfetProtocolTest
 import com.euc.ble.protocols.WheelLogGotwayTest
 import com.euc.ble.protocols.WheelLogInMotionTest
@@ -40,6 +41,7 @@ import org.junit.platform.suite.api.Suite
     LeaperkimProtocolTest::class,
     NosfetProtocolTest::class,
     NinebotProtocolTest::class,
+    NinebotZProtocolTest::class,
 )
 
 class RegularTestsSuite {

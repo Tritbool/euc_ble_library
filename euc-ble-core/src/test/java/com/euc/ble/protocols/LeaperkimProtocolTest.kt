@@ -13,10 +13,17 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.zip.CRC32
+import kotlin.time.Duration.Companion.milliseconds
 
 class LeaperkimProtocolTest {
 
@@ -85,7 +92,7 @@ class LeaperkimProtocolTest {
         val decodeResult = protocol.decode(frame)
         assertNull(decodeResult)
 
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
         assertNotNull(telemetry)
         assertEquals("Leaperkim", telemetry.manufacturer)
         assertEquals("Patton S", telemetry.model)
@@ -105,7 +112,7 @@ class LeaperkimProtocolTest {
     fun decodeOutOfRangeVoltageFrameIsDropped() = runBlocking {
         val invalidFrame = createLeaperkimFrame(voltageRaw = 19000)
         protocol.decode(invalidFrame)
-        val emitted = withTimeoutOrNull(invalidFrameCheckTimeoutMs) { protocol.dataFlow.first() }
+        val emitted = withTimeoutOrNull(invalidFrameCheckTimeoutMs.milliseconds) { protocol.dataFlow.first() }
         assertNull("Out-of-range frame should not be emitted", emitted)
     }
 
@@ -144,7 +151,7 @@ class LeaperkimProtocolTest {
 
         protocol.decode(frame)
 
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
         assertNotNull(telemetry.angle)
         assertEquals(3.50, telemetry.angle!!, 0.01)
     }
@@ -159,7 +166,7 @@ class LeaperkimProtocolTest {
 
         protocol.decode(frame)
 
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
         assertNotNull(telemetry.angle)
         assertEquals(0.0, telemetry.angle!!, 0.01)
     }
@@ -176,7 +183,7 @@ class LeaperkimProtocolTest {
 
         protocol.decode(frame)
 
-        val telemetry = withTimeout(telemetryEmissionTimeoutMs) { protocol.dataFlow.first() }
+        val telemetry = withTimeout(telemetryEmissionTimeoutMs.milliseconds) { protocol.dataFlow.first() }
         assertEquals(2, telemetry.pedalsMode)
         assertEquals(10, telemetry.autoPowerOffMinutes)
         assertEquals(30, telemetry.alarm1Speed)
@@ -184,11 +191,11 @@ class LeaperkimProtocolTest {
     }
 
     private suspend fun waitForBmsCellCount(expected: Int) {
-        withTimeout(5_000L) {
+        withTimeout(5_000L.milliseconds) {
             while (true) {
                 val count = protocol.getBMSData().firstOrNull()?.cellVoltages?.size ?: 0
                 if (count >= expected) return@withTimeout
-                kotlinx.coroutines.delay(10)
+                kotlinx.coroutines.delay(10.milliseconds)
             }
         }
     }

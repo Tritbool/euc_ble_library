@@ -72,13 +72,21 @@ class NinebotProtocol : EUCProtocol {
     private var firmwareVersion: String? = null
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_READ_CHARACTERISTIC)
-    override fun getWriteCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_WRITE_CHARACTERISTIC)
+    override fun getDataCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.NINEBOT_READ_CHARACTERISTIC)
+
+    override fun getWriteCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.NINEBOT_WRITE_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&
-            supportedModels.map{model -> model.contains(name, ignoreCase = true)}.reduce { a,b -> a || b  }
+                supportedModels.map { model ->
+                    model.contains(
+                        name,
+                        ignoreCase = true
+                    ) || name.contains(model, ignoreCase = true)
+                }.reduce { a, b -> a || b }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
@@ -224,10 +232,12 @@ class NinebotProtocol : EUCProtocol {
                 parseWheelLogSerialFrame(frame)
                 null
             }
+
             WHEELLOG_FIRMWARE_TYPE -> {
                 parseWheelLogFirmwareFrame(frame)
                 null
             }
+
             else -> null
         }
     }
@@ -367,9 +377,21 @@ class NinebotProtocol : EUCProtocol {
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec(id = "ninebot.serial", commandType = CommandType.REQUEST_SERIAL, maxRetries = 3),
-                ProtocolQuerySpec(id = "ninebot.firmware", commandType = CommandType.REQUEST_FIRMWARE, maxRetries = 3),
-                ProtocolQuerySpec(id = "ninebot.battery.init", commandType = CommandType.REQUEST_BATTERY_INFO, maxRetries = 2)
+                ProtocolQuerySpec(
+                    id = "ninebot.serial",
+                    commandType = CommandType.REQUEST_SERIAL,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    id = "ninebot.firmware",
+                    commandType = CommandType.REQUEST_FIRMWARE,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    id = "ninebot.battery.init",
+                    commandType = CommandType.REQUEST_BATTERY_INFO,
+                    maxRetries = 2
+                )
             ),
             periodicQueries = listOf(
                 ProtocolQuerySpec(

@@ -62,7 +62,12 @@ open class LeaperkimProtocol : EUCProtocol {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
                 device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN ||
-                supportedModels.map{model -> model.contains(name, ignoreCase = true)}.reduce { a,b -> a || b  }
+                supportedModels.map { model ->
+                    model.contains(
+                        name,
+                        ignoreCase = true
+                    ) || name.contains(model, ignoreCase = true)
+                }.reduce { a, b -> a || b }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {

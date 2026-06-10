@@ -8,12 +8,14 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-class NinebotProtocolTest {
 
-    private lateinit var protocol: NinebotProtocol
+class NinebotZProtocolTest {
+
+    private lateinit var protocol: NinebotZProtocol
+
     @BeforeEach
     fun setUp() {
-        protocol = NinebotProtocol()
+        protocol = NinebotZProtocol()
     }
 
     @AfterEach
@@ -22,10 +24,25 @@ class NinebotProtocolTest {
     }
 
     @Test
-    fun canHandleNinebotIdentifiersAndNames() {
-        val byMetadata = EUCDevice(name = "One S2", address = "A", manufacturerId = BLEConstants.MANUFACTURER_NINEBOT, rssi = -45)
-        val bySegwayName = EUCDevice(name = "Segway One E+", address = "B", manufacturerId = BLEConstants.MANUFACTURER_NINEBOT, rssi = -70)
-        val other = EUCDevice(name = "KS-16X", address = "D", manufacturerId = BLEConstants.MANUFACTURER_KINGSONG, rssi = -55)
+    fun canHandleNinebotZIdentifiersAndNames() {
+        val byMetadata = EUCDevice(
+            name = "Ninebot Z10",
+            address = "A",
+            manufacturerId = BLEConstants.MANUFACTURER_NINEBOT,
+            rssi = -45
+        )
+        val bySegwayName = EUCDevice(
+            name = "Segway Z8",
+            address = "B",
+            manufacturerId = BLEConstants.MANUFACTURER_NINEBOT,
+            rssi = -70
+        )
+        val other = EUCDevice(
+            name = "KS-16X",
+            address = "D",
+            manufacturerId = BLEConstants.MANUFACTURER_KINGSONG,
+            rssi = -55
+        )
 
         assertTrue(protocol.canHandle(byMetadata))
         assertTrue(protocol.canHandle(bySegwayName))

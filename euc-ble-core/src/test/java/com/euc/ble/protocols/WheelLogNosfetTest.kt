@@ -9,12 +9,14 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogNosfetTest {
@@ -32,22 +34,23 @@ class WheelLogNosfetTest {
         protocol.close()
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun decodeRealNosfetWheelLogFrames() = runBlocking {
         val frames = loadFrames("${resourceDir}RAW_2026_05_08_18_55_45.csv", maxFrames = 7000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
         val collector = async {
-            withTimeoutOrNull(8_000) {
+            withTimeoutOrNull(8_000.milliseconds) {
                 protocol.dataFlow.take(1200).toList()
             } ?: emptyList()
         }
 
-        delay(100)
+        delay(100.milliseconds)
         frames.forEach { protocol.decode(it.bleData) }
-        delay(300)
+        delay(300.milliseconds)
 
-        val decoded = collector.await()
+        val decoded = collector.getCompleted()
         assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
         assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
         assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })

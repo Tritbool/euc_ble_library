@@ -67,8 +67,12 @@ class NinebotZProtocol : EUCProtocol {
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&
-                supportedModels.map { model -> model.contains(name, ignoreCase = true) }
-                    .reduce { a, b -> a || b }
+                supportedModels.map { model ->
+                    model.contains(
+                        name,
+                        ignoreCase = true
+                    ) || name.contains(model, ignoreCase = true)
+                }.reduce { a, b -> a || b }
     }
 
     override fun decode(data: ByteArray): EUCData? = delegate.decode(data)
