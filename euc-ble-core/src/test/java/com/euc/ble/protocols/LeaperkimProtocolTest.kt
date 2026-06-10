@@ -3,12 +3,15 @@ package com.euc.ble.protocols
 import app.cash.turbine.test
 import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -195,6 +198,26 @@ class LeaperkimProtocolTest {
         }
     }
 
+    private suspend fun waitForBmsCellCount(expected: Int) {
+        withTimeout(5_000L.milliseconds) {
+            while (true) {
+                val count = protocol.getBMSData().firstOrNull()?.cellVoltages?.size ?: 0
+                if (count >= expected) return@withTimeout
+                kotlinx.coroutines.delay(10.milliseconds)
+            }
+        }
+    }
+
+    private suspend fun waitForBmsTempsCount(expected: Int) {
+        withTimeout(5_000L.milliseconds) {
+            while (true) {
+                val count = protocol.getBMSData().firstOrNull()?.temperatures?.size ?: 0
+                if (count >= expected) return@withTimeout
+                kotlinx.coroutines.delay(10.milliseconds)
+            }
+        }
+    }
+
     @Test
     fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runTest {
         val page1 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
@@ -214,8 +237,14 @@ class LeaperkimProtocolTest {
         }
 
         protocol.decode(page1)
+        waitForBmsCellCount(15)
+
         protocol.decode(page2)
+        waitForBmsCellCount(30)
+
         protocol.decode(page3)
+        waitForBmsCellCount(42)
+        waitForBmsTempsCount(6)
 
         val bmsData = protocol.getBMSData()
         val bms = bmsData.firstOrNull { it.bmsIndex == 1 }
