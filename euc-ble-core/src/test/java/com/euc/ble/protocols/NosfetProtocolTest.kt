@@ -25,7 +25,7 @@ class NosfetProtocolTest {
 
     @AfterEach
     fun tearDown() {
-        if (::protocol.isInitialized) {
+        if (this::protocol.isInitialized) {
             protocol.close()
         }
     }
