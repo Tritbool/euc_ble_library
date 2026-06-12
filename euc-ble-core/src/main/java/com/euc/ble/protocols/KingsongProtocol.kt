@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -204,8 +205,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     init {
         // Start observing frames asynchronously and process them
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            frameReassembler.observeFrames().collect { frame ->
+        scope.launch {
+            frameReassembler.observeFrames().collectLatest { frame ->
                 processFrame(frame)
             }
         }
@@ -581,7 +582,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         _rawFrameFlow.tryEmit(data.clone())
 
         // Let the reassembler handle the incoming bytes asynchronously
-        runBlocking(Dispatchers.IO) {
+        scope.launch {
             frameReassembler.processIncomingBytes(data)
         }
         // Return null because data is emitted asynchronously via the dataFlow
@@ -758,7 +759,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     override fun isDeviceReady(data: EUCData): Boolean {
         val tempOk = data.temperature < 75.0
-        val voltageOk = data.voltage > 30.0
+        val voltageOk = data.voltage > 40.0
         val batteryOk = data.batteryLevel >= 5
         return voltageOk && tempOk && batteryOk
     }

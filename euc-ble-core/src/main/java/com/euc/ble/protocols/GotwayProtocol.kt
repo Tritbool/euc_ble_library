@@ -99,18 +99,21 @@ import kotlin.math.abs
  *    ces octets (headers différents, endianness différente) — ces variantes n'étaient
  *    pas forcément présentes lors de la rétro‑ingénierie initiale.
  */
-open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : EUCProtocol {
+open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
+    EUCProtocol {
 
-    companion object{
-        const val FRAME_SIZE=24
-        val HEADER: ByteArray=byteArrayOf(0x55.toByte(),0xAA.toByte())
-        val FOOTER: ByteArray=byteArrayOf(0x5A.toByte(),0x5A.toByte(),0x5A.toByte(),0x5A.toByte())
+    companion object {
+        const val FRAME_SIZE = 24
+        val HEADER: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())
+        val FOOTER: ByteArray =
+            byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
         private const val MIN_BATTERY_VOLTAGE = 52.0
         private const val MAX_BATTERY_VOLTAGE = 134.4
         private const val MAX_BMS_CELL_SLOTS = 56
     }
-    private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
-    private val frameReassembler: FrameReassembler= FrameReassembler(frameParser)
+
+    private val frameParser = FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
+    private val frameReassembler: FrameReassembler = FrameReassembler(frameParser)
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
@@ -150,7 +153,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override val supportedModels: List<String> = listOf(
         "MSuper", "MSX", "MSX Pro", "Mten3", "Mten4", "MTen5",
         "Nikola", "Nikola Plus", "Tesla", "Monster", "Monster Pro",
-        "Begode", "Begode RS", "Begode Master", "Begode Hero","Master Pro",
+        "Begode", "Begode RS", "Begode Master", "Begode Hero", "Master Pro",
         "blitz", "blitz pro", "mten3", "mten4", "mten5", "A1", "A2", "race",
         "Extreme"
     )
@@ -165,22 +168,24 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
+    override fun getDataCharacteristicUUID(): UUID =
+        UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_GOTWAY ||
-                supportedModels.map{model -> model.contains(name, ignoreCase = true)}.reduce { a,b -> a || b  }
+                supportedModels.map { model -> model.contains(name, ignoreCase = true) }
+                    .reduce { a, b -> a || b }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
         if (chunk.size < 2) return false
         val hasHeader = (chunk[0].toInt() and 0xFF) == 0x55 && (chunk[1].toInt() and 0xFF) == 0xAA
         val hasFooter = chunk.size >= 4 &&
-            (chunk[chunk.size - 4].toInt() and 0xFF) == 0x5A &&
-            (chunk[chunk.size - 3].toInt() and 0xFF) == 0x5A &&
-            (chunk[chunk.size - 2].toInt() and 0xFF) == 0x5A &&
-            (chunk[chunk.size - 1].toInt() and 0xFF) == 0x5A
+                (chunk[chunk.size - 4].toInt() and 0xFF) == 0x5A &&
+                (chunk[chunk.size - 3].toInt() and 0xFF) == 0x5A &&
+                (chunk[chunk.size - 2].toInt() and 0xFF) == 0x5A &&
+                (chunk[chunk.size - 1].toInt() and 0xFF) == 0x5A
         return hasHeader || hasFooter
     }
 
@@ -208,12 +213,13 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         _rawFrameFlow.tryEmit(data.clone())
         parseLegacyAsciiMetadata(data)
         // Let the reassembler handle the incoming bytes asynchronously
-        runBlocking(Dispatchers.IO) {
+        scope.launch {
             frameReassembler.processIncomingBytes(data)
         }
         // Return null because data is emitted asynchronously via the dataFlow
         return null
     }
+
     @VisibleForTesting
     private fun processFrame(frame: ByteArray) {
         val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {
@@ -222,14 +228,17 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 parseType1(frame)
                 null
             }
+
             0x02 -> {
                 parseType2or3(frame, bmsIndex = 0)
                 null
             }
+
             0x03 -> {
                 parseType2or3(frame, bmsIndex = 1)
                 null
             }
+
             0x04 -> parseTypeB(frame)
             0x07 -> parseType7(frame)
             else -> null // Ignore unknown frame types from the reassembler
@@ -237,6 +246,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
         eucData?.let { _channel.trySend(it) }
     }
+
     @VisibleForTesting
     private fun parseTypeA(data: ByteArray): EUCData? {
 
@@ -304,6 +314,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             totalDistance = lastKnownTotalDistance
         )
     }
+
     @VisibleForTesting
     private fun parseTypeB(data: ByteArray): EUCData? {
         val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null
@@ -361,6 +372,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             wheelAlarm = wheelAlarm
         )
     }
+
     @VisibleForTesting
     private fun parseType1(data: ByteArray) {
         val batteryVoltageTenth = ByteUtils.tryGetUnsignedShortBE(data, 6) ?: return
@@ -457,21 +469,25 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                     lastKnownModel = name
                 }
             }
+
             message.startsWith("GW", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "Begode"
                 typeAUsesHardwarePwm = false
             }
+
             message.startsWith("JN", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "ExtremeBull"
                 typeAUsesHardwarePwm = false
             }
+
             message.startsWith("CF", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "Freestyl3r"
                 typeAUsesHardwarePwm = true
             }
+
             message.startsWith("BF", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "SV"
@@ -492,6 +508,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                     byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x04, brightness)
                 } else byteArrayOf()
             }
+
             CommandType.REQUEST_SERIAL -> "N".encodeToByteArray()
             CommandType.REQUEST_FIRMWARE -> "V".encodeToByteArray()
             else -> byteArrayOf()
@@ -502,8 +519,17 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
-                ProtocolQuerySpec(id = "gotway.request-model", commandType = CommandType.REQUEST_SERIAL, maxRetries = 3),
-                ProtocolQuerySpec(id = "gotway.request-firmware", commandType = CommandType.REQUEST_FIRMWARE, initialDelayMs = 200L, maxRetries = 3)
+                ProtocolQuerySpec(
+                    id = "gotway.request-model",
+                    commandType = CommandType.REQUEST_SERIAL,
+                    maxRetries = 3
+                ),
+                ProtocolQuerySpec(
+                    id = "gotway.request-firmware",
+                    commandType = CommandType.REQUEST_FIRMWARE,
+                    initialDelayMs = 200L,
+                    maxRetries = 3
+                )
             ),
             periodicQueries = emptyList()
         )

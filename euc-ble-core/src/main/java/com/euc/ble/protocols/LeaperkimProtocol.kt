@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.UUID
 import java.util.zip.CRC32
 import kotlin.math.roundToInt
@@ -180,7 +179,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     init {
         scope.launch {
-            frameReassembler.observeFrames().collect { frame ->
+            frameReassembler.observeFrames().collectLatest { frame ->
                 processFrame(frame)
             }
         }

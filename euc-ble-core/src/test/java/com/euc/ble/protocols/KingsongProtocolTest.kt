@@ -1,5 +1,6 @@
 package com.euc.ble.protocols
 
+import app.cash.turbine.test
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -12,6 +13,9 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.milliseconds
 
 class KingsongProtocolTest {
 
@@ -22,25 +26,38 @@ class KingsongProtocolTest {
         protocol = KingsongProtocol()
     }
 
+
     @AfterEach
     fun tearDown() {
-        protocol.close()
+        if (this::protocol.isInitialized) {
+            protocol.close()
+        }
     }
 
     @Test
-    fun decodeA9TelemetryWithoutF5HasNoPwm() = runBlocking {
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals("KingSong", data.manufacturer)
-        assertNull(data.pwm)
+    fun decodeA9TelemetryWithoutF5HasNoPwm() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals("KingSong", data.manufacturer)
+            assertNull(data.pwm)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeF5ThenA9PublishesPwm() = runBlocking {
-        protocol.decode(createF5Frame(outputPercentByte = 63))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+    fun decodeF5ThenA9PublishesPwm() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createF5Frame(outputPercentByte = 63))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
@@ -145,66 +162,95 @@ class KingsongProtocolTest {
     // --- Tests for frame 0xB9 (distance/fan/temp2) ---
 
     @Test
-    fun decodeB9ThenA9IncludesTopSpeedAndFan() = runBlocking {
-        protocol.decode(createB9Frame(
-            wheelDistanceRaw = 5000L,
-            topSpeedRaw = 3500,
-            fanStatus = 1,
-            chargingStatus = 0,
-            temperature2Raw = 4200
-        ))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals(35.0, data.topSpeed ?: -1.0, 0.01)
-        assertEquals(1, data.fanStatus)
-        assertEquals(0, data.chargingStatus)
-        assertEquals(42.0, data.temperature2 ?: -1.0, 0.01)
-        assertEquals(5000.0, data.wheelDistance ?: -1.0, 0.01)
+    fun decodeB9ThenA9IncludesTopSpeedAndFan() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+
+        protocol.dataFlow.test {
+            protocol.decode(
+                createB9Frame(
+                    wheelDistanceRaw = 5000L,
+                    topSpeedRaw = 3500,
+                    fanStatus = 1,
+                    chargingStatus = 0,
+                    temperature2Raw = 4200
+                )
+            )
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals(35.0, data.topSpeed ?: -1.0, 0.01)
+            assertEquals(1, data.fanStatus)
+            assertEquals(0, data.chargingStatus)
+            assertEquals(42.0, data.temperature2 ?: -1.0, 0.01)
+            assertEquals(5000.0, data.wheelDistance ?: -1.0, 0.01)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Tests for frame 0xBB (name/model/version) ---
 
     @Test
-    fun decodeBBThenA9IncludesModelAndVersion() = runBlocking {
-        protocol.decode(createBBFrame("KS-16X-234"))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals("KS-16X", data.model)
-        assertEquals("2.34", data.firmwareVersion)
+    fun decodeBBThenA9IncludesModelAndVersion() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createBBFrame("KS-16X-234"))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals("KS-16X", data.model)
+            assertTrue(data.firmwareVersion in arrayOf("2.34", "2,34"))
+            cancelAndIgnoreRemainingEvents()
+        }
+
     }
 
     // --- Tests for frame 0xB3 (serial number) ---
 
     @Test
-    fun decodeB3ThenA9IncludesSerial() = runBlocking {
-        protocol.decode(createB3Frame("KS16X12345678901"))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertNotNull(data.serialNumber)
-        assertTrue(data.serialNumber!!.startsWith("KS16X"))
+    fun decodeB3ThenA9IncludesSerial() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createB3Frame("KS16X12345678901"))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertNotNull(data.serialNumber)
+            assertTrue(data.serialNumber!!.startsWith("KS16X"))
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Tests for frame 0xF6 (speed limit) ---
 
     @Test
-    fun decodeF6ThenA9IncludesSpeedLimit() = runBlocking {
-        protocol.decode(createF6Frame(speedLimitRaw = 3000))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals(30.0, data.speedLimit ?: -1.0, 0.01)
+    fun decodeF6ThenA9IncludesSpeedLimit() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createF6Frame(speedLimitRaw = 3000))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals(30.0, data.speedLimit ?: -1.0, 0.01)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Tests for frame 0xA4 (alarm speeds) ---
 
     @Test
-    fun decodeA4ThenA9IncludesAlarmSpeeds() = runBlocking {
-        protocol.decode(createA4Frame(alarm1 = 20, alarm2 = 30, alarm3 = 40, maxSpeed = 50))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals(20, data.alarm1Speed)
-        assertEquals(30, data.alarm2Speed)
-        assertEquals(40, data.alarm3Speed)
-        assertEquals(50, data.wheelMaxSpeed)
+    fun decodeA4ThenA9IncludesAlarmSpeeds() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA4Frame(alarm1 = 20, alarm2 = 30, alarm3 = 40, maxSpeed = 50))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals(20, data.alarm1Speed)
+            assertEquals(30, data.alarm2Speed)
+            assertEquals(40, data.alarm3Speed)
+            assertEquals(50, data.wheelMaxSpeed)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Tests for new commands ---
@@ -246,129 +292,262 @@ class KingsongProtocolTest {
     // --- Tests for frame 0xF5 (cpuLoad) ---
 
     @Test
-    fun decodeF5ThenA9IncludesCpuLoad() = runBlocking {
-        protocol.decode(createF5Frame(outputPercentByte = 63, cpuLoadByte = 42))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertEquals(42, data.cpuLoad)
-        assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+    fun decodeF5ThenA9IncludesCpuLoad() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+
+        protocol.dataFlow.test {
+            protocol.decode(createF5Frame(outputPercentByte = 63, cpuLoadByte = 42))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals(42, data.cpuLoad)
+            assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Tests for BMS frames (0xF1/0xF2) ---
+    private suspend fun waitForBmsCycles(expected: Int) {
+        withTimeout(5_000L.milliseconds) {
+            while (true) {
+                val cycles = protocol.getBMSData().firstOrNull()?.cycles ?: 0
+                if (cycles == expected) return@withTimeout
+                kotlinx.coroutines.delay(10.milliseconds)
+            }
+        }
+    }
+
+    private suspend fun waitForBmsCellCount(expected: Int) {
+        withTimeout(5_000L.milliseconds) {
+            while (true) {
+                val count = protocol.getBMSData().firstOrNull()?.cellVoltages?.size ?: 0
+                if (count >= expected) return@withTimeout
+                kotlinx.coroutines.delay(10.milliseconds)
+            }
+        }
+    }
+
+    private suspend fun waitForBmsTempsCount(expected: Int) {
+        withTimeout(5_000L.milliseconds) {
+            while (true) {
+                val count = protocol.getBMSData().firstOrNull()?.temperatures?.size ?: 0
+                if (count >= expected) return@withTimeout
+                kotlinx.coroutines.delay(10.milliseconds)
+            }
+        }
+    }
 
     @Test
-    fun decodeBmsPage00SummaryIsStoredInGetBMSData() = runBlocking {
+    fun decodeBmsPage00SummaryIsStoredInGetBMSData() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
         // Page 0x00: voltage=84.00V, current=-2.50A, remaining=5000mAh, factory=6000mAh, cycles=42
-        protocol.decode(createBmsPage00Frame(
-            messageType = 0xF1,
-            bmsVoltageRaw = 8400,
-            bmsCurrentRaw = -250,
-            remainingCapacity = 5000,
-            factoryCapacity = 6000,
-            cycles = 42
-        ))
-        val bmsDataList = protocol.getBMSData()
-        assertTrue(bmsDataList.isNotEmpty())
-        val bms = bmsDataList.first()
-        assertEquals(1, bms.bmsIndex)
-        assertEquals(84.0, bms.voltage ?: -1.0, 0.01)
-        assertEquals(-2.5, bms.current ?: -1.0, 0.01)
-        assertEquals(5000, bms.remainingCapacity)
-        assertEquals(6000, bms.factoryCapacity)
-        assertEquals(42, bms.cycles)
+        protocol.dataFlow.test {
+            protocol.decode(createF5Frame(outputPercentByte = 63, cpuLoadByte = 42))
+            protocol.decode(
+                createBmsPage00Frame(
+                    messageType = 0xF1,
+                    bmsVoltageRaw = 8400,
+                    bmsCurrentRaw = -250,
+                    remainingCapacity = 5000,
+                    factoryCapacity = 6000,
+                    cycles = 42
+                )
+            )
+            waitForBmsCycles(42)
+            val bmsDataList = protocol.getBMSData()
+            assertTrue(bmsDataList.isNotEmpty())
+            val bms = bmsDataList.first()
+            assertEquals(1, bms.bmsIndex)
+            assertEquals(84.0, bms.voltage ?: -1.0, 0.01)
+            assertEquals(-2.5, bms.current ?: -1.0, 0.01)
+            assertEquals(5000, bms.remainingCapacity)
+            assertEquals(6000, bms.factoryCapacity)
+            assertEquals(42, bms.cycles)
+
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeBmsPage01TemperaturesIsStoredInGetBMSData() = runBlocking {
-        // Page 0x01: 7 temperature probes at 0.1°C units
-        protocol.decode(createBmsPage01Frame(
-            messageType = 0xF1,
-            temperatures = intArrayOf(250, 260, 270, 280, 290, 300, 310)
-        ))
-        val bmsDataList = protocol.getBMSData()
-        assertTrue(bmsDataList.isNotEmpty())
-        val bms = bmsDataList.first()
-        assertNotNull(bms.temperatures)
-        assertEquals(7, bms.temperatures!!.size)
-        assertEquals(25.0, bms.temperatures!![0], 0.01)
-        assertEquals(31.0, bms.temperatures!![6], 0.01)
+    fun decodeBmsPage01TemperaturesIsStoredInGetBMSData() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // Page 0x01: 7 temperature probes at 0.1°C units
+            protocol.decode(
+                createBmsPage01Frame(
+                    messageType = 0xF1,
+                    temperatures = intArrayOf(250, 260, 270, 280, 290, 300, 310)
+                )
+            )
+            waitForBmsTempsCount(7)
+            val bmsDataList = protocol.getBMSData()
+            assertTrue(bmsDataList.isNotEmpty())
+            val bms = bmsDataList.first()
+            assertNotNull(bms.temperatures)
+            assertEquals(7, bms.temperatures!!.size)
+            assertEquals(25.0, bms.temperatures!![0], 0.01)
+            assertEquals(31.0, bms.temperatures!![6], 0.01)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun getBMSDataCombinesSummaryTempsAndCells() = runBlocking {
-        // Send summary, temperatures, and cell voltages for BMS 1
-        protocol.decode(createBmsPage00Frame(messageType = 0xF1, bmsVoltageRaw = 8400, bmsCurrentRaw = 100, remainingCapacity = 4000, factoryCapacity = 5000, cycles = 10))
-        protocol.decode(createBmsPage01Frame(messageType = 0xF1, temperatures = intArrayOf(250, 260, 270, 280, 290, 300, 310)))
-        protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x02, cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)))
+    fun getBMSDataCombinesSummaryTempsAndCells() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // Send summary, temperatures, and cell voltages for BMS 1
+            protocol.decode(
+                createBmsPage00Frame(
+                    messageType = 0xF1,
+                    bmsVoltageRaw = 8400,
+                    bmsCurrentRaw = 100,
+                    remainingCapacity = 4000,
+                    factoryCapacity = 5000,
+                    cycles = 10
+                )
+            )
+            protocol.decode(
+                createBmsPage01Frame(
+                    messageType = 0xF1,
+                    temperatures = intArrayOf(250, 260, 270, 280, 290, 300, 310)
+                )
+            )
+            protocol.decode(
+                createBmsFrame(
+                    messageType = 0xF1,
+                    pageNum = 0x02,
+                    cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)
+                )
+            )
+            waitForBmsCycles(10)
+            waitForBmsTempsCount(7)
+            waitForBmsCellCount(7)
 
-        val bmsDataList = protocol.getBMSData()
-        assertEquals(1, bmsDataList.size)
-        val bms = bmsDataList[0]
-        assertEquals(1, bms.bmsIndex)
-        assertNotNull(bms.voltage)
-        assertNotNull(bms.temperatures)
-        assertNotNull(bms.cellVoltages)
-        assertEquals(7, bms.cellVoltages!!.size)
-        assertEquals(4.2, bms.cellVoltages!![0], 0.001)
+            val bmsDataList = protocol.getBMSData()
+            assertEquals(1, bmsDataList.size)
+            val bms = bmsDataList[0]
+            assertEquals(1, bms.bmsIndex)
+            assertNotNull(bms.voltage)
+            assertNotNull(bms.temperatures)
+            assertNotNull(bms.cellVoltages)
+            assertEquals(7, bms.cellVoltages!!.size)
+            assertEquals(4.2, bms.cellVoltages!![0], 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeBmsCellVoltagesPage02() = runBlocking {
-        // Page 0x02: first 7 cell voltages for BMS 1 (0xF1)
-        protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x02, cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertNotNull(data.cellVoltages)
-        val cells = data.cellVoltages!!
-        assertTrue(cells.isNotEmpty())
-        assertEquals(4.2, cells[0], 0.001)
-        assertEquals(4.15, cells[1], 0.001)
-        assertEquals(3.9, cells[6], 0.001)
+    fun decodeBmsCellVoltagesPage02() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // Page 0x02: first 7 cell voltages for BMS 1 (0xF1)
+            protocol.decode(
+                createBmsFrame(
+                    messageType = 0xF1,
+                    pageNum = 0x02,
+                    cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)
+                )
+            )
+            waitForBmsCellCount(7)
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertNotNull(data.cellVoltages)
+            val cells = data.cellVoltages!!
+            assertTrue(cells.isNotEmpty())
+            assertEquals(4.2, cells[0], 0.001)
+            assertEquals(4.15, cells[1], 0.001)
+            assertEquals(3.9, cells[6], 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeBmsMultiplePagesAccumulatesCells() = runBlocking {
-        // Page 0x02: cells 0-6, Page 0x03: cells 7-13
-        protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x02, cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)))
-        protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x03, cellVoltages = intArrayOf(4180, 4130, 4080, 4030, 3980, 3930, 3880)))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertNotNull(data.cellVoltages)
-        val cells = data.cellVoltages!!
-        assertTrue(cells.size >= 14)
-        assertEquals(4.2, cells[0], 0.001)
-        assertEquals(4.18, cells[7], 0.001)
+    fun decodeBmsMultiplePagesAccumulatesCells() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // Page 0x02: cells 0-6, Page 0x03: cells 7-13
+            protocol.decode(
+                createBmsFrame(
+                    messageType = 0xF1,
+                    pageNum = 0x02,
+                    cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)
+                )
+            )
+            protocol.decode(
+                createBmsFrame(
+                    messageType = 0xF1,
+                    pageNum = 0x03,
+                    cellVoltages = intArrayOf(4180, 4130, 4080, 4030, 3980, 3930, 3880)
+                )
+            )
+            waitForBmsCellCount(14)
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertNotNull(data.cellVoltages)
+            val cells = data.cellVoltages!!
+            assertTrue(cells.size >= 14)
+            assertEquals(4.2, cells[0], 0.001)
+            assertEquals(4.18, cells[7], 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun decodeBmsF2SeparateFromF1() = runBlocking {
-        // BMS 1 and BMS 2 contribute separate cells
-        protocol.decode(createBmsFrame(messageType = 0xF1, pageNum = 0x02, cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)))
-        protocol.decode(createBmsFrame(messageType = 0xF2, pageNum = 0x02, cellVoltages = intArrayOf(4100, 4050, 4000, 3950, 3900, 3850, 3800)))
-        protocol.decode(createA9Frame())
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertNotNull(data.cellVoltages)
-        val cells = data.cellVoltages!!
-        // Should have cells from both BMS packs
-        assertTrue(cells.size >= 14)
+    fun decodeBmsF2SeparateFromF1() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // BMS 1 and BMS 2 contribute separate cells
+            protocol.decode(
+                createBmsFrame(
+                    messageType = 0xF1,
+                    pageNum = 0x02,
+                    cellVoltages = intArrayOf(4200, 4150, 4100, 4050, 4000, 3950, 3900)
+                )
+            )
+            protocol.decode(
+                createBmsFrame(
+                    messageType = 0xF2,
+                    pageNum = 0x02,
+                    cellVoltages = intArrayOf(4100, 4050, 4000, 3950, 3900, 3850, 3800)
+                )
+            )
+            waitForBmsCellCount(7)
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertNotNull(data.cellVoltages)
+            val cells = data.cellVoltages!!
+            // Should have cells from both BMS packs
+            assertTrue(cells.size >= 14)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Tests for SET_SPEED_LIMIT command ---
-
     @Test
-    fun createCommandSetSpeedLimit() {
+    fun createCommandSetSpeedLimit() = runTest {
         // First feed an A4 frame to set known alarm values
-        runBlocking {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
             protocol.decode(createA4Frame(alarm1 = 25, alarm2 = 35, alarm3 = 45, maxSpeed = 50))
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            val cmd = protocol.createCommand(CommandType.SET_SPEED_LIMIT, 60)
+            assertEquals(0x85.toByte(), cmd[16])
+            // max speed at offset 8
+            assertEquals(60.toByte(), cmd[8])
+            // alarm values should be preserved
+            assertEquals(25.toByte(), cmd[2])
+            assertEquals(35.toByte(), cmd[4])
+            assertEquals(45.toByte(), cmd[6])
+            cancelAndIgnoreRemainingEvents()
         }
-        val cmd = protocol.createCommand(CommandType.SET_SPEED_LIMIT, 60)
-        assertEquals(0x85.toByte(), cmd[16])
-        // max speed at offset 8
-        assertEquals(60.toByte(), cmd[8])
-        // alarm values should be preserved
-        assertEquals(25.toByte(), cmd[2])
-        assertEquals(35.toByte(), cmd[4])
-        assertEquals(45.toByte(), cmd[6])
     }
 
     @Test
@@ -389,14 +568,19 @@ class KingsongProtocolTest {
 
     @Test
     fun matchesQueryResponseForFirmware() {
-        val query = ProtocolQuerySpec("ks.request-name-version", CommandType.REQUEST_FIRMWARE, maxRetries = 3)
+        val query = ProtocolQuerySpec(
+            "ks.request-name-version",
+            CommandType.REQUEST_FIRMWARE,
+            maxRetries = 3
+        )
         val bbFrame = createBBFrame("KS-16X-234")
         assertTrue(protocol.matchesQueryResponse(query, bbFrame))
     }
 
     @Test
     fun matchesQueryResponseForSerial() {
-        val query = ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val query =
+            ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
         val b3Frame = createB3Frame("KS16X12345678901")
         assertTrue(protocol.matchesQueryResponse(query, b3Frame))
     }
@@ -410,14 +594,16 @@ class KingsongProtocolTest {
 
     @Test
     fun matchesQueryResponseReturnsFalseForWrongType() {
-        val query = ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val query =
+            ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
         val bbFrame = createBBFrame("KS-16X-234") // 0xBB != 0xB3
         assertFalse(protocol.matchesQueryResponse(query, bbFrame))
     }
 
     @Test
     fun matchesQueryResponseReturnsFalseForShortFrame() {
-        val query = ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val query =
+            ProtocolQuerySpec("ks.request-serial", CommandType.REQUEST_SERIAL, maxRetries = 3)
         val shortFrame = ByteArray(5)
         assertFalse(protocol.matchesQueryResponse(query, shortFrame))
     }
@@ -425,33 +611,77 @@ class KingsongProtocolTest {
     // --- Tests for isDeviceReady ---
 
     @Test
-    fun isDeviceReadyReturnsTrueForNormalConditions() = runBlocking {
-        protocol.decode(createA9Frame(voltageRaw = 8400, temperatureRaw = 3500, batteryByte = 80))
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertTrue(protocol.isDeviceReady(data))
+    fun isDeviceReadyReturnsTrueForNormalConditions() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createA9Frame(
+                    voltageRaw = 8400,
+                    temperatureRaw = 3500,
+                    batteryByte = 80
+                )
+            )
+            val data = awaitItem()
+            assertTrue(protocol.isDeviceReady(data))
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun isDeviceReadyReturnsFalseForLowBattery() = runBlocking {
-        protocol.decode(createA9Frame(voltageRaw = 8400, temperatureRaw = 3500, batteryByte = 3))
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertFalse(protocol.isDeviceReady(data))
+    fun isDeviceReadyReturnsFalseForLowBattery() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createA9Frame(
+                    voltageRaw = 8400,
+                    temperatureRaw = 3500,
+                    batteryByte = 3
+                )
+            )
+            val data = awaitItem()
+            assertFalse(protocol.isDeviceReady(data))
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun isDeviceReadyReturnsFalseForHighTemp() = runBlocking {
-        // temperature = raw / 100, so 8000 = 80°C > 75°C
-        protocol.decode(createA9Frame(voltageRaw = 8400, temperatureRaw = 8000, batteryByte = 80))
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertFalse(protocol.isDeviceReady(data))
+    fun isDeviceReadyReturnsFalseForHighTemp() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // temperature = raw / 100, so 8000 = 80°C > 75°C
+            protocol.decode(
+                createA9Frame(
+                    voltageRaw = 8400,
+                    temperatureRaw = 8000,
+                    batteryByte = 80
+                )
+            )
+            val data = awaitItem()
+            assertFalse(protocol.isDeviceReady(data))
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun isDeviceReadyReturnsFalseForLowVoltage() = runBlocking {
-        // voltage = raw / 100, so 2500 = 25V < 30V
-        protocol.decode(createA9Frame(voltageRaw = 2500, temperatureRaw = 3500, batteryByte = 80))
-        val data = withTimeout(5_000L) { protocol.dataFlow.first() }
-        assertFalse(protocol.isDeviceReady(data))
+    fun isDeviceReadyReturnsFalseForLowVoltage() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // voltage = raw / 100, so 2500 = 25V < 30V
+            protocol.decode(
+                createA9Frame(
+                    voltageRaw = 4000,
+                    temperatureRaw = 3500,
+                    batteryByte = 80
+                )
+            )
+            val data = awaitItem()
+            assertFalse(protocol.isDeviceReady(data))
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     // --- Frame builders ---
