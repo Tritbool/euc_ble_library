@@ -74,7 +74,6 @@ class WheelLogKingsongTest {
             cancelAndIgnoreRemainingEvents()
         }
         decoded
-
     }
 
     /**

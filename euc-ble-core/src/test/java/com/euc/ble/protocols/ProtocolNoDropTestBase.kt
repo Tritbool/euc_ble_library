@@ -1,7 +1,10 @@
 package com.euc.ble.protocols
 
+import app.cash.turbine.test
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
+import com.euc.ble.models.EUCData
+import com.euc.ble.protocols.WheelLogKingsongTest.BleFrame
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -12,11 +15,14 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Base class for no-drop pipeline tests.
@@ -55,16 +61,16 @@ sealed class ProtocolNoDropTestBase {
         val packets = loadCsvFrames(csvResourcePath)
         assertTrue(packets.size >= minimumExpectedFrameCount)
 
-        var oracleCount = 0
+       var oracleCount = 0
         val oracleJob = launch { oracle.dataFlow.collect { oracleCount++ } }
         packets.forEach { oracle.decode(it) }
-        delay(5_000L) // laisser drainer
+        delay(5_000L.milliseconds) // laisser drainer
         oracleJob.cancel()
 
         assertTrue("Oracle a produit 0 frames", oracleCount > 0)
 
         val collectJob = async(Dispatchers.Default) {
-            withTimeout(30_000L) { sut.dataFlow.take(oracleCount).toList() }
+            withTimeout(30_000L.milliseconds) { sut.dataFlow.take(oracleCount).toList() }
         }
         packets.forEach { sut.decode(it) }
 
@@ -109,7 +115,7 @@ sealed class ProtocolNoDropTestBase {
 }
 
 @SlowTest
-class GotwayNoDropTest : ProtocolNoDropTestBase() {
+class GotwayNoDropTest : ProtocolNoDropTestBase(){
     override val csvResourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"
     override val minimumExpectedFrameCount = 200
     override fun createProtocol() = GotwayProtocol()

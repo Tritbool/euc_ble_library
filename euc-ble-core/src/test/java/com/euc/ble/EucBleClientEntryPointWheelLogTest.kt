@@ -14,6 +14,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
@@ -56,7 +57,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*                                 BEGODE / GOTWAY                                   */
     /*************************************************************************************/
     @Test
-    fun metadataAndFrameSelectGotwayProtocol() = runBlocking {
+    fun metadataAndFrameSelectGotwayProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Begode Master PRO",
@@ -74,7 +75,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun noMetadataAndFrameSelectGotwayProtocol() = runBlocking {
+    fun noMetadataAndFrameSelectGotwayProtocol() = runTest {
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv",
@@ -89,7 +90,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*                                    INMOTION                                       */
     /*************************************************************************************/
     @Test
-    fun noMetadataAndFrameSelectInmotionProtocol() = runBlocking {
+    fun noMetadataAndFrameSelectInmotionProtocol() = runTest {
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv",
@@ -104,7 +105,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun MetadataAndFrameSelectInMotionProtocol() = runBlocking {
+    fun MetadataAndFrameSelectInMotionProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "P6",
@@ -126,7 +127,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*                                    KINGSONG                                       */
     /*************************************************************************************/
     @Test
-    fun noMetadataAndFrameSelectKingsongProtocol() = runBlocking {
+    fun noMetadataAndFrameSelectKingsongProtocol() = runTest {
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv",
@@ -140,7 +141,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun MetadataAndFrameSelectKingsongProtocol() = runBlocking {
+    fun MetadataAndFrameSelectKingsongProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "KS-S22",
@@ -163,7 +164,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*                                   LEAPERKIM                                       */
     /*************************************************************************************/
     @Test
-    fun noMetadataAndFrameSelectLeaperkimProtocol() = runBlocking {
+    fun noMetadataAndFrameSelectLeaperkimProtocol() = runTest {
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
@@ -177,7 +178,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun NosfetOnLeaperkimProtocol() = runBlocking {
+    fun NosfetOnLeaperkimProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Nosfet Aeon",
@@ -196,7 +197,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun MetadataAndFrameSelectLeaperkimProtocol() = runBlocking {
+    fun MetadataAndFrameSelectLeaperkimProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "PATTON",
@@ -223,7 +224,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*                                    NINEBOT-Z                                      */
     /*************************************************************************************/
     @Test
-    fun noMetadataAndFrameSelectNosfetFallbackToLK() = runBlocking {
+    fun noMetadataAndFrameSelectNosfetFallbackToLK() = runTest {
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
@@ -237,7 +238,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun MetadataAndFrameSelectNosfetProtocol() = runBlocking {
+    fun MetadataAndFrameSelectNosfetProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Aero",
@@ -260,7 +261,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*                                     NOSFET                                        */
     /*************************************************************************************/
     @Test
-    fun noMetadataAndFrameSelectNinebotZ() = runBlocking {
+    fun noMetadataAndFrameSelectNinebotZ() = runTest {
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_08_21_11_24_37.csv",
@@ -274,7 +275,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun MetadataAndFrameSelectNinebotZProtocol() = runBlocking {
+    fun MetadataAndFrameSelectNinebotZProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Z10",
@@ -293,7 +294,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     @Test
-    fun MetadataAndFrameSelectNinebotProtocol() = runBlocking {
+    fun MetadataAndFrameSelectNinebotProtocol() = runTest {
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Ninebot",
