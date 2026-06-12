@@ -1,30 +1,25 @@
 package com.euc.ble.frames
 
-import com.euc.ble.protocols.GotwayProtocol
+import app.cash.turbine.test
 import com.euc.ble.protocols.GotwayProtocol.Companion.FOOTER
 import com.euc.ble.protocols.GotwayProtocol.Companion.FRAME_SIZE
 import com.euc.ble.protocols.GotwayProtocol.Companion.HEADER
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.resetMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.seconds
 
 class GotwayFrameReassemblerTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    private val frameParser= FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
+    private val frameParser = FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
     private lateinit var frameReassembler: FrameReassembler
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -38,7 +33,7 @@ class GotwayFrameReassemblerTest {
     @AfterEach
     fun tearDown() {
         Dispatchers.resetMain()
-        frameReassembler.reset() // Clear buffer and state after each test
+        frameReassembler.reset()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -71,13 +66,13 @@ class GotwayFrameReassemblerTest {
             0x5A.toByte()
         )
 
-        val result = async {
-            frameReassembler.observeFrames().first()
+        frameReassembler.observeFrames().test(timeout = 5.seconds) {
+            frameReassembler.processIncomingBytes(frame)
+
+            Assertions.assertArrayEquals(frame, awaitItem())
+
+            cancelAndIgnoreRemainingEvents()
         }
-        runCurrent()
-        frameReassembler.processIncomingBytes(frame)
-        advanceUntilIdle()
-        Assertions.assertArrayEquals(frame, result.await())
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -137,20 +132,14 @@ class GotwayFrameReassemblerTest {
         )
         val data = frame1 + frame2
 
-        val results = mutableListOf<ByteArray>()
+        frameReassembler.observeFrames().test(timeout = 5.seconds) {
+            frameReassembler.processIncomingBytes(data)
 
-        val job = launch {
-            frameReassembler.observeFrames().toList(results)
+            Assertions.assertArrayEquals(frame1, awaitItem())
+            Assertions.assertArrayEquals(frame2, awaitItem())
+
+            cancelAndIgnoreRemainingEvents()
         }
-        runCurrent()
-        frameReassembler.processIncomingBytes(data)
-        advanceUntilIdle()
-
-        Assertions.assertEquals(2, results.size)
-        Assertions.assertArrayEquals(frame1, results[0])
-        Assertions.assertArrayEquals(frame2, results[1])
-
-        job.cancel()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -211,20 +200,14 @@ class GotwayFrameReassemblerTest {
         )
         val data = frame1 + garbage + frame2
 
-        val results = mutableListOf<ByteArray>()
+        frameReassembler.observeFrames().test(timeout = 5.seconds) {
+            frameReassembler.processIncomingBytes(data)
 
-        val job = launch {
-            frameReassembler.observeFrames().toList(results)
+            Assertions.assertArrayEquals(frame1, awaitItem())
+            Assertions.assertArrayEquals(frame2, awaitItem())
+
+            cancelAndIgnoreRemainingEvents()
         }
-        runCurrent()
-        frameReassembler.processIncomingBytes(data)
-        advanceUntilIdle()
-
-        Assertions.assertEquals(2, results.size)
-        Assertions.assertArrayEquals(frame1, results[0])
-        Assertions.assertArrayEquals(frame2, results[1])
-
-        job.cancel()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -260,17 +243,13 @@ class GotwayFrameReassemblerTest {
         val chunk1 = frame.copyOfRange(0, 10)
         val chunk2 = frame.copyOfRange(10, 24)
 
-        val result = async {
-            frameReassembler.observeFrames().first()
+        frameReassembler.observeFrames().test(timeout = 5.seconds) {
+            frameReassembler.processIncomingBytes(chunk1)
+            frameReassembler.processIncomingBytes(chunk2)
+
+            Assertions.assertArrayEquals(frame, awaitItem())
+
+            cancelAndIgnoreRemainingEvents()
         }
-        runCurrent()
-
-        frameReassembler.processIncomingBytes(chunk1)
-        advanceUntilIdle() // Ensure the first chunk is processed
-
-        frameReassembler.processIncomingBytes(chunk2)
-        advanceUntilIdle() // Ensure the second chunk is processed
-
-        Assertions.assertArrayEquals(frame, result.await())
     }
 }

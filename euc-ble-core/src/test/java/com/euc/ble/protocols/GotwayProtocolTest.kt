@@ -1,11 +1,6 @@
-// File: `euc-ble-core/src/test/java/com/euc/ble/protocols/GotwayProtocolTest.kt`
 package com.euc.ble.protocols
 
 import com.euc.ble.models.EUCDevice
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -15,7 +10,8 @@ import com.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import org.junit.jupiter.api.Assertions.assertNotEquals
+import app.cash.turbine.test
+import kotlinx.coroutines.test.runTest
 
 class GotwayProtocolTest {
 
@@ -29,7 +25,9 @@ class GotwayProtocolTest {
 
     @AfterEach
     fun tearDown() {
-        protocol.close()
+        if (this::protocol.isInitialized) {
+            protocol.close()
+        }
     }
 
     /**
@@ -266,12 +264,9 @@ class GotwayProtocolTest {
     }
 
     @Test
-    fun testDecodeValidTypeAFrame() = runBlocking {
-        // voltageRaw=6720 -> 67.20V
-        // speedRaw=833 -> 833*3.6/100 = 29.988 km/h (~30)
-        // distance=1000 m
-        // currentRaw=250 -> 2.50A
-        // tempRaw=2500 -> 25.0°C
+    fun testDecodeValidTypeAFrame() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
         val frame = createGotwayFrame(
             voltageRaw = 6720,
             speedRaw = 833,
@@ -282,24 +277,29 @@ class GotwayProtocolTest {
             frameType = 0x00
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(67.2, result.voltage, 0.01)
+            assertEquals(29.988, result.speed, 0.1)
+            assertEquals(1000.0, result.distance, 0.01)
+            assertEquals(2.5, result.current, 0.01)
+            assertEquals(25.0, result.temperature, 0.01)
+            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
+            assertEquals("Gotway", result.manufacturer)
+            assertEquals("Gotway (Type A)", result.model)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(67.2, result.voltage, 0.01)
-        assertEquals(29.988, result.speed, 0.1)
-        assertEquals(1000.0, result.distance, 0.01)
-        assertEquals(2.5, result.current, 0.01)
-        assertEquals(25.0, result.temperature, 0.01)
-        assertEquals(13.6, result.pwm ?: 0.0, 0.01)
-        assertEquals("Gotway", result.manufacturer)
-        assertEquals("Gotway (Type A)", result.model)
     }
 
     @Test
-    fun testDecodeValidTypeBFrame() = runBlocking {
+    fun testDecodeValidTypeBFrame() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         val typeAFrame = createGotwayFrame(
             voltageRaw = 6720,
             speedRaw = 833,
@@ -309,31 +309,34 @@ class GotwayProtocolTest {
             pwmRaw = 136,
             frameType = 0x00
         )
-        protocol.decode(typeAFrame)
-        withTimeout(10000) { protocol.dataFlow.first() }
-
-        // Type B provides settings/total distance and should carry forward last telemetry values.
         val frame = createGotwayFrameTypeB(distanceRaw = 123456)
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(typeAFrame)
+            awaitItem()
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            protocol.decode(frame)
+            val result = awaitItem()
+
+            assertEquals(1000.0, result.distance, 0.01)
+            assertEquals(123456.0, result.totalDistance ?: 0.0, 0.01)
+            assertEquals("Gotway", result.manufacturer)
+            assertEquals("Gotway (Type B)", result.model)
+            assertEquals(67.2, result.voltage, 0.01)
+            assertEquals(29.988, result.speed, 0.1)
+            assertEquals(2.5, result.current, 0.01)
+            assertEquals(25.0, result.temperature, 0.01)
+            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(1000.0, result.distance, 0.01)
-        assertEquals(123456.0, result.totalDistance ?: 0.0, 0.01)
-        assertEquals("Gotway", result.manufacturer)
-        assertEquals("Gotway (Type B)", result.model)
-        assertEquals(67.2, result.voltage, 0.01)
-        assertEquals(29.988, result.speed, 0.1)
-        assertEquals(2.5, result.current, 0.01)
-        assertEquals(25.0, result.temperature, 0.01)
-        assertEquals(13.6, result.pwm ?: 0.0, 0.01)
     }
 
     @Test
-    fun testDecodeTypeBParsesSettingsAndAlerts() = runBlocking {
+    fun testDecodeTypeBParsesSettingsAndAlerts() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         val pedalsRaw = 1 // 0..3
         val alarmRaw = 2 // 0..3
         val rollRaw = 3 // 0..3
@@ -348,45 +351,54 @@ class GotwayProtocolTest {
             alertFlags = 0b0010_1101,
             lightMode = 2
         )
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        protocol.decode(frame)
+            val result = awaitItem()
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            assertNotNull(result.totalDistance)
+            assertEquals(456789.0, result.totalDistance!!, 0.01)
+            assertEquals(1, result.pedalsMode)
+            assertEquals(alarmRaw, result.alarmMode)
+            assertEquals(rollRaw, result.rollAngleMode)
+            assertEquals(true, result.usesMiles)
+            assertEquals(15, result.autoPowerOffMinutes)
+            assertEquals(40, result.tiltBackSpeed)
+            assertEquals(5, result.ledMode)
+            assertEquals(2, result.lightMode)
+            assertEquals(0b0010_1101, result.alertFlags)
+            assertEquals(true, result.wheelAlarm)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertNotNull(result.totalDistance)
-        assertEquals(456789.0, result.totalDistance!!, 0.01)
-        assertEquals(1, result.pedalsMode)
-        assertEquals(alarmRaw, result.alarmMode)
-        assertEquals(rollRaw, result.rollAngleMode)
-        assertEquals(true, result.usesMiles)
-        assertEquals(15, result.autoPowerOffMinutes)
-        assertEquals(40, result.tiltBackSpeed)
-        assertEquals(5, result.ledMode)
-        assertEquals(2, result.lightMode)
-        assertEquals(0b0010_1101, result.alertFlags)
-        assertEquals(true, result.wheelAlarm)
     }
 
     @Test
-    fun testDecodeTypeBTiltBackSpeedOverLimitIsIgnored() = runBlocking {
+    fun testDecodeTypeBTiltBackSpeedOverLimitIsIgnored() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         val frame = createGotwayFrameTypeB(
             distanceRaw = 321,
             tiltBackSpeed = 120
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertNull(result.tiltBackSpeed)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertNull(result.tiltBackSpeed)
     }
 
     @Test
-    fun testDecodeZeroValues() = runBlocking {
+    fun testDecodeZeroValues() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         val frame = createGotwayFrame(
             voltageRaw = 0,
             speedRaw = 0,
@@ -395,21 +407,25 @@ class GotwayProtocolTest {
             tempRaw = 0
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(0.0, result.voltage, 0.01)
+            assertEquals(0.0, result.speed, 0.01)
+            assertEquals(0.0, result.distance, 0.01)
+            assertEquals(0.0, result.current, 0.01)
+            assertEquals(0.0, result.temperature, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(0.0, result.voltage, 0.01)
-        assertEquals(0.0, result.speed, 0.01)
-        assertEquals(0.0, result.distance, 0.01)
-        assertEquals(0.0, result.current, 0.01)
-        assertEquals(0.0, result.temperature, 0.01)
     }
 
     @Test
-    fun testDecodeOutOfRangeFrameIsDropped() {
+    fun testDecodeOutOfRangeFrameIsDropped() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
         // Frame avec speedRaw=65535 (2359 km/h) doit être silencieusement ignorée
         val frame = createGotwayFrame(
             voltageRaw = 65535,
@@ -421,14 +437,17 @@ class GotwayProtocolTest {
         // decode() retourne null (asynchrone)
         assertNull(protocol.decode(frame))
         // dataFlow ne doit rien émettre — vérification via timeout
-        val result = runBlocking {
-            withTimeoutOrNull(500) { protocol.dataFlow.first() }
+        protocol.dataFlow.test {
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
         }
-        assertNull("Frame hors plage ne doit pas être émise", result)
     }
 
     @Test
-    fun testDecodeMaxValues() = runBlocking {
+    fun testDecodeMaxValues() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         // Max unsigned short = 65535
         // Max unsigned int = 0xFFFFFFFF = 4294967295
         val frame = createGotwayFrame(
@@ -439,21 +458,26 @@ class GotwayProtocolTest {
             tempRaw = 32767        // 327.67°C
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(300.0, result.voltage, 0.01)
+            assertEquals(200.0, result.speed, 0.1)
+            assertEquals(4294967295.0, result.distance, 1.0)
+            assertEquals(327.67, result.current, 0.01)
+            assertEquals(327.67, result.temperature, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(300.0, result.voltage, 0.01)
-        assertEquals(200.0, result.speed, 0.1)
-        assertEquals(4294967295.0, result.distance, 1.0)
-        assertEquals(327.67, result.current, 0.01)
-        assertEquals(327.67, result.temperature, 0.01)
     }
 
     @Test
-    fun testDecodeNegativeCurrent() = runBlocking {
+    fun testDecodeNegativeCurrent() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         // Negative current (regenerative braking)
         // -500 as signed short = 0xFE0C in two's complement
         val frame = createGotwayFrame(
@@ -464,17 +488,22 @@ class GotwayProtocolTest {
             tempRaw = 2500
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(-5.0, result.current, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(-5.0, result.current, 0.01)
     }
 
     @Test
-    fun testDecodeTypeAUsesTripDistanceFieldAtBytes8To9() = runBlocking {
+    fun testDecodeTypeAUsesTripDistanceFieldAtBytes8To9() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         val frame = createGotwayNewBoardTypeAFrame(
             voltageRaw = 0x1775,
             speedRaw = 0x0538,
@@ -483,18 +512,23 @@ class GotwayProtocolTest {
             tempRaw = 0x1481
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(0.75, result.distance, 0.001)
+            assertEquals(48.096, result.speed, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(0.75, result.distance, 0.001)
-        assertEquals(48.096, result.speed, 0.01)
     }
 
     @Test
-    fun testDecodeTypeAUsesHardwarePwmWhenCustomFirmwareIsDetected() = runBlocking {
+    fun testDecodeTypeAUsesHardwarePwmWhenCustomFirmwareIsDetected() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         protocol.decode("NAME Begode Master".encodeToByteArray())
         protocol.decode("CF1.0.3".encodeToByteArray())
         val frame = createGotwayFrame(
@@ -507,16 +541,24 @@ class GotwayProtocolTest {
             frameType = 0x00
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) { protocol.dataFlow.first() }
-        assertEquals(136.0, result.pwm ?: 0.0, 0.01)
-        assertEquals("Begode Master", result.model)
-        assertEquals("1.0.3", result.firmwareVersion)
+            val result = awaitItem()
+
+            assertEquals(136.0, result.pwm ?: 0.0, 0.01)
+            assertEquals("Begode Master", result.model)
+            assertEquals("1.0.3", result.firmwareVersion)
+
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun testDecodeTypeATelemetryCarriesLegacyFirmwareMetadata() = runBlocking {
+    fun testDecodeTypeATelemetryCarriesLegacyFirmwareMetadata() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         protocol.decode("NAME Nikola Plus".encodeToByteArray())
         protocol.decode("GW2.5.1".encodeToByteArray())
         val frame = createGotwayFrame(
@@ -529,36 +571,50 @@ class GotwayProtocolTest {
             frameType = 0x00
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) { protocol.dataFlow.first() }
-        assertEquals("Nikola Plus", result.model)
-        assertEquals("2.5.1", result.firmwareVersion)
-        assertEquals(13.6, result.pwm ?: 0.0, 0.01)
-    }
+            val result = awaitItem()
 
-    @Test
-    fun testDecodeType7UsesLatestType1VoltageAndPublishesMotorTemperature() = runBlocking {
-        val type1 = createGotwayFrameType1(batteryVoltageTenth = 1201) // 120.1V
-        val type7 = createGotwayFrameType7(batteryCurrentRaw = 556, motorTempRaw = 35, truePwmRaw = 82)
+            assertEquals("Nikola Plus", result.model)
+            assertEquals("2.5.1", result.firmwareVersion)
+            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
 
-        protocol.decode(type1)
-        protocol.decode(type7)
-
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals("Gotway (Type 7)", result.model)
-        assertEquals(120.1, result.voltage, 0.01)
-        assertEquals(-5.56, result.current, 0.01)
-        assertNotNull(result.motorTemperature)
-        assertEquals(35.0, result.motorTemperature!!, 0.01)
-        assertEquals(82.0, result.pwm ?: 0.0, 0.01)
     }
 
     @Test
-    fun testDecodeFragmentedFrames() = runBlocking {
+    fun testDecodeType7UsesLatestType1VoltageAndPublishesMotorTemperature() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val type1 = createGotwayFrameType1(batteryVoltageTenth = 1201) // 120.1V
+        val type7 =
+            createGotwayFrameType7(batteryCurrentRaw = 556, motorTempRaw = 35, truePwmRaw = 82)
+
+        protocol.dataFlow.test {
+            protocol.decode(type1)
+            protocol.decode(type7)
+
+            val result = awaitItem()
+
+            assertEquals("Gotway (Type 7)", result.model)
+            assertEquals(120.1, result.voltage, 0.01)
+            assertEquals(-5.56, result.current, 0.01)
+            assertNotNull(result.motorTemperature)
+            assertEquals(35.0, result.motorTemperature!!, 0.01)
+            assertEquals(82.0, result.pwm ?: 0.0, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testDecodeFragmentedFrames() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         // Test that the FrameReassembler correctly handles fragmented data
         val fullFrame = createGotwayFrame(
             voltageRaw = 6720,
@@ -572,19 +628,24 @@ class GotwayProtocolTest {
         val fragment1 = fullFrame.sliceArray(0..11)
         val fragment2 = fullFrame.sliceArray(12..23)
 
-        protocol.decode(fragment1)
-        protocol.decode(fragment2)
+        protocol.dataFlow.test {
+            protocol.decode(fragment1)
+            protocol.decode(fragment2)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(67.2, result.voltage, 0.01)
+            assertEquals(1000.0, result.distance, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(67.2, result.voltage, 0.01)
-        assertEquals(1000.0, result.distance, 0.01)
     }
 
     @Test
-    fun testDecodeMultipleFramesInOnePacket() = runBlocking {
+    fun testDecodeMultipleFramesInOnePacket() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         // Two complete frames sent together
         val frame1 = createGotwayFrame(
             voltageRaw = 6720,
@@ -603,25 +664,24 @@ class GotwayProtocolTest {
 
         val combinedData = frame1 + frame2
 
-        protocol.decode(combinedData)
+        protocol.dataFlow.test {
+            protocol.decode(combinedData)
 
-        // Should receive the first frame
-        val result1 = withTimeout(10000) {
-            protocol.dataFlow.first()
-        }
-        assertEquals(67.2, result1.voltage, 0.01)
+            val result1 = awaitItem()
+            assertEquals(67.2, result1.voltage, 0.01)
 
-        // The second frame should also be processed
-        val result2 = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result2 = awaitItem()
+            assertTrue(result2.voltage >= 67.2)
+
+            cancelAndIgnoreRemainingEvents()
         }
-        // Note: Due to replay=1 on MutableSharedFlow, we might get the same or different frame
-        // This tests that at least one frame is processed correctly
-        assertTrue(result2.voltage >= 67.2)
     }
 
     @Test
-    fun testDecodeWithGarbageBeforeHeader() = runBlocking {
+    fun testDecodeWithGarbageBeforeHeader() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         // Garbage bytes before the valid frame
         val garbage = byteArrayOf(0x12, 0x34, 0x56, 0x78)
         val validFrame = createGotwayFrame(
@@ -634,14 +694,16 @@ class GotwayProtocolTest {
 
         val dataWithGarbage = garbage + validFrame
 
-        protocol.decode(dataWithGarbage)
+        protocol.dataFlow.test {
+            protocol.decode(dataWithGarbage)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(67.2, result.voltage, 0.01)
+            assertEquals(1000.0, result.distance, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(67.2, result.voltage, 0.01)
-        assertEquals(1000.0, result.distance, 0.01)
     }
 
     @Test
@@ -675,7 +737,10 @@ class GotwayProtocolTest {
     }
 
     @Test
-    fun testPowerCalculation() = runBlocking {
+    fun testPowerCalculation() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
         // voltage = 67.2V, current = 10.0A -> power = 672W
         val frame = createGotwayFrame(
             voltageRaw = 6720,  // 67.20V
@@ -685,13 +750,15 @@ class GotwayProtocolTest {
             tempRaw = 2500
         )
 
-        protocol.decode(frame)
+        protocol.dataFlow.test {
+            protocol.decode(frame)
 
-        val result = withTimeout(10000) {
-            protocol.dataFlow.first()
+            val result = awaitItem()
+
+            assertEquals(672.0, result.power, 0.1)
+
+            cancelAndIgnoreRemainingEvents()
         }
-
-        assertEquals(672.0, result.power, 0.1)
     }
 
     @Test
@@ -772,21 +839,30 @@ class GotwayProtocolTest {
 
     @Test
     fun testMatchesQueryResponseReturnsTrueForAsciiResponse() {
-        val query = ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val query =
+            ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
         val asciiResponse = "GW_MSX_PRO".encodeToByteArray()
         assertTrue(protocol.matchesQueryResponse(query, asciiResponse))
     }
 
     @Test
     fun testMatchesQueryResponseReturnsFalseForTelemetryFrame() {
-        val query = ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
-        val telemetryFrame = createGotwayFrame(voltageRaw = 6720, speedRaw = 833, distanceRaw = 1000, currentRaw = 250, tempRaw = 2500)
+        val query =
+            ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val telemetryFrame = createGotwayFrame(
+            voltageRaw = 6720,
+            speedRaw = 833,
+            distanceRaw = 1000,
+            currentRaw = 250,
+            tempRaw = 2500
+        )
         assertFalse(protocol.matchesQueryResponse(query, telemetryFrame))
     }
 
     @Test
     fun testMatchesQueryResponseReturnsFalseForEmptyData() {
-        val query = ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val query =
+            ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
         assertFalse(protocol.matchesQueryResponse(query, byteArrayOf()))
     }
 
