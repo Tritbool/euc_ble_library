@@ -1,5 +1,6 @@
 package com.euc.ble.protocols
 
+import app.cash.turbine.test
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.models.EUCData
@@ -13,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.collections.plusAssign
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -57,34 +60,30 @@ class WheelLogKingsongTest {
     }
 
     private suspend fun decodeA9Frames(
-        protocol: KingsongProtocol,
         frames: List<BleFrame>,
-        timeoutMs: Long = 5000L
+        expected:Int=600
     ): List<EUCData> = coroutineScope {
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
-        if (telemetryFrames.isEmpty()) return@coroutineScope emptyList()
+        val decoded = mutableListOf<EUCData>()
+        protocol.dataFlow.test {
+            telemetryFrames.forEach { protocol.decode(it.bleData) }
 
-        val collector = async {
-            withTimeoutOrNull(timeoutMs.milliseconds) {
-                protocol.dataFlow.take(telemetryFrames.size).toList()
-            } ?: emptyList()
-        }
-
-        delay(COLLECTOR_SUBSCRIBE_DELAY_MS.milliseconds)
-        withContext(Dispatchers.IO) {
-            telemetryFrames.forEach { frame ->
-                protocol.decode(frame.bleData)
+            repeat(expected) {
+                decoded.add(awaitItem())
             }
+            cancelAndIgnoreRemainingEvents()
         }
-        delay(DECODE_SETTLE_DELAY_MS.milliseconds)
-        collector.await()
+        decoded
+
     }
 
     /**
      * Test parsing and decoding a small sample of real Kingsong frames
      */
     @Test
-    fun testRealKingsongFramesDecoding() = runBlocking {
+    fun testRealKingsongFramesDecoding() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(backgroundScope)
         val frames =
             loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 4000)
 
@@ -102,7 +101,7 @@ class WheelLogKingsongTest {
             )
         }
 
-        val decodedFrames = decodeA9Frames(protocol, frames)
+        val decodedFrames = decodeA9Frames(frames,telemetryFrames.size)
         val successfulDecodes = decodedFrames.size
         val failedDecodes = telemetryFrames.size - successfulDecodes
 
@@ -131,9 +130,11 @@ class WheelLogKingsongTest {
      * Test protocol consistency across a sequence of real frames
      */
     @Test
-    fun testRealKingsongFramesConsistency() = runBlocking {
+    fun testRealKingsongFramesConsistency() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(backgroundScope)
         val frames =
-            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 200)
+            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 20000)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
         assertTrue(
@@ -141,7 +142,7 @@ class WheelLogKingsongTest {
             telemetryFrames.size >= 10
         )
 
-        val decodedFrames = decodeA9Frames(protocol, telemetryFrames)
+        val decodedFrames = decodeA9Frames(telemetryFrames,telemetryFrames.size,)
         assertTrue("Should have multiple decoded frames", decodedFrames.size >= 5)
 
         for (i in 1 until decodedFrames.size) {
@@ -176,16 +177,18 @@ class WheelLogKingsongTest {
      * Test decoding performance with a larger dataset
      */
     @Test
-    fun testRealKingsongDecodingPerformance() = runBlocking {
+    fun testRealKingsongDecodingPerformance() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(backgroundScope)
         val frames =
-            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
+            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 5000)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
         assertTrue("Should load many frames for performance test", frames.size >= 500)
         assertTrue("Should include many telemetry frames", telemetryFrames.size >= 100)
 
         val startTime = System.currentTimeMillis()
-        val decodedFrames = decodeA9Frames(protocol, telemetryFrames, timeoutMs = 10000L)
+        val decodedFrames = decodeA9Frames(telemetryFrames,telemetryFrames.size)
         val decodedCount = decodedFrames.size
 
         val endTime = System.currentTimeMillis()
@@ -205,10 +208,11 @@ class WheelLogKingsongTest {
      * Test edge cases found in real data
      */
     @Test
-    fun testRealKingsongEdgeCases() = runBlocking {
+    fun testRealKingsongEdgeCases() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(backgroundScope)
         // Load frames from multiple files to find edge cases
         val testFiles = listOf(
-            "RAW_2023_08_19_18_34_07.csv",
             "RAW_2023_08_25_15_02_03.csv",
             "RAW_2023_08_30_19_15_30.csv"
         )
@@ -216,14 +220,13 @@ class WheelLogKingsongTest {
         var totalFrames = 0
         var decodedFrames = 0
         var edgeCasesFound = 0
-
+        val telemetryFrames = mutableListOf<BleFrame>()
         testFiles.forEach { filename ->
-            val protocol = KingsongProtocol()
-            val frames = loadKingsongFrames("$testDataPath/$filename", maxFrames = 200)
-            val telemetryFrames = frames.filter(::isA9TelemetryFrame)
+            val frames = loadKingsongFrames("$testDataPath/$filename", maxFrames = 4000)
+            telemetryFrames+=frames.filter(::isA9TelemetryFrame)
             totalFrames += telemetryFrames.size
 
-            val decoded = decodeA9Frames(protocol, telemetryFrames)
+            val decoded = decodeA9Frames(telemetryFrames,telemetryFrames.size)
             decodedFrames += decoded.size
             decoded.forEach {
                 if (isEdgeCase(it)) {
@@ -244,11 +247,13 @@ class WheelLogKingsongTest {
      * Test specific known frame patterns
      */
     @Test
-    fun testKnownKingsongFramePatterns() = runBlocking {
+    fun testKnownKingsongFramePatterns()= runTest {
+        tearDown()
+        protocol = KingsongProtocol(backgroundScope)
         val frames =
             loadKingsongFrames("$testDataPath/RAW_2023_09_01_18_32_03.csv", maxFrames = 200)
-
-        val decoded = decodeA9Frames(protocol, frames, timeoutMs = 10000L)
+        val telemetryFrames=frames.filter(::isA9TelemetryFrame)
+        val decoded = decodeA9Frames(frames,telemetryFrames.size)
         val interestingFrames = decoded.filter { it.speed > 5.0 }
 
         assertTrue("Should find some interesting frames", interestingFrames.isNotEmpty())
