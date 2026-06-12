@@ -290,6 +290,7 @@ class GotwayProtocolTest {
             assertEquals(13.6, result.pwm ?: 0.0, 0.01)
             assertEquals("Gotway", result.manufacturer)
             assertEquals("Gotway (Type A)", result.model)
+            assertEquals("Type A", result.frameType)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -321,6 +322,7 @@ class GotwayProtocolTest {
             assertEquals(1000.0, result.distance, 0.01)
             assertEquals(123456.0, result.totalDistance ?: 0.0, 0.01)
             assertEquals("Gotway", result.manufacturer)
+            assertEquals("Type B", result.frameType)
             assertEquals("Gotway (Type B)", result.model)
             assertEquals(67.2, result.voltage, 0.01)
             assertEquals(29.988, result.speed, 0.1)
@@ -600,6 +602,7 @@ class GotwayProtocolTest {
             val result = awaitItem()
 
             assertEquals("Gotway (Type 7)", result.model)
+            assertEquals("Type 7", result.frameType)
             assertEquals(120.1, result.voltage, 0.01)
             assertEquals(-5.56, result.current, 0.01)
             assertNotNull(result.motorTemperature)

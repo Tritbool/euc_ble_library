@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Test class for validating Kingsong protocol implementation using real WheelLog RAW data
@@ -46,7 +47,9 @@ class WheelLogKingsongTest {
 
     @AfterEach
     fun tearDown() {
-        protocol.close()
+        if (this::protocol.isInitialized) {
+            protocol.close()
+        }
     }
 
     private fun isA9TelemetryFrame(frame: BleFrame): Boolean {
@@ -62,18 +65,18 @@ class WheelLogKingsongTest {
         if (telemetryFrames.isEmpty()) return@coroutineScope emptyList()
 
         val collector = async {
-            withTimeoutOrNull(timeoutMs) {
+            withTimeoutOrNull(timeoutMs.milliseconds) {
                 protocol.dataFlow.take(telemetryFrames.size).toList()
             } ?: emptyList()
         }
 
-        delay(COLLECTOR_SUBSCRIBE_DELAY_MS)
+        delay(COLLECTOR_SUBSCRIBE_DELAY_MS.milliseconds)
         withContext(Dispatchers.IO) {
             telemetryFrames.forEach { frame ->
                 protocol.decode(frame.bleData)
             }
         }
-        delay(DECODE_SETTLE_DELAY_MS)
+        delay(DECODE_SETTLE_DELAY_MS.milliseconds)
         collector.await()
     }
 
@@ -82,18 +85,21 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongFramesDecoding() = runBlocking {
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 4000)
-        
+        val frames =
+            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 4000)
+
         assertTrue("Should load some frames", frames.isNotEmpty())
 
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
         assertTrue("Should include A9 telemetry frames", telemetryFrames.isNotEmpty())
 
         telemetryFrames.forEach { frame ->
-            assertTrue("Frame should start with AA 55", 
-                frame.bleData.size >= 2 && 
-                frame.bleData[0].toInt() and 0xFF == 0xAA &&
-                frame.bleData[1].toInt() and 0xFF == 0x55)
+            assertTrue(
+                "Frame should start with AA 55",
+                frame.bleData.size >= 2 &&
+                        frame.bleData[0].toInt() and 0xFF == 0xAA &&
+                        frame.bleData[1].toInt() and 0xFF == 0x55
+            )
         }
 
         val decodedFrames = decodeA9Frames(protocol, frames)
@@ -108,12 +114,17 @@ class WheelLogKingsongTest {
             assertTrue("Speed should be reasonable", decoded.speed in 0.0..60.0)
             assertTrue("Battery should be in range", decoded.batteryLevel in 0..100)
         }
-        assertTrue("Expected at least one frame with ride time progression", decodedFrames.all{it.rideTime >= 0 })
-        
+        assertTrue(
+            "Expected at least one frame with ride time progression",
+            decodedFrames.all { it.rideTime >= 0 })
+
         println("Decoded $successfulDecodes frames successfully, $failedDecodes frames failed")
         println("Success rate: ${(successfulDecodes * 100.0 / telemetryFrames.size).toInt()}%")
-        
-        assertTrue("Should decode most frames successfully", successfulDecodes > telemetryFrames.size * 0.8)
+
+        assertTrue(
+            "Should decode most frames successfully",
+            successfulDecodes > telemetryFrames.size * 0.8
+        )
     }
 
     /**
@@ -121,33 +132,43 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongFramesConsistency() = runBlocking {
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 200)
+        val frames =
+            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 200)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
-        assertTrue("Need multiple telemetry frames for consistency test", telemetryFrames.size >= 10)
+        assertTrue(
+            "Need multiple telemetry frames for consistency test",
+            telemetryFrames.size >= 10
+        )
 
         val decodedFrames = decodeA9Frames(protocol, telemetryFrames)
         assertTrue("Should have multiple decoded frames", decodedFrames.size >= 5)
-        
+
         for (i in 1 until decodedFrames.size) {
-            val prev = decodedFrames[i-1]
+            val prev = decodedFrames[i - 1]
             val curr = decodedFrames[i]
-            
+
             val speedDiff = kotlin.math.abs(curr.speed - prev.speed)
-            assertTrue("Speed change should be reasonable: $speedDiff km/h", 
-                speedDiff < 10.0) // Less than 10 km/h change between frames
-            
+            assertTrue(
+                "Speed change should be reasonable: $speedDiff km/h",
+                speedDiff < 10.0
+            ) // Less than 10 km/h change between frames
+
             // Voltage changes should be gradual
             val voltageDiff = kotlin.math.abs(curr.voltage - prev.voltage)
-            assertTrue("Voltage change should be reasonable: $voltageDiff V", 
-                voltageDiff < 5.0) // Less than 5V change between frames
+            assertTrue(
+                "Voltage change should be reasonable: $voltageDiff V",
+                voltageDiff < 5.0
+            ) // Less than 5V change between frames
             assertTrue("Ride time should be non-decreasing", curr.rideTime >= prev.rideTime)
-            
+
             // Distance should be non-decreasing
-            assertTrue("Distance should not decrease", 
-                curr.distance >= prev.distance - 0.1) // Allow small floating point differences
+            assertTrue(
+                "Distance should not decrease",
+                curr.distance >= prev.distance - 0.1
+            ) // Allow small floating point differences
         }
-        
+
         println("Consistency test passed for ${decodedFrames.size} frames")
     }
 
@@ -156,25 +177,26 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testRealKingsongDecodingPerformance() = runBlocking {
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
+        val frames =
+            loadKingsongFrames("$testDataPath/RAW_2023_08_25_15_02_03.csv", maxFrames = 1000)
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
 
         assertTrue("Should load many frames for performance test", frames.size >= 500)
         assertTrue("Should include many telemetry frames", telemetryFrames.size >= 100)
-        
+
         val startTime = System.currentTimeMillis()
         val decodedFrames = decodeA9Frames(protocol, telemetryFrames, timeoutMs = 10000L)
         val decodedCount = decodedFrames.size
-        
+
         val endTime = System.currentTimeMillis()
         val durationMs = endTime - startTime
         val framesPerSecond = (telemetryFrames.size * 1000.0 / durationMs).toInt()
-        
+
         println("Performance: $framesPerSecond frames/sec")
         println("Decoded $decodedCount out of ${telemetryFrames.size} telemetry frames")
         println("Success rate: ${(decodedCount * 100.0 / telemetryFrames.size).toInt()}%")
         println("Time taken: ${durationMs}ms")
-        
+
         assertTrue("Should decode at reasonable speed", framesPerSecond > MIN_DECODE_FPS)
         assertTrue("Should decode most frames", decodedCount > telemetryFrames.size * 0.7)
     }
@@ -190,11 +212,11 @@ class WheelLogKingsongTest {
             "RAW_2023_08_25_15_02_03.csv",
             "RAW_2023_08_30_19_15_30.csv"
         )
-        
+
         var totalFrames = 0
         var decodedFrames = 0
         var edgeCasesFound = 0
-        
+
         testFiles.forEach { filename ->
             val protocol = KingsongProtocol()
             val frames = loadKingsongFrames("$testDataPath/$filename", maxFrames = 200)
@@ -210,11 +232,11 @@ class WheelLogKingsongTest {
                 }
             }
         }
-        
+
         println("Analyzed $totalFrames frames from ${testFiles.size} files")
         println("Decoded $decodedFrames frames (${(decodedFrames * 100.0 / totalFrames).toInt()}%)")
         println("Found $edgeCasesFound edge cases")
-        
+
         assertTrue("Should decode a reasonable number of frames", decodedFrames > totalFrames * 0.7)
     }
 
@@ -223,19 +245,20 @@ class WheelLogKingsongTest {
      */
     @Test
     fun testKnownKingsongFramePatterns() = runBlocking {
-        val frames = loadKingsongFrames("$testDataPath/RAW_2023_09_01_18_32_03.csv", maxFrames = 200)
+        val frames =
+            loadKingsongFrames("$testDataPath/RAW_2023_09_01_18_32_03.csv", maxFrames = 200)
 
         val decoded = decodeA9Frames(protocol, frames, timeoutMs = 10000L)
         val interestingFrames = decoded.filter { it.speed > 5.0 }
-        
+
         assertTrue("Should find some interesting frames", interestingFrames.isNotEmpty())
-        
+
         // Validate a few specific frames
         if (interestingFrames.size >= 3) {
             val decoded1 = interestingFrames[0]
             val decoded2 = interestingFrames[interestingFrames.size / 2]
             val decoded3 = interestingFrames.last()
-            
+
             println("Validated specific frames:")
             println("  Frame 1: ${describeFrame(decoded1)}")
             println("  Frame 2: ${describeFrame(decoded2)}")
@@ -246,43 +269,48 @@ class WheelLogKingsongTest {
     /**
      * Load Kingsong frames from WheelLog CSV file
      */
-    private fun loadKingsongFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
+    private fun loadKingsongFrames(
+        resourcePath: String,
+        maxFrames: Int = Int.MAX_VALUE
+    ): List<BleFrame> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
-        
+
         val frames = mutableListOf<BleFrame>()
         val reader = BufferedReader(InputStreamReader(inputStream))
-        
+
         var line: String?
         var lineNumber = 0
-        
+
         while (reader.readLine().also { line = it } != null && frames.size < maxFrames) {
             lineNumber++
-            line?.let { 
+            line?.let {
                 try {
                     // Parse the CSV line: timestamp,hex_data
                     val parts = it.split(",")
                     if (parts.size >= 2) {
                         val timestampStr = parts[0].trim()
                         val hexData = parts[1].trim()
-                        
+
                         // Convert hex string to byte array
                         val bleData = ByteUtils.hexToBytes(hexData)
-                        
+
                         // Parse timestamp (HH:MM:SS.mmm) to milliseconds since start
                         val timeParts = timestampStr.split(":", ".")
                         if (timeParts.size >= 4) {
-                            val milliseconds = 
+                            val milliseconds =
                                 timeParts[0].toInt() * 3600000 +  // hours to ms
-                                timeParts[1].toInt() * 60000 +   // minutes to ms
-                                timeParts[2].toInt() * 1000 +    // seconds to ms
-                                timeParts[3].toInt()             // milliseconds
-                            
-                            frames.add(BleFrame(
-                                timestamp = milliseconds.toLong(),
-                                bleData = bleData,
-                                metadata = "Line $lineNumber"
-                            ))
+                                        timeParts[1].toInt() * 60000 +   // minutes to ms
+                                        timeParts[2].toInt() * 1000 +    // seconds to ms
+                                        timeParts[3].toInt()             // milliseconds
+
+                            frames.add(
+                                BleFrame(
+                                    timestamp = milliseconds.toLong(),
+                                    bleData = bleData,
+                                    metadata = "Line $lineNumber"
+                                )
+                            )
                         }
                     }
                 } catch (e: Exception) {
@@ -290,7 +318,7 @@ class WheelLogKingsongTest {
                 }
             }
         }
-        
+
         return frames
     }
 
@@ -312,14 +340,14 @@ class WheelLogKingsongTest {
      */
     private fun describeEdgeCase(data: EUCData): String {
         val reasons = mutableListOf<String>()
-        
+
         if (data.speed > 40.0) reasons.add("high speed (${data.speed} km/h)")
         if (data.voltage > 80.0) reasons.add("high voltage (${data.voltage} V)")
         if (data.voltage < 50.0) reasons.add("low voltage (${data.voltage} V)")
         if (data.temperature > 60.0) reasons.add("high temp (${data.temperature} °C)")
         if (data.current > 80.0) reasons.add("high current (${data.current} A)")
         if (data.isCharging) reasons.add("charging state")
-        
+
         return reasons.joinToString(", ")
     }
 
@@ -328,7 +356,7 @@ class WheelLogKingsongTest {
      */
     private fun describeFrame(data: EUCData): String {
         return "${data.speed.toInt()} km/h, ${data.voltage.toInt()} V, " +
-               "${data.current.toInt()} A, ${data.temperature.toInt()} °C"
+                "${data.current.toInt()} A, ${data.temperature.toInt()} °C"
     }
 
     /**
@@ -342,12 +370,12 @@ class WheelLogKingsongTest {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
-            
+
             other as BleFrame
-            
+
             if (timestamp != other.timestamp) return false
             if (!bleData.contentEquals(other.bleData)) return false
-            
+
             return true
         }
 

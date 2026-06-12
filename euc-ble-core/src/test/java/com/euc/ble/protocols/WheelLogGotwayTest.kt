@@ -51,7 +51,9 @@ class WheelLogGotwayTest {
 
     @AfterEach
     fun tearDown() {
-        protocol.close()
+        if (this::protocol.isInitialized) {
+            protocol.close()
+        }
     }
 
     @Test
@@ -200,6 +202,12 @@ class WheelLogGotwayTest {
         // Allow asynchronous frame reassembly/decoding to flush capture fragments.
         delay(frameProcessingDelayMs.milliseconds)
         collectorJob.cancel()
+
+        val type7Frames = decoded.filter { frame ->
+            frame.frameType.contains("Type 7", ignoreCase = true)
+
+        }
+        assertTrue("No Type 7 frames decoded from WheelLog capture", type7Frames.isNotEmpty())
 
         val typeBFrames = decoded.filter { frame ->
             val raw = frame.rawData
