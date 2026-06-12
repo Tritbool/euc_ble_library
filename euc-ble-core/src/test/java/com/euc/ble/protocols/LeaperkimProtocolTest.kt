@@ -5,12 +5,8 @@ import com.euc.ble.core.BLEConstants
 import com.euc.ble.models.EUCDevice
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -40,14 +36,14 @@ class LeaperkimProtocolTest {
 
     @BeforeEach
     fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
         protocol = LeaperkimProtocol()
     }
 
     @AfterEach
     fun tearDown() {
-        protocol.close()
-        Dispatchers.resetMain()
+        if (this::protocol.isInitialized) {
+            protocol.close()
+        }
     }
 
     @Test
@@ -59,12 +55,22 @@ class LeaperkimProtocolTest {
         )
         assertTrue(
             protocol.canHandle(
-                EUCDevice(name = "Unknown", address = "B", manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM, rssi = -55)
+                EUCDevice(
+                    name = "Unknown",
+                    address = "B",
+                    manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM,
+                    rssi = -55
+                )
             )
         )
         assertFalse(
             protocol.canHandle(
-                EUCDevice(name = "KS-16X", address = "C", manufacturerId = BLEConstants.MANUFACTURER_KINGSONG, rssi = -60)
+                EUCDevice(
+                    name = "KS-16X",
+                    address = "C",
+                    manufacturerId = BLEConstants.MANUFACTURER_KINGSONG,
+                    rssi = -60
+                )
             )
         )
         assertFalse(
@@ -76,6 +82,9 @@ class LeaperkimProtocolTest {
 
     @Test
     fun decodeValidFrameEmitsTelemetry() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
+
         val frame = createLeaperkimFrame(
             voltageRaw = 12525,
             speedRaw = 1234,
@@ -110,6 +119,8 @@ class LeaperkimProtocolTest {
 
     @Test
     fun decodeOutOfRangeVoltageFrameIsDropped() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
         val invalidFrame = createLeaperkimFrame(voltageRaw = 19000)
         protocol.dataFlow.test(timeout = invalidFrameCheckTimeoutMs.milliseconds) {
             assertTrue(protocol.decode(invalidFrame) == null)
@@ -120,8 +131,14 @@ class LeaperkimProtocolTest {
 
     @Test
     fun createCommandMapsKnownActions() {
-        assertArrayEquals("SetLightON".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_ON, Unit))
-        assertArrayEquals("SetLightOFF".encodeToByteArray(), protocol.createCommand(CommandType.LIGHT_OFF, Unit))
+        assertArrayEquals(
+            "SetLightON".encodeToByteArray(),
+            protocol.createCommand(CommandType.LIGHT_ON, Unit)
+        )
+        assertArrayEquals(
+            "SetLightOFF".encodeToByteArray(),
+            protocol.createCommand(CommandType.LIGHT_OFF, Unit)
+        )
         assertArrayEquals(beepCommandPayload, protocol.createCommand(CommandType.BEEP, Unit))
     }
 
@@ -133,18 +150,32 @@ class LeaperkimProtocolTest {
 
     @Test
     fun createCommandMapsPedalsModeVariants() {
-        assertArrayEquals("SETh".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
-        assertArrayEquals("SETm".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 1))
-        assertArrayEquals("SETs".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
+        assertArrayEquals(
+            "SETh".encodeToByteArray(),
+            protocol.createCommand(CommandType.SET_PEDALS_MODE, 0)
+        )
+        assertArrayEquals(
+            "SETm".encodeToByteArray(),
+            protocol.createCommand(CommandType.SET_PEDALS_MODE, 1)
+        )
+        assertArrayEquals(
+            "SETs".encodeToByteArray(),
+            protocol.createCommand(CommandType.SET_PEDALS_MODE, 2)
+        )
     }
 
     @Test
     fun createCommandResetTrip() {
-        assertArrayEquals("CLEARMETER".encodeToByteArray(), protocol.createCommand(CommandType.RESET_TRIP, Unit))
+        assertArrayEquals(
+            "CLEARMETER".encodeToByteArray(),
+            protocol.createCommand(CommandType.RESET_TRIP, Unit)
+        )
     }
 
     @Test
     fun decodeValidFrameEmitsAngle() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
         val frame = createLeaperkimFrame(
             voltageRaw = 10000,
             speedRaw = 500,
@@ -162,6 +193,8 @@ class LeaperkimProtocolTest {
 
     @Test
     fun decodeValidFrameWithZeroAngle() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
         val frame = createLeaperkimFrame(
             voltageRaw = 10000,
             speedRaw = 500,
@@ -179,6 +212,8 @@ class LeaperkimProtocolTest {
 
     @Test
     fun decodeLegacySettingsFieldsAreMapped() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
         val frame = createLeaperkimFrame(
             versionRaw = 5000,
             pedalsModeRaw = 2,
@@ -220,6 +255,8 @@ class LeaperkimProtocolTest {
 
     @Test
     fun decodeSmartBmsPagesPopulateCellVoltagesAndBmsSnapshot() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
         val page1 = createSmartBmsFrame(len = 86, versionRaw = 5000) {
             packetNum = 0x01
             cellVoltages = IntArray(15) { 4100 + it }
@@ -236,27 +273,32 @@ class LeaperkimProtocolTest {
             temps = IntArray(6) { 2500 + it * 10 }
         }
 
-        protocol.decode(page1)
-        waitForBmsCellCount(15)
+        protocol.dataFlow.test {
+            protocol.decode(page1)
+            waitForBmsCellCount(15)
 
-        protocol.decode(page2)
-        waitForBmsCellCount(30)
+            protocol.decode(page2)
+            waitForBmsCellCount(30)
 
-        protocol.decode(page3)
-        waitForBmsCellCount(42)
-        waitForBmsTempsCount(6)
+            protocol.decode(page3)
+            waitForBmsCellCount(42)
+            waitForBmsTempsCount(6)
 
-        val bmsData = protocol.getBMSData()
-        val bms = bmsData.firstOrNull { it.bmsIndex == 1 }
-            ?: error("Expected BMS index 1 data after decoding pages")
+            val bmsData = protocol.getBMSData()
+            val bms = bmsData.firstOrNull { it.bmsIndex == 1 }
+                ?: error("Expected BMS index 1 data after decoding pages")
 
-        assertEquals(1, bmsData.size)
-        assertEquals(42, bms.cellVoltages?.size)
-        assertTrue(bmsData.isNotEmpty())
-        assertEquals(1, bms.bmsIndex)
-        assertNotNull(bms.temperatures)
-        assertTrue(bms.temperatures!!.isNotEmpty())
-        assertEquals(25.0, bms.temperatures!!.first(), 0.01)
+            assertEquals(1, bmsData.size)
+            assertEquals(42, bms.cellVoltages?.size)
+            assertTrue(bmsData.isNotEmpty())
+            assertEquals(1, bms.bmsIndex)
+            assertNotNull(bms.temperatures)
+            assertTrue(bms.temperatures!!.isNotEmpty())
+            assertEquals(25.0, bms.temperatures!!.first(), 0.01)
+            cancelAndIgnoreRemainingEvents()
+
+        }
+
     }
 
     private fun createLeaperkimFrame(
