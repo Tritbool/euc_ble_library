@@ -1,6 +1,7 @@
 // File: `euc-ble-core/src/test/java/com/euc/ble/protocols/WheelLogGotwayTest.kt`
 package com.euc.ble.protocols
 
+import app.cash.turbine.test
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
 import com.euc.ble.frames.FixedSizeFrameParser
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
@@ -24,11 +26,13 @@ import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogGotwayTest {
 
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
+
     // Delays match existing WheelLog async decoding tests to ensure capture-based test stability.
     private val collectorSubscriptionDelayMs = 100L
     private val frameProcessingDelayMs = 3000L
@@ -39,6 +43,7 @@ class WheelLogGotwayTest {
     private val typeAPwmOffset = 14
 
     private lateinit var protocol: GotwayProtocol
+
     @BeforeEach
     fun setUp() {
         protocol = GotwayProtocol()
@@ -50,7 +55,7 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testLoadAndDecodeRealFrames() = runBlocking {
+    fun testLoadAndDecodeRealFrames() = runTest {
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1000)
         assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
 
@@ -66,7 +71,7 @@ class WheelLogGotwayTest {
         }
 
         // Small delay to ensure collector is subscribed
-        delay(200)
+        delay(200.milliseconds)
 
         // Send all frames to the protocol for reassembly on IO dispatcher
         withContext(Dispatchers.IO) {
@@ -76,7 +81,7 @@ class WheelLogGotwayTest {
         }
 
         // Wait for async processing to complete (needs time for IO dispatcher)
-        delay(3000)
+        delay(3000.milliseconds)
 
         // Cancel collector job
         collectorJob.cancel()
@@ -109,11 +114,11 @@ class WheelLogGotwayTest {
         println("Decoded $decodedCount frames from ${frames.size} BLE packets")
         assertTrue(
             "Expected non-placeholder telemetry from Type A frames",
-            decoded.any { it.model.contains("Type A") && it.voltage > 0.0 && abs(it.current) > 0.0 }
+            decoded.any { it.frameType.contains("Type A") && it.voltage > 0.0 && abs(it.current) > 0.0 }
         )
         assertTrue(
             "Expected PWM to be decoded from Type A frames",
-            decoded.any { it.model.contains("Type A") && (it.pwm ?: 0.0) > 0.0 }
+            decoded.any { it.frameType.contains("Type A") && (it.pwm ?: 0.0) > 0.0 }
         )
 
         // With FrameReassembler, we expect to decode reassembled frames
@@ -130,12 +135,12 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testDecodedFramesConsistencyShortSequence() = runBlocking {
+    fun testDecodedFramesConsistencyShortSequence() = runTest {
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_24_18_43_22.csv", maxFrames = 200)
 
         // Start collecting in background
         val collector = async {
-            withTimeoutOrNull(5000) {
+            withTimeoutOrNull(5000.milliseconds) {
                 protocol.dataFlow.take(100).toList()
             } ?: emptyList()
         }
@@ -145,13 +150,13 @@ class WheelLogGotwayTest {
             protocol.decode(frame.bleData)
         }
 
-        delay(100)
+        delay(100.milliseconds)
 
         val decoded = collector.await()
 
         if (decoded.size < 2) {
             println("Pas assez de frames décodées pour test de consistance: ${decoded.size}")
-            return@runBlocking
+            return@runTest
         }
 
         for (i in 1 until decoded.size) {
@@ -159,7 +164,7 @@ class WheelLogGotwayTest {
             val cur = decoded[i]
 
             // Only check Type A frames (which have speed data)
-            if (cur.model.contains("Type A") && prev.model.contains("Type A")) {
+            if (cur.frameType.contains("Type A") && prev.frameType.contains("Type A")) {
                 // Variation raisonnable de vitesse entre 2 frames consécutives
                 val speedDiff = abs(cur.speed - prev.speed)
                 assertTrue("Variation de vitesse anormale: $speedDiff", speedDiff < 50.0)
@@ -176,7 +181,7 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testTypeBContentDecodedFromWheelLogCapture() = runBlocking {
+    fun testTypeBContentDecodedFromWheelLogCapture() = runTest {
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1200)
         assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
 
@@ -188,18 +193,18 @@ class WheelLogGotwayTest {
         }
 
         // Let the collector subscribe before frames are fed, matching existing test timing pattern.
-        delay(collectorSubscriptionDelayMs)
+        delay(collectorSubscriptionDelayMs.milliseconds)
         frames.forEach { frame ->
             protocol.decode(frame.bleData)
         }
         // Allow asynchronous frame reassembly/decoding to flush capture fragments.
-        delay(frameProcessingDelayMs)
+        delay(frameProcessingDelayMs.milliseconds)
         collectorJob.cancel()
 
-        val typeBFrames = decoded.filter {frame ->
+        val typeBFrames = decoded.filter { frame ->
             val raw = frame.rawData
             val actualFrameType = raw[frameTypeOffset].toInt() and 0xFF
-            actualFrameType == typeBFrameType
+            actualFrameType == typeBFrameType && frame.frameType.contains("Type B", ignoreCase = true)
 
         }
         assertTrue("No Type B frames decoded from WheelLog capture", typeBFrames.isNotEmpty())
@@ -220,14 +225,21 @@ class WheelLogGotwayTest {
             val expectedRollAngleMode = settings?.let { (it shr 7) and 0x03 }
             val expectedUsesMiles = settings?.let { (it and 0x01) == 1 }
             val expectedAutoPowerOff = ByteUtils.tryGetUnsignedShortBE(raw, 8)
-            val expectedTiltBack = ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < maxValidTiltBackSpeed }
+            val expectedTiltBack =
+                ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < maxValidTiltBackSpeed }
             val expectedLedMode = ByteUtils.tryGetUnsignedByte(raw, 13)
             val expectedAlertFlags = ByteUtils.tryGetUnsignedByte(raw, 14)
             val expectedLightMode = ByteUtils.tryGetUnsignedByte(raw, 15)?.and(0x03)
             val expectedWheelAlarm = expectedAlertFlags?.let { (it and 0x01) == 1 }
 
             val parsedDistance = requireNotNull(expectedDistance) {
-                "Type B distance could not be parsed from raw frame: ${raw.joinToString("") { "%02x".format(it) }}"
+                "Type B distance could not be parsed from raw frame: ${
+                    raw.joinToString("") {
+                        "%02x".format(
+                            it
+                        )
+                    }
+                }"
             }
             assertEquals(parsedDistance, data.totalDistance ?: 0.0, 0.01)
 
@@ -256,7 +268,7 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testTypeAPwmDecodedFromWheelLogCapture() = runBlocking {
+    fun testTypeAPwmDecodedFromWheelLogCapture() = runTest {
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_25_15_11_39.csv", maxFrames = 1200)
         assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
 
@@ -267,29 +279,35 @@ class WheelLogGotwayTest {
             }
         }
 
-        delay(collectorSubscriptionDelayMs)
+        delay(collectorSubscriptionDelayMs.milliseconds)
         frames.forEach { frame ->
             protocol.decode(frame.bleData)
         }
-        delay(frameProcessingDelayMs)
+        delay(frameProcessingDelayMs.milliseconds)
         collectorJob.cancel()
 
-        val typeAFrames = decoded.filter { it.model == "Gotway (Type A)" }
+        val typeAFrames = decoded.filter { it.frameType == "Type A" }
         assertTrue("No Type A frames decoded from WheelLog capture", typeAFrames.isNotEmpty())
 
         typeAFrames.forEach { data ->
-            val expectedPwm = abs((ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0).toDouble()) / 10.0
+            val expectedPwm = abs(
+                (ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0).toDouble()
+            ) / 10.0
             assertNotNull(data.pwm)
             assertEquals(expectedPwm, data.pwm ?: 0.0, 0.01)
         }
 
-        assertTrue("Expected at least one Type A frame with non-zero PWM", typeAFrames.any { (it.pwm ?: 0.0) > 0.0 })
+        assertTrue(
+            "Expected at least one Type A frame with non-zero PWM",
+            typeAFrames.any { (it.pwm ?: 0.0) > 0.0 })
     }
 
     @Test
-    fun testFrameReassemblerDirectlyWithRealData() = runBlocking {
-        val frameParser= FixedSizeFrameParser(GotwayProtocol.FRAME_SIZE, GotwayProtocol.HEADER,
-            GotwayProtocol.FOOTER)
+    fun testFrameReassemblerDirectlyWithRealData() = runTest {
+        val frameParser = FixedSizeFrameParser(
+            GotwayProtocol.FRAME_SIZE, GotwayProtocol.HEADER,
+            GotwayProtocol.FOOTER
+        )
         val reassembler = FrameReassembler(frameParser)
 
 
@@ -306,7 +324,7 @@ class WheelLogGotwayTest {
         }
 
         // Small delay to ensure collector is subscribed
-        delay(100)
+        delay(100.milliseconds)
 
         // Process all BLE packets
         for (frame in frames) {
@@ -314,7 +332,7 @@ class WheelLogGotwayTest {
         }
 
         // Wait for processing
-        delay(500)
+        delay(500.milliseconds)
         collectorJob.cancel()
 
         println("FrameReassembler: Decoded ${decodedFrames.size} frames from ${frames.size} BLE packets")
@@ -331,8 +349,9 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testFrameReassemblyWithFragmentedData() = runBlocking {
-
+    fun testFrameReassemblyWithFragmentedData() = runTest {
+        protocol.close()
+        protocol = GotwayProtocol(backgroundScope)
         // Create a valid complete frame
         val validFrame = createValidGotwayFrame(
             voltageRaw = 6720,  // 67.20V
@@ -341,24 +360,19 @@ class WheelLogGotwayTest {
             currentRaw = 250,
             tempRaw = 2500
         )
+        protocol.dataFlow.test {
+            // Send in fragments (simulating BLE packet fragmentation)
+            protocol.decode(validFrame.sliceArray(0..9))
+            //delay(10.milliseconds)
+            protocol.decode(validFrame.sliceArray(10..23))
 
-        // Start collecting
-        val collector = async {
-            withTimeoutOrNull(2000) {
-                protocol.dataFlow.take(1).toList()
-            } ?: emptyList()
+            //delay(100.milliseconds)
+
+            val results = awaitItem()
+            assertTrue("Should decode one reassembled frame",  results.rawData.contentEquals(validFrame))
+            assertEquals(67.2, results.voltage, 0.01)
         }
 
-        // Send in fragments (simulating BLE packet fragmentation)
-        protocol.decode(validFrame.sliceArray(0..9))
-        delay(10)
-        protocol.decode(validFrame.sliceArray(10..23))
-
-        delay(100)
-
-        val results = collector.await()
-        assertEquals("Should decode one reassembled frame", 1, results.size)
-        assertEquals(67.2, results[0].voltage, 0.01)
     }
 
     /**
@@ -410,7 +424,10 @@ class WheelLogGotwayTest {
         return frame
     }
 
-    private fun loadGotwayFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {
+    private fun loadGotwayFrames(
+        resourcePath: String,
+        maxFrames: Int = Int.MAX_VALUE
+    ): List<BleFrame> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Ressource introuvable: $resourcePath")
 
@@ -438,7 +455,13 @@ class WheelLogGotwayTest {
                 try {
                     val bleData = ByteUtils.hexToBytes(hexData)
                     val timestampMs = parseTimestampToMs(timestampStr)
-                    frames.add(BleFrame(timestamp = timestampMs, bleData = bleData, metadata = "L$lineNumber"))
+                    frames.add(
+                        BleFrame(
+                            timestamp = timestampMs,
+                            bleData = bleData,
+                            metadata = "L$lineNumber"
+                        )
+                    )
                 } catch (e: Exception) {
                     // ignorer ligne malformée
                 }
@@ -460,17 +483,20 @@ class WheelLogGotwayTest {
                     val ms = parts[3].toInt()
                     (h * 3600000 + m * 60000 + s * 1000 + ms).toLong()
                 }
+
                 3 -> {
                     val m = parts[0].toInt()
                     val s = parts[1].toInt()
                     val ms = parts[2].toInt()
                     (m * 60000 + s * 1000 + ms).toLong()
                 }
+
                 2 -> {
                     val s = parts[0].toInt()
                     val ms = parts[1].toInt()
                     (s * 1000 + ms).toLong()
                 }
+
                 else -> cleaned.toLongOrNull() ?: 0L
             }
         } catch (e: Exception) {

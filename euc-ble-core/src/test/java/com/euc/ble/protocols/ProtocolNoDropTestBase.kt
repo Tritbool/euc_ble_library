@@ -8,11 +8,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
@@ -51,7 +51,7 @@ sealed class ProtocolNoDropTestBase {
     }
 
     @Test
-    fun `no frame is dropped between decode and dataFlow`() = runBlocking {
+    fun `no frame is dropped between decode and dataFlow`() = runTest {
         val packets = loadCsvFrames(csvResourcePath)
         assertTrue(packets.size >= minimumExpectedFrameCount)
 

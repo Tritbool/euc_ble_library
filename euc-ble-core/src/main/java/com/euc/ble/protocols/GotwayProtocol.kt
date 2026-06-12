@@ -293,6 +293,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         lastKnownTripDistance = tripDistanceKm
 
         return EUCData(
+            frameType = "Type A",
             speed = speed,
             voltage = voltage,
             current = current,
@@ -341,6 +342,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val batteryLevel = estimateBatteryLevel(voltage)
 
         return EUCData(
+            frameType = "Type B",
             speed = lastKnownSpeed,
             voltage = voltage,
             current = current,
@@ -420,6 +422,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val power = voltage * current
 
         return EUCData(
+            frameType = "Type 7",
             speed = lastKnownSpeed,
             voltage = voltage,
             current = current,

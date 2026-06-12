@@ -4,6 +4,7 @@ package com.euc.ble.models
  * Represents real-time data from an Electric Unicycle
  */
 data class EUCData(
+    internal val frameType: String = "BASE",
     val speed: Double,              // km/h
     val voltage: Double,            // volts
     val current: Double,            // amps
@@ -16,35 +17,35 @@ data class EUCData(
     val rawData: ByteArray,         // raw byte data
     val manufacturer: String,       // manufacturer name
     val model: String,              // device model
-    val serialNumber: String?=null,      // device serial
-    val firmwareVersion: String?=null,   // firmware version
+    val serialNumber: String? = null,      // device serial
+    val firmwareVersion: String? = null,   // firmware version
     val isCharging: Boolean,        // charging status
     val rideTime: Long,             // ride time in seconds
-    val cellVoltages: List<Double>?=null, // individual cell voltages
-    val motorTemperature: Double?=null,   // motor temperature in degrees Celsius (null if not available)
-    val totalDistance: Double?=null,
-    val pedalsMode: Int?=null,       // mode value exposed by protocol (legacy-mapped, typically 0..2)
-    val alarmMode: Int?=null,        // encoded alarm mode value (firmware-dependent, usually 0..3)
-    val rollAngleMode: Int?=null,    // encoded roll-angle mode value (firmware-dependent, usually 0..3)
-    val usesMiles: Boolean?=null,
-    val autoPowerOffMinutes: Int?=null,
-    val tiltBackSpeed: Int?=null,
-    val ledMode: Int?=null,
-    val lightMode: Int?=null,
-    val alertFlags: Int?=null,
-    val wheelAlarm: Boolean?=null,
-    val topSpeed: Double?=null,           // session top speed in km/h
-    val fanStatus: Int?=null,             // fan on/off status
-    val chargingStatus: Int?=null,        // charging status byte
-    val temperature2: Double?=null,       // secondary temperature (e.g. motor/board)
-    val cpuLoad: Int?=null,               // CPU load percentage
-    val speedLimit: Double?=null,         // configured speed limit in km/h
-    val alarm1Speed: Int?=null,           // alarm 1 speed threshold
-    val alarm2Speed: Int?=null,           // alarm 2 speed threshold
-    val alarm3Speed: Int?=null,           // alarm 3 speed threshold
-    val wheelMaxSpeed: Int?=null,         // max speed setting
-    val wheelDistance: Double?=null,       // trip distance (wheel-reported)
-    val angle: Double?=null                // pitch/tilt angle in degrees (null if unavailable)
+    val cellVoltages: List<Double>? = null, // individual cell voltages
+    val motorTemperature: Double? = null,   // motor temperature in degrees Celsius (null if not available)
+    val totalDistance: Double? = null,
+    val pedalsMode: Int? = null,       // mode value exposed by protocol (legacy-mapped, typically 0..2)
+    val alarmMode: Int? = null,        // encoded alarm mode value (firmware-dependent, usually 0..3)
+    val rollAngleMode: Int? = null,    // encoded roll-angle mode value (firmware-dependent, usually 0..3)
+    val usesMiles: Boolean? = null,
+    val autoPowerOffMinutes: Int? = null,
+    val tiltBackSpeed: Int? = null,
+    val ledMode: Int? = null,
+    val lightMode: Int? = null,
+    val alertFlags: Int? = null,
+    val wheelAlarm: Boolean? = null,
+    val topSpeed: Double? = null,           // session top speed in km/h
+    val fanStatus: Int? = null,             // fan on/off status
+    val chargingStatus: Int? = null,        // charging status byte
+    val temperature2: Double? = null,       // secondary temperature (e.g. motor/board)
+    val cpuLoad: Int? = null,               // CPU load percentage
+    val speedLimit: Double? = null,         // configured speed limit in km/h
+    val alarm1Speed: Int? = null,           // alarm 1 speed threshold
+    val alarm2Speed: Int? = null,           // alarm 2 speed threshold
+    val alarm3Speed: Int? = null,           // alarm 3 speed threshold
+    val wheelMaxSpeed: Int? = null,         // max speed setting
+    val wheelDistance: Double? = null,       // trip distance (wheel-reported)
+    val angle: Double? = null                // pitch/tilt angle in degrees (null if unavailable)
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
