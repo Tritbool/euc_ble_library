@@ -100,6 +100,7 @@ class BLEManager internal constructor(
     private var frameCandidateProtocols: List<EUCProtocol> = emptyList()
     private var queryOrchestrationJob: Job? = null
     private var dataFlowCollectorJob: Job? = null
+    private var writeFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
 
     // Callbacks
@@ -818,16 +819,15 @@ class BLEManager internal constructor(
     internal fun startDataFlowCollection(protocol: EUCProtocol) {
         cancelDataFlowCollection()
         dataFlowCollectorJob = coroutineScope.launch {
-            launch {
-                protocol.dataFlow.collect { d ->
-                    dataCallback?.onDataReceived(d)
-                }
+            protocol.dataFlow.collect { d ->
+                dataCallback?.onDataReceived(d)
             }
-            launch {
-                protocol.writeFlow.collect { payload ->
-                    if (payload.isNotEmpty()) {
-                        sendCommand(payload, protocol.getWriteCharacteristicUUID())
-                    }
+        }
+
+        writeFlowCollectorJob = coroutineScope.launch {
+            protocol.writeFlow.collect { payload ->
+                if (payload.isNotEmpty()) {
+                    sendCommand(payload, protocol.getWriteCharacteristicUUID())
                 }
             }
         }
@@ -837,6 +837,8 @@ class BLEManager internal constructor(
     internal fun cancelDataFlowCollection() {
         dataFlowCollectorJob?.cancel()
         dataFlowCollectorJob = null
+        writeFlowCollectorJob?.cancel()
+        writeFlowCollectorJob = null
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
