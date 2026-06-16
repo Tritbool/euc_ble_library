@@ -52,8 +52,8 @@ class InMotionProtocol : EUCProtocol {
 
     override val manufacturer: String = "InMotion"
     override val supportedModels: List<String> = listOf(
-        "V5", "V5F", "V8", "V8F", "V8S", "V10", "V10F", "V11", "V11Y",
-        "V12", "V12 HS", "V12 HT", "V12 PRO", "V12S", "V13", "V13 PRO", "V14", "V14 50GB", "V14 50S", "V9", "P6"
+        "V5", "V5F", "V8", "V8F", "V8S", "V9", "V10", "V10F", "V11", "V11Y",
+        "V12", "V12S", "V12 HS", "V12 HT", "V12 PRO", "V13", "V13 PRO", "V14", "V14 50GB", "V14 50S", "P6"
     )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,

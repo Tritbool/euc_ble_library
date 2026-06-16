@@ -137,7 +137,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var lastKnownModel: String? = null
     private var lastKnownFirmwareVersion: String? = null
     private var gotwayFirmwareVariant: String? = null
-    private var typeAUsesHardwarePwm = false
+    private var useHwPwm = false
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
 
     init {
@@ -205,7 +205,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         lastKnownModel = null
         lastKnownFirmwareVersion = null
         gotwayFirmwareVariant = null
-        typeAUsesHardwarePwm = false
+        useHwPwm = false
         _channel.close()
     }
 
@@ -282,7 +282,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
-        val pwmFromTypeA = if (typeAUsesHardwarePwm) {
+        val pwmFromTypeA = if (useHwPwm) {
             abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble())
         } else {
             abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0
@@ -476,25 +476,25 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             message.startsWith("GW", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "Begode"
-                typeAUsesHardwarePwm = false
+                useHwPwm = false
             }
 
             message.startsWith("JN", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "ExtremeBull"
-                typeAUsesHardwarePwm = false
+                useHwPwm = false
             }
 
             message.startsWith("CF", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "Freestyl3r"
-                typeAUsesHardwarePwm = true
+                useHwPwm = true
             }
 
             message.startsWith("BF", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "SV"
-                typeAUsesHardwarePwm = true
+                useHwPwm = true
             }
         }
     }
