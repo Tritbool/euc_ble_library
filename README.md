@@ -6,26 +6,45 @@
 ## Usage (single entry point)
 
 `com.euc.ble.EucBleClient` is the public BLE entry point for client applications.
-It handles protocol registration internally, so client code must not register brand/protocol handlers.
+It registers built-in protocols internally, so client code must not register brand-specific handlers.
+
+Scan lifecycle and connection events are exposed through `ConnectionCallback`.
+Decoded telemetry is exposed through `DataCallback`.
+Errors are exposed through `ErrorCallback`.
+
+Callbacks are invoked from background contexts and are not guaranteed to run on the Android main thread.
+Switch explicitly to the main thread before touching Android UI.
 
 ```kotlin
 val client = EucBleClient(context)
 
 client.setConnectionCallback(object : ConnectionCallback() {
+    override fun onScanStarted() {
+        // scan started
+    }
+
+    override fun onDeviceDiscovered(device: EUCDevice) {
+        client.connect(device)
+    }
+
     override fun onConnected() {
         // connected
     }
-})
 
-client.setScanCallback(object : ScanCallback {
-    override fun onDeviceDiscovered(device: EUCDevice) {
-        client.connect(device)
+    override fun onDisconnected() {
+        // disconnected
     }
 })
 
 client.setDataCallback(object : DataCallback {
     override fun onDataReceived(data: EUCData) {
         // telemetry
+    }
+})
+
+client.setErrorCallback(object : ErrorCallback {
+    override fun onError(error: BLEException) {
+        // handle error
     }
 })
 
