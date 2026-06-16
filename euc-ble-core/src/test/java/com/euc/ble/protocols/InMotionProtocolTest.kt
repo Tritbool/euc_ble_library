@@ -170,7 +170,7 @@ class InMotionProtocolTest {
 
         // Test V13
         protocol.decode(createCarTypeFrame(series = 8, type = 1))
-        val realtimeFrame = ByteUtils.hexToBytes("aaaa14199191620000c1a216008bc301006ffe000037890200ffffd5fe55")
+        val realtimeFrame = ByteUtils.hexToBytes("aaaa1457847b57f4ff00000000000000000000000000000000bbe97300bbe9000000003d010000e21d991d983a7c159c18401f401f7017701750c300000000c6c800cbb0ccc4cdb0e6000200000000000000000000100000000000fc")
         val decodedV13 = protocol.decode(realtimeFrame)
         assertNotNull(decodedV13)
         assertEquals("InMotion V13", decodedV13!!.model)
