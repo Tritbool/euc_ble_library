@@ -1,7 +1,6 @@
 package com.euc.ble
 
 import android.Manifest
-import android.bluetooth.le.ScanCallback
 import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -13,7 +12,6 @@ import com.euc.ble.core.ConnectionCallback
 import com.euc.ble.core.DataCallback
 import com.euc.ble.core.ErrorCallback
 import com.euc.ble.core.Logger
-//import com.euc.ble.core.ScanCallback
 import com.euc.ble.core.QueryTraceEvent
 import com.euc.ble.models.EUCDevice
 import com.euc.ble.protocols.CommandSupport
@@ -80,10 +78,6 @@ class EucBleClient(
     fun getConnectionState(): BLEConstants.ConnectionState = bleManager.getConnectionState()
 
     fun getConnectedDevice(): EUCDevice? = bleManager.getConnectedDevice()
-
-    fun setScanCallback(callback: ScanCallback) {
-        bleManager.setScanCallback(callback)
-    }
 
     fun setConnectionCallback(callback: ConnectionCallback) {
         bleManager.setConnectionCallback(callback)

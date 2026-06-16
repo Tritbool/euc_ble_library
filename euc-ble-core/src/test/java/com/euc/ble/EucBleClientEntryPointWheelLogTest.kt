@@ -8,14 +8,9 @@ import com.euc.ble.core.DataCallback
 import com.euc.ble.core.NoOpLogger
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -37,7 +32,7 @@ class EucBleClientEntryPointWheelLogTest {
     fun setUp() {
         client = EucBleClient(mock<Context>(), NoOpLogger())
         bleManager = client.bleManager
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        //Dispatchers.setMain(UnconfinedTestDispatcher())
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -45,7 +40,7 @@ class EucBleClientEntryPointWheelLogTest {
     fun tearDown() {
         bleManager.cancelDataFlowCollection()
         bleManager.protocols.forEach { it.close() }
-        Dispatchers.resetMain()
+        //Dispatchers.resetMain()
     }
 
     /*************************************************************************************/

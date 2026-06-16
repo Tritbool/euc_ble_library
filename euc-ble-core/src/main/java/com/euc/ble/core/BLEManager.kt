@@ -9,13 +9,11 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanCallback as AndroidScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.annotation.VisibleForTesting
@@ -32,6 +30,7 @@ import com.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
@@ -39,18 +38,32 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Main BLE Manager for Electric Unicycles
- * Handles device scanning, connection, and data processing
+ * Main BLE manager for Electric Unicycles.
+ *
+ * This class is responsible for BLE scanning, connection lifecycle management,
+ * protocol selection, command transmission, and decoded data delivery.
+ *
+ * Threading model:
+ * - Internal asynchronous work is executed on a background coroutine scope based on
+ *   `Dispatchers.IO + SupervisorJob()`.
+ * - Public callbacks exposed by this manager (`ConnectionCallback`, `DataCallback`,
+ *   and `ErrorCallback`) are not guaranteed to be invoked on the Android main thread.
+ * - Callers must explicitly switch to `Dispatchers.Main`, `runOnUiThread`, or an
+ *   equivalent UI mechanism before touching Android views.
+ *
+ * Rationale:
+ * - BLE operations, retries, polling, and response timeouts are background work and
+ *   should not run on the main thread.
+ * - Keeping callback dispatching explicit avoids hiding threading behavior from the
+ *   library consumer and keeps the manager usable from non-UI contexts as well.
  */
 class BLEManager internal constructor(
-    private val context: Context,
-    private val logger: Logger = AndroidLogger()
+    private val context: Context, private val logger: Logger = AndroidLogger()
 ) : BluetoothGattCallback() {
     companion object {
         private const val MIN_QUERY_ATTEMPTS = 1
@@ -90,50 +103,51 @@ class BLEManager internal constructor(
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
 
     // Callbacks
-    private var scanCallback: ScanCallback? = null
+    private var platformScanCallback: AndroidScanCallback? = null
     private var connectionCallback: ConnectionCallback? = null
     private var dataCallback: DataCallback? = null
     private var errorCallback: ErrorCallback? = null
 
     // Raw frame capture: every raw BLE characteristic notification is emitted here
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
+        extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     /**
-     * Flow that emits every raw BLE characteristic notification received from the connected
-     * device, as a defensive copy of the original byte array.
+     * Flow emitting every raw BLE characteristic notification received from the
+     * connected device as a defensive copy of the original byte array.
      *
-     * Collectors can use this to write WheelLog-style raw logs or to perform any custom
-     * processing on the unmodified BLE data, independently of the decoding pipeline.
+     * This flow can be collected to implement raw frame logging, packet inspection,
+     * or custom decoding pipelines independent from the built-in protocol decoder.
      *
-     * Example (Kotlin coroutines):
+     * Threading notes:
+     * - Emissions originate from BLE callback handling and therefore must be treated
+     *   as background events.
+     * - Collectors are responsible for choosing the appropriate collection context.
+     *
+     * Example:
      * ```kotlin
-     * bleManager.rawFrameFlow
-     *     .collect { bytes ->
-     *         outputStream.write(bytes)
-     *     }
+     * bleManager.rawFrameFlow.collect { bytes ->
+     *     outputStream.write(bytes)
+     * }
      * ```
      */
     val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val _queryTraceFlow = MutableSharedFlow<QueryTraceEvent>(
-        extraBufferCapacity = 256,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
+        extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = _queryTraceFlow.asSharedFlow()
 
     // Coroutine management
-    private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
+    private var scanTimeoutJob: Job? = null
+    private var connectionTimeoutJob: Job? = null
 
     private data class PendingQueryState(
-        val protocolName: String,
-        val query: ProtocolQuerySpec,
-        val attempt: Int,
-        val sentAtMs: Long
+        val protocolName: String, val query: ProtocolQuerySpec, val attempt: Int, val sentAtMs: Long
     )
 
     // Device cache
@@ -184,14 +198,18 @@ class BLEManager internal constructor(
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
 
         scanJob = coroutineScope.launch {
-            withContext(Dispatchers.IO) { startBleScan() }
+            startBleScan()
         }
 
-        // Set timeout for scanning
-        Handler(Looper.getMainLooper()).postDelayed({
-            logger.info("BLEManager", "Scan timeout reached")
-            stopScan()
-        }, scanTimeout)
+        scanTimeoutJob = coroutineScope.launch {
+            delay(scanTimeout.milliseconds)
+            if (connectionState == BLEConstants.ConnectionState.DISCONNECTED
+                && platformScanCallback != null
+            ) {
+                logger.info("BLEManager", "Scan timeout reached")
+                stopScan()
+            }
+        }
     }
 
     /**
@@ -199,9 +217,11 @@ class BLEManager internal constructor(
      */
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun stopScan() {
+        scanTimeoutJob?.cancel()
+        scanTimeoutJob = null
         scanJob?.cancel()
-        bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
-        scanCallback = null
+        bluetoothAdapter?.bluetoothLeScanner?.stopScan(platformScanCallback)
+        platformScanCallback = null
         connectionCallback?.onScanCompleted(discoveredDevices.values.toList())
     }
 
@@ -221,19 +241,18 @@ class BLEManager internal constructor(
         currentDevice = device
         connectionState = BLEConstants.ConnectionState.CONNECTING
 
+        // Main connection job
         connectionJob = coroutineScope.launch {
-            withContext(Dispatchers.IO) {
-                connectToDevice(device.bluetoothDevice!!)
-            }
+            connectToDevice(device.bluetoothDevice!!)
         }
 
-        // Set connection timeout
-        Handler(Looper.getMainLooper()).postDelayed({
+        connectionTimeoutJob = coroutineScope.launch {
+            delay(connectionTimeout.milliseconds)
             if (connectionState == BLEConstants.ConnectionState.CONNECTING) {
                 disconnect()
                 errorCallback?.onError(BLEException("Connection timeout"))
             }
-        }, connectionTimeout)
+        }
     }
 
     /**
@@ -244,6 +263,8 @@ class BLEManager internal constructor(
         manualDisconnect = true
         reconnectJob?.cancel()
         reconnectJob = null
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
         reconnectRetryCount = 0
         cancelPollingOrchestration()
         cancelDataFlowCollection()
@@ -322,8 +343,7 @@ class BLEManager internal constructor(
                 bluetoothGatt?.writeCharacteristic(char, payload, char.writeType)
             } else {
                 // fallback pour anciennes API
-                @Suppress("DEPRECATION")
-                run {
+                @Suppress("DEPRECATION") run {
                     char.setValue(payload)
                     bluetoothGatt?.writeCharacteristic(char)
                 }
@@ -367,11 +387,16 @@ class BLEManager internal constructor(
         this.maxRetries = retries
     }
 
+    /**
+     * Callback registration methods.
+     *
+     * Threading contract:
+     * - Registered callbacks are invoked from background execution contexts.
+     * - No callback registered through these setters is guaranteed to run on the
+     *   Android main thread.
+     * - UI updates must be marshalled explicitly by the caller.
+     */
     // Callback setters
-    fun setScanCallback(callback: ScanCallback) {
-        this.scanCallback = callback
-    }
-
     fun setConnectionCallback(callback: ConnectionCallback) {
         this.connectionCallback = callback
     }
@@ -392,14 +417,12 @@ class BLEManager internal constructor(
     private fun startBleScan() {
         val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
 
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
-            .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
-            .build()
+            .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT).build()
 
-        scanCallback = object : ScanCallback() {
+        platformScanCallback = object : AndroidScanCallback() {
             @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 processScanResult(result)
@@ -410,15 +433,14 @@ class BLEManager internal constructor(
             }
         }
 
-        scanner.startScan(null, settings, scanCallback)
+        scanner.startScan(null, settings, platformScanCallback)
         connectionCallback?.onScanStarted()
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun processScanResult(result: ScanResult) {
         data class WheelManufacturerData(
-            val manufacturerId: Int,
-            val data: ByteArray?
+            val manufacturerId: Int, val data: ByteArray?
         )
 
         val device = result.device
@@ -431,8 +453,7 @@ class BLEManager internal constructor(
             BLEConstants.MANUFACTURER_VETERAN,
             BLEConstants.MANUFACTURER_LEAPERKIM,
         ).firstNotNullOfOrNull { id ->
-            scanRecord
-                ?.getManufacturerSpecificData(id)
+            scanRecord?.getManufacturerSpecificData(id)
                 ?.let { bytes -> WheelManufacturerData(id, bytes) }
         }
 
@@ -483,6 +504,8 @@ class BLEManager internal constructor(
                 reconnectJob?.cancel()
                 reconnectJob = null
                 connectionState = BLEConstants.ConnectionState.CONNECTED
+                connectionTimeoutJob?.cancel()
+                connectionTimeoutJob = null
                 connectionCallback?.onConnected()
                 // Discover services
                 gatt.discoverServices()
@@ -528,32 +551,32 @@ class BLEManager internal constructor(
         val delayMs = (baseDelay + jitter).coerceAtMost(maxReconnectDelayMs)
 
         reconnectJob = coroutineScope.launch {
-            withContext(Dispatchers.IO) {
-                kotlinx.coroutines.delay(delayMs)
-                // double-check conditions avant tentative
-                if (manualDisconnect) {
-                    reconnectJob = null
-                    return@withContext
-                }
-                if (connectionState == BLEConstants.ConnectionState.CONNECTED) {
-                    reconnectJob = null
-                    reconnectRetryCount = 0
-                    return@withContext
-                }
-                reconnectRetryCount++
-                connectionState = BLEConstants.ConnectionState.CONNECTING
-                try {
-                    currentDevice?.bluetoothDevice?.let { device ->
-                        connectToDevice(device)
-                    } ?: run {
-                        connectionCallback?.onConnectionFailed(BLEException("No device to reconnect"))
-                        reconnectJob = null
-                    }
-                } catch (e: Exception) {
-                    // en cas d'échec immédiat on laissera le prochain onConnectionStateChange lancer une nouvelle tentative
-                    reconnectJob = null
-                }
+
+            kotlinx.coroutines.delay(delayMs)
+            // double-check conditions avant tentative
+            if (manualDisconnect) {
+                reconnectJob = null
+                return@launch
             }
+            if (connectionState == BLEConstants.ConnectionState.CONNECTED) {
+                reconnectJob = null
+                reconnectRetryCount = 0
+                return@launch
+            }
+            reconnectRetryCount++
+            connectionState = BLEConstants.ConnectionState.CONNECTING
+            try {
+                currentDevice?.bluetoothDevice?.let { device ->
+                    connectToDevice(device)
+                } ?: run {
+                    connectionCallback?.onConnectionFailed(BLEException("No device to reconnect"))
+                    reconnectJob = null
+                }
+            } catch (e: Exception) {
+                // en cas d'échec immédiat on laissera le prochain onConnectionStateChange lancer une nouvelle tentative
+                reconnectJob = null
+            }
+
         }
     }
 
@@ -584,20 +607,20 @@ class BLEManager internal constructor(
                 return
             }
 
-            frameCandidateProtocols
-                .map { it.getDataCharacteristicUUID() }
-                .distinct()
+            frameCandidateProtocols.map { it.getDataCharacteristicUUID() }.distinct()
                 .forEach { characteristicUuid ->
                     enableNotifications(characteristicUuid)
                 }
             connectionCallback?.onServicesDiscovered(gatt.services)
 
             when {
-                metadataMatchedProtocols.size == 1 ->
-                    setActiveProtocol(metadataMatchedProtocols.single(), "metadata")
+                metadataMatchedProtocols.size == 1 -> setActiveProtocol(
+                    metadataMatchedProtocols.single(), "metadata"
+                )
 
-                frameCandidateProtocols.size == 1 ->
-                    setActiveProtocol(frameCandidateProtocols.single(), "single candidate")
+                frameCandidateProtocols.size == 1 -> setActiveProtocol(
+                    frameCandidateProtocols.single(), "single candidate"
+                )
             }
         } else {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -608,9 +631,7 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCharacteristicChanged(
-        gatt: BluetoothGatt,
-        characteristic: BluetoothGattCharacteristic,
-        value: ByteArray
+        gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
     ) {
         super.onCharacteristicChanged(gatt, characteristic, value)
         val data = value.clone()
@@ -620,8 +641,7 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     @Suppress("DEPRECATION")
     override fun onCharacteristicChanged(
-        gatt: BluetoothGatt,
-        characteristic: BluetoothGattCharacteristic
+        gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic
     ) {
         super.onCharacteristicChanged(gatt, characteristic)
         val raw = characteristic.value ?: return
@@ -658,14 +678,15 @@ class BLEManager internal constructor(
         }
 
         when {
-            frameMatches.size == 1 ->
-                setActiveProtocol(frameMatches.single(), "frame signature")
+            frameMatches.size == 1 -> setActiveProtocol(frameMatches.single(), "frame signature")
 
-            metadataMatchedProtocols.size == 1 ->
-                setActiveProtocol(metadataMatchedProtocols.single(), "metadata fallback")
+            metadataMatchedProtocols.size == 1 -> setActiveProtocol(
+                metadataMatchedProtocols.single(), "metadata fallback"
+            )
 
-            candidates.size == 1 ->
-                setActiveProtocol(candidates.single(), "single registered protocol")
+            candidates.size == 1 -> setActiveProtocol(
+                candidates.single(), "single registered protocol"
+            )
 
             frameMatches.size == 2 -> {
                 val manuf1 = frameMatches[0].manufacturer
@@ -673,48 +694,37 @@ class BLEManager internal constructor(
 
                 // CANNOT DECIDE BETWEEN LK AND NOSFET
                 if (manuf1.equals("Leaperkim", ignoreCase = true) && manuf2.equals(
-                        "Nosfet",
-                        ignoreCase = true
-                    ) ||
-                    manuf2.equals("Leaperkim", ignoreCase = true) && manuf1.equals(
-                        "Nosfet",
-                        ignoreCase = true
+                        "Nosfet", ignoreCase = true
+                    ) || manuf2.equals("Leaperkim", ignoreCase = true) && manuf1.equals(
+                        "Nosfet", ignoreCase = true
                     )
                 ) {
                     setActiveProtocol(protocols.find {
                         it.manufacturer.equals(
-                            "Leaperkim",
-                            ignoreCase = true
+                            "Leaperkim", ignoreCase = true
                         )
                     }!!, "frame signature tie-break LK/Nosfet")
                 }
 
                 // CANNOT DECIDE BETWEEN GW AND EB
                 if (manuf1.equals("ExtremeBull", ignoreCase = true) && manuf2.equals(
-                        "GOTWAY",
-                        ignoreCase = true
-                    ) ||
-                    manuf2.equals("Gotway", ignoreCase = true) && manuf1.equals(
-                        "ExtremeBull",
-                        ignoreCase = true
+                        "GOTWAY", ignoreCase = true
+                    ) || manuf2.equals("Gotway", ignoreCase = true) && manuf1.equals(
+                        "ExtremeBull", ignoreCase = true
                     )
                 ) {
                     setActiveProtocol(protocols.find {
                         it.manufacturer.equals(
-                            "Gotway",
-                            ignoreCase = true
+                            "Gotway", ignoreCase = true
                         )
                     }!!, "frame signature tie-break EB/GW")
                 }
 
                 // CANNOT DECIDE BETWEEN NINEBOT AND NINEBOTZ
                 if (manuf1.equals("ninebot", ignoreCase = true) && manuf2.equals(
-                        "ninebot",
-                        ignoreCase = true
-                    ) ||
-                    manuf2.equals("ninebot", ignoreCase = true) && manuf1.equals(
-                        "ninebot",
-                        ignoreCase = true
+                        "ninebot", ignoreCase = true
+                    ) || manuf2.equals("ninebot", ignoreCase = true) && manuf1.equals(
+                        "ninebot", ignoreCase = true
                     )
                 ) {
                     setActiveProtocol(protocols.find {
@@ -729,9 +739,7 @@ class BLEManager internal constructor(
     }
 
     override fun onCharacteristicWrite(
-        gatt: BluetoothGatt,
-        characteristic: BluetoothGattCharacteristic,
-        status: Int
+        gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
         super.onCharacteristicWrite(gatt, characteristic, status)
 
@@ -764,8 +772,7 @@ class BLEManager internal constructor(
                 bluetoothGatt?.writeDescriptor(descriptor, enableValue)
             } else {
                 // Fallback pour anciennes API (setValue + writeDescriptor)
-                @Suppress("DEPRECATION")
-                run {
+                @Suppress("DEPRECATION") run {
                     descriptor.value = enableValue
                     bluetoothGatt?.writeDescriptor(descriptor)
                 }
@@ -782,7 +789,7 @@ class BLEManager internal constructor(
         val plan = protocol.getPollingPlan()
         if (!plan.enabled) return
 
-        queryOrchestrationJob = coroutineScope.launch(Dispatchers.IO) {
+        queryOrchestrationJob = coroutineScope.launch {
             for (query in plan.startupQueries) {
                 executeQueryWithRetry(protocol, query)
             }
@@ -899,9 +906,7 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun sendProtocolQuery(
-        protocol: EUCProtocol,
-        query: ProtocolQuerySpec,
-        attempt: Int
+        protocol: EUCProtocol, query: ProtocolQuerySpec, attempt: Int
     ): Boolean {
         if (protocol.getCommandSupport(query.commandType) == CommandSupport.UNSUPPORTED) {
             emitQueryTrace(
@@ -999,6 +1004,8 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun cleanup() {
         cancelReconnectAttempts()
+        scanTimeoutJob?.cancel()
+        connectionTimeoutJob?.cancel()
         disconnect()
         scanJob?.cancel()
         connectionJob?.cancel()
@@ -1006,6 +1013,19 @@ class BLEManager internal constructor(
     }
 }
 
+/**
+ * Scan-related callbacks exposed by [BLEManager].
+ *
+ * Threading contract:
+ * - These callbacks are invoked from background execution contexts.
+ * - They are not guaranteed to run on the Android main thread.
+ *
+ * Implications for callers:
+ * - Do not update Android views directly from these methods unless you explicitly
+ *   switch to the main thread first.
+ * - Prefer forwarding these events to a `Flow`, `StateFlow`, `LiveData`, or another
+ *   application-level state container consumed by the UI layer.
+ */
 // Callback interfaces
 sealed interface ScanCallback {
     fun onScanStarted() {}
@@ -1013,6 +1033,21 @@ sealed interface ScanCallback {
     fun onScanCompleted(devices: List<EUCDevice>) {}
 }
 
+/**
+ * Connection- and GATT-related callbacks exposed by [BLEManager].
+ *
+ * This callback extends [ScanCallback], so it also receives scan lifecycle events.
+ *
+ * Threading contract:
+ * - Methods may be invoked either from Android BLE callback paths or from the
+ *   manager's background coroutine scope.
+ * - No method in this callback is guaranteed to run on the Android main thread.
+ *
+ * Recommended usage:
+ * - Perform non-UI work directly here if needed.
+ * - For UI updates, switch explicitly to `Dispatchers.Main`, `runOnUiThread`, or
+ *   publish the event into a UI-observed state holder.
+ */
 sealed class ConnectionCallback : com.euc.ble.core.ScanCallback {
     open fun onConnected() {}
     open fun onDisconnected() {}
@@ -1021,9 +1056,18 @@ sealed class ConnectionCallback : com.euc.ble.core.ScanCallback {
     open fun onMtuChanged(mtu: Int) {}
 }
 
+/**
+ * Default adapter that forwards [ConnectionCallback] events to a [BleBackendListener].
+ *
+ * Threading contract:
+ * - Forwarded events keep the original threading behavior of [BLEManager].
+ * - Listener methods are therefore not guaranteed to run on the Android main thread.
+ *
+ * Consumers of [BleBackendListener] must explicitly switch to the main thread before
+ * performing UI work.
+ */
 class ListenerConnectionCallback(
-    private val listener: BleBackendListener?,
-    private val bleManager: BLEManager
+    private val listener: BleBackendListener?, private val bleManager: BLEManager
 ) : ConnectionCallback() {
 
     override fun onScanStarted() {
@@ -1059,21 +1103,40 @@ class ListenerConnectionCallback(
     }
 }
 
+/**
+ * Callback receiving decoded [EUCData] frames.
+ *
+ * Threading contract:
+ * - Invoked from the manager's background coroutine scope.
+ * - Not guaranteed to run on the Android main thread.
+ *
+ * Recommended usage:
+ * - Perform parsing, aggregation, logging, persistence, or domain processing directly.
+ * - For UI updates, switch explicitly to the main thread or publish the value through
+ *   a UI-observed state container.
+ */
 interface DataCallback {
     fun onDataReceived(data: EUCData)
 }
 
+/**
+ * Callback receiving errors produced by [BLEManager].
+ *
+ * Threading contract:
+ * - Invoked from background execution contexts.
+ * - Not guaranteed to run on the Android main thread.
+ *
+ * Recommended usage:
+ * - Handle logging, metrics, and state transitions directly.
+ * - Switch explicitly to the main thread before displaying Android UI such as
+ *   dialogs, snackbars, or toasts.
+ */
 interface ErrorCallback {
     fun onError(error: BLEException)
 }
 
 enum class QueryTracePhase {
-    SENT,
-    RESPONSE_MATCHED,
-    TIMEOUT,
-    RETRY_SCHEDULED,
-    UNSUPPORTED,
-    FAILED
+    SENT, RESPONSE_MATCHED, TIMEOUT, RETRY_SCHEDULED, UNSUPPORTED, FAILED
 }
 
 data class QueryTraceEvent(
