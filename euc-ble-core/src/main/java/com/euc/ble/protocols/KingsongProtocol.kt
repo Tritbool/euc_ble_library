@@ -161,6 +161,12 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
+    private val _writeFlow = MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val writeFlow: Flow<ByteArray> = _writeFlow.asSharedFlow()
+
     //private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
     private var lastKnownPwm: Double? = null
@@ -569,6 +575,24 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         val parsed = parseFrame(frame)
         parsed?.let { _channel.trySend(it) }
 
+        if (frame.size >= MIN_LENGTH) {
+            val headerIdx = run {
+                for (i in 0..(frame.size - 2)) {
+                    if (frame[i] == header1[0] && frame[i + 1] == header1[1]) return@run i
+                    if (frame[i] == header2[0] && frame[i + 1] == header2[1]) return@run i
+                }
+                -1
+            }
+            if (headerIdx >= 0 && frame.size - headerIdx >= MIN_LENGTH) {
+                val messageType = ByteUtils.getUnsignedByte(frame, headerIdx + 16)
+                if (messageType == 0xA4) {
+                    val reply = frame.copyOfRange(headerIdx, headerIdx + MIN_LENGTH)
+                    reply[16] = 0x98.toByte()
+                    reply[2] = 0x01.toByte()
+                    _writeFlow.tryEmit(reply)
+                }
+            }
+        }
     }
 
     override fun close() {

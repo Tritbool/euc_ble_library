@@ -34,6 +34,11 @@ interface EUCProtocol : Closeable {
      */
     val rawFrameFlow: Flow<ByteArray> get() = emptyFlow()
 
+    /**
+     * Flow of commands or raw bytes that the protocol needs to write to the device automatically.
+     */
+    val writeFlow: Flow<ByteArray> get() = emptyFlow()
+
     override fun close() {
     }
 

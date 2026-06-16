@@ -253,6 +253,19 @@ class KingsongProtocolTest {
         }
     }
 
+    @Test
+    fun decodeA4TriggersAutoReply() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.writeFlow.test {
+            protocol.decode(createA4Frame(alarm1 = 20, alarm2 = 30, alarm3 = 40, maxSpeed = 50))
+            val reply = awaitItem()
+            assertEquals(0x98.toByte(), reply[16])
+            assertEquals(0x01.toByte(), reply[2])
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     // --- Tests for new commands ---
 
     @Test

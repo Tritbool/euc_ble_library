@@ -814,11 +814,21 @@ class BLEManager internal constructor(
     }
 
     @VisibleForTesting(otherwise = PRIVATE)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     internal fun startDataFlowCollection(protocol: EUCProtocol) {
         cancelDataFlowCollection()
         dataFlowCollectorJob = coroutineScope.launch {
-            protocol.dataFlow.collect { d ->
-                dataCallback?.onDataReceived(d)
+            launch {
+                protocol.dataFlow.collect { d ->
+                    dataCallback?.onDataReceived(d)
+                }
+            }
+            launch {
+                protocol.writeFlow.collect { payload ->
+                    if (payload.isNotEmpty()) {
+                        sendCommand(payload, protocol.getWriteCharacteristicUUID())
+                    }
+                }
             }
         }
     }

@@ -51,7 +51,10 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override val manufacturer: String = "InMotion"
-    override val supportedModels: List<String> = listOf("V9", "P6")
+    override val supportedModels: List<String> = listOf(
+        "V5", "V5F", "V8", "V8F", "V8S", "V9", "V10", "V10F", "V11", "V11Y",
+        "V12", "V12S", "V12 HS", "V12 HT", "V12 PRO", "V13", "V13 PRO", "V14", "V14 50GB", "V14 50S", "P6"
+    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -422,6 +425,16 @@ class InMotionProtocol : EUCProtocol {
                     val series = payload[2].toInt() and 0xFF
                     val type = payload[3].toInt() and 0xFF
                     modelName = when {
+                        series == 6 && type == 1 -> "InMotion V11"
+                        series == 6 && type == 2 -> "InMotion V11Y"
+                        series == 7 && type == 1 -> "InMotion V12 HS"
+                        series == 7 && type == 2 -> "InMotion V12 HT"
+                        series == 7 && type == 3 -> "InMotion V12 PRO"
+                        series == 8 && type == 1 -> "InMotion V13"
+                        series == 8 && type == 2 -> "InMotion V13 PRO"
+                        series == 9 && type == 1 -> "InMotion V14 50GB"
+                        series == 9 && type == 2 -> "InMotion V14 50S"
+                        series == 11 && type == 1 -> "InMotion V12S"
                         series == 12 && type == 1 -> "InMotion V9"
                         series == 13 && type == 1 -> "InMotion P6"
                         else -> "InMotion $series.$type"
