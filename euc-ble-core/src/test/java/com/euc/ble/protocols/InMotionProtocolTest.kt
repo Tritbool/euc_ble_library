@@ -150,6 +150,38 @@ class InMotionProtocolTest {
         assertTrue(plan.startupQueries.any { it.commandType == CommandType.REQUEST_FIRMWARE })
     }
 
+    @Test
+    fun decodeV13AndV14CarTypeFramesMapsCorrectModelNames() {
+        fun createCarTypeFrame(series: Int, type: Int): ByteArray {
+            val payload = byteArrayOf(0x01.toByte(), 0x02.toByte(), series.toByte(), type.toByte(), 0x01.toByte(), 0x01.toByte(), 0x00.toByte())
+            val flag = 0x11
+            val command = 0x82
+            val len = payload.size + 1
+            val body = ByteArray(3 + payload.size)
+            body[0] = flag.toByte()
+            body[1] = len.toByte()
+            body[2] = command.toByte()
+            payload.copyInto(body, destinationOffset = 3)
+            var xor = 0
+            for (b in body) xor = xor xor (b.toInt() and 0xFF)
+            val checksum = xor.toByte()
+            return byteArrayOf(0xAA.toByte(), 0xAA.toByte()) + body + byteArrayOf(checksum)
+        }
+
+        // Test V13
+        protocol.decode(createCarTypeFrame(series = 8, type = 1))
+        val realtimeFrame = ByteUtils.hexToBytes("aaaa14199191620000c1a216008bc301006ffe000037890200ffffd5fe55")
+        val decodedV13 = protocol.decode(realtimeFrame)
+        assertNotNull(decodedV13)
+        assertEquals("InMotion V13", decodedV13!!.model)
+
+        // Test V14 50S
+        protocol.decode(createCarTypeFrame(series = 9, type = 2))
+        val decodedV14 = protocol.decode(realtimeFrame)
+        assertNotNull(decodedV14)
+        assertEquals("InMotion V14 50S", decodedV14!!.model)
+    }
+
     private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
