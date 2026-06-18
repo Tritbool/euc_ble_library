@@ -37,7 +37,7 @@ jobs:
         run: >
           ./gradlew :euc-ble-core:testDebugUnitTest
           --tests
-          com.euc.ble.RegularTestsSuite
+          com.euc.ble.AllTests
           :euc-ble-core:jacocoTestReport
           :euc-ble-core:jacocoFocusedReport
           -PmaxParallelForks=1
