@@ -23,6 +23,9 @@ import com.euc.ble.protocols.LeaperkimProtocol
 import com.euc.ble.protocols.NinebotProtocol
 import com.euc.ble.protocols.NinebotZProtocol
 import com.euc.ble.protocols.NosfetProtocol
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharedFlow
 
 /**
@@ -33,12 +36,13 @@ import kotlinx.coroutines.flow.SharedFlow
  */
 class EucBleClient(
     context: Context,
-    logger: Logger = AndroidLogger()
+    logger: Logger = AndroidLogger(),
+    coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
-    internal val bleManager = BLEManager(context, logger)
+    internal val bleManager = BLEManager(context, logger, coroutineScope)
 
     init {
-        registerBuiltInProtocols()
+        registerBuiltInProtocols(coroutineScope)
     }
 
     fun initialize() {
@@ -99,13 +103,13 @@ class EucBleClient(
         bleManager.cleanup()
     }
 
-    private fun registerBuiltInProtocols() {
-        bleManager.registerProtocol(KingsongProtocol())
-        bleManager.registerProtocol(GotwayProtocol())
+    private fun registerBuiltInProtocols(scope: CoroutineScope) {
+        bleManager.registerProtocol(KingsongProtocol(scope =scope))
+        bleManager.registerProtocol(GotwayProtocol(scope=scope))
         bleManager.registerProtocol(InMotionProtocol())
         bleManager.registerProtocol(NinebotZProtocol())
         bleManager.registerProtocol(NinebotProtocol())
-        bleManager.registerProtocol(NosfetProtocol())
-        bleManager.registerProtocol(LeaperkimProtocol())
+        bleManager.registerProtocol(NosfetProtocol(scope=scope))
+        bleManager.registerProtocol(LeaperkimProtocol(scope=scope))
     }
 }

@@ -1,23 +1,20 @@
 package com.euc.ble.protocols
 
-import app.cash.turbine.test
 import com.euc.ble.SlowTest
 import com.euc.ble.core.ByteUtils
-import com.euc.ble.models.EUCData
-import com.euc.ble.protocols.WheelLogKingsongTest.BleFrame
+import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
-import com.euc.ble.test.JUnit4AssertionsCompat.assertEquals
-import com.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.BufferedReader
@@ -37,7 +34,7 @@ sealed class ProtocolNoDropTestBase {
 
     abstract val csvResourcePath: String
     abstract val minimumExpectedFrameCount: Int
-    abstract fun createProtocol(): EUCProtocol
+    abstract fun createProtocol(testScope: CoroutineScope): EUCProtocol
 
     private lateinit var oracle: EUCProtocol
     private lateinit var sut: EUCProtocol
@@ -45,9 +42,10 @@ sealed class ProtocolNoDropTestBase {
     @BeforeEach
     fun setUp(){
         // Oracle : compter les émissions dataFlow sur une instance fraîche
-        oracle = createProtocol()
+        val testScope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
+        oracle = createProtocol(testScope)
         // SUT : rejouer sur une nouvelle instance, collecter exactement oracleCount
-        sut = createProtocol()
+        sut = createProtocol(testScope)
     }
 
     @AfterEach
@@ -118,14 +116,14 @@ sealed class ProtocolNoDropTestBase {
 class GotwayNoDropTest : ProtocolNoDropTestBase(){
     override val csvResourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"
     override val minimumExpectedFrameCount = 200
-    override fun createProtocol() = GotwayProtocol()
+    override fun createProtocol(testScope: CoroutineScope)  = GotwayProtocol(testScope)
 
 }
 @SlowTest
 class KingsongNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv"
     override val minimumExpectedFrameCount = 200
-    override fun createProtocol() = KingsongProtocol()
+    override fun createProtocol(testScope: CoroutineScope)  = KingsongProtocol(testScope)
 
 
 }
@@ -133,7 +131,7 @@ class KingsongNoDropTest : ProtocolNoDropTestBase() {
 class InmotionNoDropTest: ProtocolNoDropTestBase(){
     override val csvResourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv"
     override val minimumExpectedFrameCount = 200
-    override fun createProtocol() = InMotionProtocol()
+    override fun createProtocol(testScope: CoroutineScope)  = InMotionProtocol()
 
 }
 
@@ -141,19 +139,19 @@ class InmotionNoDropTest: ProtocolNoDropTestBase(){
 class LeaperkimNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv"
     override val minimumExpectedFrameCount = 200
-    override fun createProtocol() = LeaperkimProtocol()
+    override fun createProtocol(testScope: CoroutineScope)  = LeaperkimProtocol(testScope)
 }
 
 @SlowTest
 class NosfetNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv"
     override val minimumExpectedFrameCount = 200
-    override fun createProtocol() = NosfetProtocol()
+    override fun createProtocol(testScope: CoroutineScope)  = NosfetProtocol(testScope)
 }
 
 @SlowTest
 class NinebotNoDropTest : ProtocolNoDropTestBase() {
     override val csvResourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_09_07_11_29_37.csv"
     override val minimumExpectedFrameCount = 200
-    override fun createProtocol() = NinebotProtocol()
+    override fun createProtocol(testScope: CoroutineScope) = NinebotProtocol()
 }

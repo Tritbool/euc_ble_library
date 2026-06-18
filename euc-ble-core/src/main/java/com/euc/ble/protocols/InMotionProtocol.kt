@@ -391,7 +391,7 @@ class InMotionProtocol : EUCProtocol {
         val temperature = ByteUtils.tryGetSignedByte(frame, LEGACY_TEMP_OFFSET)?.toDouble() ?: 0.0
         val motorTemp = ByteUtils.tryGetSignedByte(frame, LEGACY_MOTOR_TEMP_OFFSET)?.toDouble()
         val rideTimeSeconds =
-            ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_RIDE_TIME_OFFSET)?.toLong() ?: 0L
+            ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_RIDE_TIME_OFFSET) ?: 0L
 
         if (totalDistance > 0.0) totalDistanceKm = totalDistance
 
@@ -504,7 +504,7 @@ class InMotionProtocol : EUCProtocol {
         val stateByte = payload[74].toInt() and 0xFF
         val isCharging = ((stateByte shr 7) and 0x01) == 1
         val now = System.currentTimeMillis()
-        val rideTimeFromPayload = ByteUtils.tryGetUnsignedIntLE(payload, 24)?.toLong()
+        val rideTimeFromPayload = ByteUtils.tryGetUnsignedIntLE(payload, 24)
             ?.takeIf { it in 0L..604_800L }
         val rideTimeSeconds = rideTimeFromPayload ?: deriveV2RideTimeSeconds(now)
 
@@ -660,5 +660,8 @@ class InMotionProtocol : EUCProtocol {
 
     override fun isDeviceReady(data: EUCData): Boolean {
         return data.voltage > 30.0 && data.batteryLevel > 0
+    }
+
+    override fun close() {
     }
 }

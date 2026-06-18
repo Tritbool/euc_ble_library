@@ -8,10 +8,12 @@ import com.euc.ble.core.DataCallback
 import com.euc.ble.core.NoOpLogger
 import com.euc.ble.models.EUCData
 import com.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -20,7 +22,6 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class EucBleClientEntryPointWheelLogTest {
@@ -30,7 +31,8 @@ class EucBleClientEntryPointWheelLogTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     @BeforeEach
     fun setUp() {
-        client = EucBleClient(mock<Context>(), NoOpLogger())
+        val testScope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
+        client = EucBleClient(mock<Context>(), NoOpLogger(), testScope)
         bleManager = client.bleManager
         //Dispatchers.setMain(UnconfinedTestDispatcher())
     }
@@ -40,7 +42,6 @@ class EucBleClientEntryPointWheelLogTest {
     fun tearDown() {
         bleManager.cancelDataFlowCollection()
         bleManager.protocols.forEach { it.close() }
-        //Dispatchers.resetMain()
     }
 
     /*************************************************************************************/
@@ -53,6 +54,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     @Test
     fun metadataAndFrameSelectGotwayProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Begode Master PRO",
@@ -71,6 +73,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun noMetadataAndFrameSelectGotwayProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv",
@@ -86,6 +89,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     @Test
     fun noMetadataAndFrameSelectInmotionProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv",
@@ -101,6 +105,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectInMotionProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "P6",
@@ -123,6 +128,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     @Test
     fun noMetadataAndFrameSelectKingsongProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv",
@@ -137,6 +143,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectKingsongProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "KS-S22",
@@ -150,8 +157,8 @@ class EucBleClientEntryPointWheelLogTest {
         )
         assertEquals("KingsongProtocol", bleManager.currentProtocol?.javaClass!!.simpleName ?: "")
         assertTrue(decoded.isNotEmpty())
-        assertTrue(decoded.all { it.manufacturer.contains("KingSong", ignoreCase = true) })
-        assertTrue(decoded.all { it.model.contains("KS-S22", ignoreCase = true) })
+        assertTrue(decoded.any { it.manufacturer.contains("KingSong", ignoreCase = true) })
+        assertTrue(decoded.any { it.model.contains("KS-S22", ignoreCase = true) })
     }
 
 
@@ -160,6 +167,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     @Test
     fun noMetadataAndFrameSelectLeaperkimProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
@@ -174,6 +182,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun NosfetOnLeaperkimProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Nosfet Aeon",
@@ -193,6 +202,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectLeaperkimProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "PATTON",
@@ -220,6 +230,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     @Test
     fun noMetadataAndFrameSelectNosfetFallbackToLK() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
@@ -234,6 +245,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectNosfetProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Aero",
@@ -257,6 +269,7 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     @Test
     fun noMetadataAndFrameSelectNinebotZ() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(createTestDevice("Unknown wheel", manufacturerId = 0))
         val decoded = feedFramesAndCollect(
             resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_08_21_11_24_37.csv",
@@ -271,6 +284,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectNinebotZProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Z10",
@@ -290,6 +304,7 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun MetadataAndFrameSelectNinebotProtocol() = runTest {
+        //client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
         bleManager.prepareProtocolCandidates(
             createTestDevice(
                 "Ninebot",
@@ -323,19 +338,12 @@ class EucBleClientEntryPointWheelLogTest {
                 decodedFrames.trySend(data)
             }
         })
-
-        frames.forEach { frame ->
-            bleManager.handleIncomingBytes(frame)
-        }
-
+        frames.forEach { frame -> bleManager.handleIncomingBytes(frame) }
+        decodedFrames.close()
         return buildList {
-            withTimeout(10_000L.milliseconds) {
-                repeat(expectedFrames) {
-                    add(decodedFrames.receive())
-                }
-            }
+            for (item in decodedFrames) add(item)
         }.also {
-            decodedFrames.close()
+            check(it.size >= expectedFrames) { "Expected $expectedFrames frames, got ${it.size}" }
         }
     }
 

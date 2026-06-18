@@ -63,7 +63,8 @@ import kotlin.time.Duration.Companion.milliseconds
  *   library consumer and keeps the manager usable from non-UI contexts as well.
  */
 class BLEManager internal constructor(
-    private val context: Context, private val logger: Logger = AndroidLogger()
+    private val context: Context, private val logger: Logger = AndroidLogger(),
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) : BluetoothGattCallback() {
     companion object {
         private const val MIN_QUERY_ATTEMPTS = 1
@@ -141,7 +142,6 @@ class BLEManager internal constructor(
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = _queryTraceFlow.asSharedFlow()
 
     // Coroutine management
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
     private var scanTimeoutJob: Job? = null
@@ -1021,7 +1021,7 @@ class BLEManager internal constructor(
         disconnect()
         scanJob?.cancel()
         connectionJob?.cancel()
-        coroutineScope.cancel() //coroutineContext.cancelChildren()
+        coroutineScope.cancel()
     }
 }
 

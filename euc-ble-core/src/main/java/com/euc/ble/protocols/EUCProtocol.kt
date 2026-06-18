@@ -11,7 +11,6 @@ import java.util.UUID
  * Base interface for EUC manufacturer protocols
  */
 interface EUCProtocol : Closeable {
-
     /**
      * Manufacturer name
      */
@@ -39,8 +38,6 @@ interface EUCProtocol : Closeable {
      */
     val writeFlow: Flow<ByteArray> get() = emptyFlow()
 
-    override fun close() {
-    }
 
     /**
      * Check if this protocol can handle the given device
