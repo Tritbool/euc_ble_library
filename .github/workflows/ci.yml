@@ -35,10 +35,7 @@ jobs:
 
       - name: Run unit tests + coverage reports
         run: >
-          ./gradlew :euc-ble-core:testDebugUnitTest
-          --tests
-          com.euc.ble.AllTests
-          :euc-ble-core:jacocoTestReport
+          ./gradlew :euc-ble-core:jacocoTestReport
           :euc-ble-core:jacocoFocusedReport
           -PmaxParallelForks=1
           --no-daemon

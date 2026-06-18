@@ -92,7 +92,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     }
 
     classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        fileTree(layout.buildDirectory.dir("intermediates/kotlin/debug/classes")) {
             exclude(jacocoClassExclusions)
         },
         fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
@@ -108,6 +108,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
         fileTree(layout.buildDirectory) {
             include(
                 "jacoco/testDebugUnitTest.exec",
+                "jacoco/testDebugUnitTest.exec.ec",
                 "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
                 "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec.ec"
             )
@@ -135,7 +136,7 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
     }
 
     classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        fileTree(layout.buildDirectory.dir("intermediates/kotlin/debug/classes")) {
             include(focusedPackages)
             exclude(jacocoClassExclusions)
         },
@@ -153,6 +154,7 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
         fileTree(layout.buildDirectory) {
             include(
                 "jacoco/testDebugUnitTest.exec",
+                "jacoco/testDebugUnitTest.exec.ec",
                 "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
                 "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec.ec"
             )
