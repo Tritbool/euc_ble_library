@@ -6,7 +6,7 @@ on:
   workflow_dispatch: { }
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -20,8 +20,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -53,29 +51,26 @@ jobs:
         env:
           CI: true
 
-      - name: Assemble docs folder
+      - name: Build Jekyll site (home page)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - name: Copy Dokka + JaCoCo into Jekyll build output
         run: |
-          mkdir -p docs/api
-          mkdir -p docs/test-coverage/full
-          mkdir -p docs/test-coverage/focused
+          mkdir -p _site/api
+          mkdir -p _site/test-coverage/full
+          mkdir -p _site/test-coverage/focused
+          cp -r euc-ble-core/build/dokka/html/* _site/api/
+          cp -r euc-ble-core/build/reports/jacoco/full/html/* _site/test-coverage/full/
+          cp -r euc-ble-core/build/reports/jacoco/focused/html/* _site/test-coverage/focused/
 
-          # Dokka -> /api
-          cp -r euc-ble-core/build/dokka/html/* docs/api/
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
-          # JaCoCo -> /test-coverage
-          cp -r euc-ble-core/build/reports/jacoco/full/html/* docs/test-coverage/full/
-          cp -r euc-ble-core/build/reports/jacoco/focused/html/* docs/test-coverage/focused/
-
-          # Empêche Jekyll de retraiter ces dossiers HTML statiques
-          touch docs/api/.nojekyll
-          touch docs/test-coverage/.nojekyll
-
-      - name: Commit generated docs to docs/
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/api docs/test-coverage
-          git diff --cached --quiet || git commit -m "chore: update Dokka + JaCoCo reports [skip ci]"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
