@@ -3,7 +3,7 @@ name: Publish Dokka docs + Coverage to GitHub Pages
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch: { }
 
 permissions:
   contents: read
@@ -56,10 +56,31 @@ jobs:
           mkdir -p site/api
           mkdir -p site/test-coverage/full
           mkdir -p site/test-coverage/focused
+
+          # Dokka -> /api
           cp -r euc-ble-core/build/dokka/html/* site/api/
+
+          # JaCoCo -> /test-coverage
           cp -r euc-ble-core/build/reports/jacoco/full/html/* site/test-coverage/full/
           cp -r euc-ble-core/build/reports/jacoco/focused/html/* site/test-coverage/focused/
-          cp site/index.md site/index.md || true  # la page d'accueil est déjà versionnée dans git
+
+          # Convert Markdown home pages to HTML (FR + EN)
+          pip install markdown
+
+          python - << 'EOF'
+          import markdown, pathlib
+
+          def md_to_html(src, dst):
+              src_path = pathlib.Path(src)
+              if not src_path.exists():
+                  return
+              html = markdown.markdown(src_path.read_text(encoding="utf-8"), extensions=["extra"])
+              dst_path = pathlib.Path(dst)
+              dst_path.write_text(html, encoding="utf-8")
+
+          md_to_html("site/index.md", "site/index.html")
+          md_to_html("site/en/index.md", "site/en/index.html")
+          EOF
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
