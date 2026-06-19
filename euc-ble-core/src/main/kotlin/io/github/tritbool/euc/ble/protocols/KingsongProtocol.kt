@@ -41,8 +41,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
     private val unpackBuffer = ArrayList<Byte>()
 
-    // Unpacker: accumule octets et retourne 0..N trames complètes.
-    // Règle heuristique : détecte en-têtes (AA 55 ou 55 AA) et extrait la tranche jusqu'au prochain en-tête.
+    // Unpacker: accumulates bytes and returns 0..N complete frames.
+    // Heuristic rule: detects headers (AA 55 or 55 AA) and extracts the slice until the next header.
     private val unpacker: (Byte) -> List<ByteArray> = { b: Byte ->
         val out = mutableListOf<ByteArray>()
         unpackBuffer.add(b)
@@ -63,36 +63,36 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
         var headerIdx = findHeaderIndex(0)
         while (headerIdx >= 0) {
-            // chercher l'en-tête suivant
+            // look for the next header
             val nextHeader = findHeaderIndex(headerIdx + 2)
             if (nextHeader >= 0) {
-                // extraire frame [headerIdx, nextHeader)
+                // extract frame [headerIdx, nextHeader)
                 val len = nextHeader - headerIdx
                 val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
                 out.add(frame)
-                // supprimer les octets émis
+                // remove emitted bytes
                 repeat(nextHeader) { unpackBuffer.removeAt(0) }
                 headerIdx = findHeaderIndex(0)
                 continue
             }
 
-            // pas d'en-tête suivant
-            // si on a au moins MIN_LENGTH octets après l'en-tête, émettre au moins cela (heuristique de flottement)
+            // no next header
+            // if we have at least MIN_LENGTH bytes after the header, emit at least that (floating heuristic)
             if (unpackBuffer.size >= headerIdx + MIN_LENGTH) {
-                // émettre tout le restant comme une trame au lieu d'attendre indéfiniment
+                // emit all remaining as a frame instead of waiting indefinitely
                 val len = unpackBuffer.size - headerIdx
                 val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
                 out.add(frame)
-                // supprimer les octets émis
+                // remove emitted bytes
                 repeat(headerIdx + len) { unpackBuffer.removeAt(0) }
             } else {
-                // pas assez de données pour compléter une trame, attendre plus
+                // not enough data to complete a frame, wait for more
                 break
             }
             headerIdx = findHeaderIndex(0)
         }
 
-        // si pas d'en-tête, garder au plus 1 octet (préserver possibilité de header fractured)
+        // if no header, keep at most 1 byte (preserve possibility of fractured header)
         if (findHeaderIndex(0) < 0) {
             val keep = 1
             while (unpackBuffer.size > keep) unpackBuffer.removeAt(0)

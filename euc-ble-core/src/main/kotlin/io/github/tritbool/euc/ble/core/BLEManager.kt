@@ -84,7 +84,7 @@ class BLEManager internal constructor(
     private var bluetoothGatt: BluetoothGatt? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
 
-    // Champs d'état pour la reconnexion (à placer avec les autres champs d'état)
+    // Reconnection state fields
     private var reconnectRetryCount: Int = 0
     private var reconnectJob: Job? = null
     private var manualDisconnect: Boolean = false
@@ -333,17 +333,17 @@ class BLEManager internal constructor(
         }
 
         val characteristic = getCharacteristic(characteristicUuid)
-        val payload = command.clone() // copie défensive
+        val payload = command.clone() // defensive copy
 
         characteristic?.let { char ->
-            // s'assurer d'un write type cohérent (par défaut)
+            // ensure consistent write type (default)
             char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // nouvelle surcharge API 33+
+                // new API 33+ overload
                 bluetoothGatt?.writeCharacteristic(char, payload, char.writeType)
             } else {
-                // fallback pour anciennes API
+                // fallback for older APIs
                 @Suppress("DEPRECATION") run {
                     char.setValue(payload)
                     bluetoothGatt?.writeCharacteristic(char)
@@ -520,7 +520,7 @@ class BLEManager internal constructor(
                 if (!manualDisconnect && autoReconnect && currentDevice != null) {
                     scheduleReconnect()
                 } else {
-                    // si on ne veut pas reconnecter, réinitialiser le compteur
+                    // if we don't want to reconnect, reset the counter
                     reconnectRetryCount = 0
                 }
             }
@@ -537,7 +537,7 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun scheduleReconnect() {
-        // Si déjà en cours ou atteint les retries max, ne pas replanifier
+        // If already in progress or max retries reached, do not reschedule
         if (reconnectJob != null) return
         if (reconnectRetryCount >= maxRetries) {
             connectionCallback?.onConnectionFailed(BLEException("Reconnection failed after $reconnectRetryCount attempts"))
@@ -545,8 +545,8 @@ class BLEManager internal constructor(
             return
         }
 
-        // calcul du delay with backoff and jitter
-        val multiplier = 1L shl reconnectRetryCount.coerceAtMost(30) // éviter overflow
+        // calculate delay with backoff and jitter
+        val multiplier = 1L shl reconnectRetryCount.coerceAtMost(30) // prevent overflow
         val baseDelay = (reconnectBaseDelayMs * multiplier).coerceAtMost(maxReconnectDelayMs)
         val jitter = kotlin.random.Random.nextLong(0, 500)
         val delayMs = (baseDelay + jitter).coerceAtMost(maxReconnectDelayMs)
@@ -574,14 +574,14 @@ class BLEManager internal constructor(
                     reconnectJob = null
                 }
             } catch (e: Exception) {
-                // en cas d'échec immédiat on laissera le prochain onConnectionStateChange lancer une nouvelle tentative
+                // in case of immediate failure, let the next onConnectionStateChange trigger a new attempt
                 reconnectJob = null
             }
 
         }
     }
 
-    // Optionnel: helper pour annuler explicitement la reconnexion (utilisé par cleanup si besoin)
+    // Optional: helper to explicitly cancel reconnection (used by cleanup if needed)
     private fun cancelReconnectAttempts() {
         reconnectJob?.cancel()
         reconnectJob = null
@@ -766,20 +766,20 @@ class BLEManager internal constructor(
             val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)
             val descriptor = char.getDescriptor(cccdUuid) ?: return@let
             val enableValue =
-                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // copie défensive
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // defensive copy
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Utiliser la nouvelle surcharge API 33+
+                // Use new API 33+ overload
                 bluetoothGatt?.writeDescriptor(descriptor, enableValue)
             } else {
-                // Fallback pour anciennes API (setValue + writeDescriptor)
+                // Fallback for older APIs (setValue + writeDescriptor)
                 @Suppress("DEPRECATION") run {
                     descriptor.value = enableValue
                     bluetoothGatt?.writeDescriptor(descriptor)
                 }
             }
 
-            // Activer les notifications localement
+            // Enable notifications locally
             bluetoothGatt?.setCharacteristicNotification(char, true)
         }
     }

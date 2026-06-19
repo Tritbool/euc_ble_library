@@ -2,6 +2,16 @@ package io.github.tritbool.euc.ble.core
 
 import java.util.UUID
 
+/**
+ * Constants and helper functions for BLE operations specific to Electric Unicycles.
+ *
+ * Contains:
+ * - BLE Service and Characteristic UUIDs for various EUC manufacturers
+ * - Manufacturer identifiers
+ * - Connection state enumeration
+ * - Default timeout and MTU values
+ * - Frame header and footer magic bytes for protocol detection
+ */
 object BLEConstants {
     // BLE Service UUIDs
     const val KINGSONG_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"

@@ -5,12 +5,20 @@ package io.github.tritbool.euc.ble.models
  * Provides detailed battery health information beyond what EUCData carries.
  */
 data class BMSData(
-    val bmsIndex: Int,                   // BMS number (1 or 2 for dual-battery wheels)
-    val voltage: Double?,                // BMS pack voltage in volts
-    val current: Double?,                // BMS current in amps (positive = discharge)
-    val remainingCapacity: Int?,         // remaining capacity in mAh
-    val factoryCapacity: Int?,           // factory/design capacity in mAh
-    val cycles: Int?,                    // charge cycle count
-    val temperatures: List<Double>?,     // temperature probe readings in °C
-    val cellVoltages: List<Double>?      // individual cell voltages in volts
+    /** BMS number (1 or 2 for dual-battery wheels) */
+    val bmsIndex: Int,
+    /** BMS pack voltage in volts */
+    val voltage: Double?,
+    /** BMS current in amps (positive = discharge) */
+    val current: Double?,
+    /** Remaining capacity in mAh */
+    val remainingCapacity: Int?,
+    /** Factory/design capacity in mAh */
+    val factoryCapacity: Int?,
+    /** Charge cycle count */
+    val cycles: Int?,
+    /** Temperature probe readings in degrees Celsius */
+    val temperatures: List<Double>?,
+    /** Individual cell voltages in volts */
+    val cellVoltages: List<Double>?
 )

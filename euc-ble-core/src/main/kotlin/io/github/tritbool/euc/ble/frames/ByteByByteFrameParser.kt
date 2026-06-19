@@ -1,9 +1,9 @@
 package io.github.tritbool.euc.ble.frames
 
 /**
- * Parser qui appelle un *unpacker* fonctionnel avec chaque octet.
- * L'unpacker doit conserver son état interne et renvoyer 0..N trames complètes
- * à chaque appel de feed(byte).
+ * Parser that calls a functional unpacker with each byte.
+ * The unpacker must maintain its internal state and return 0..N complete frames
+ * on each feed(byte) call.
  */
 class ByteByByteFrameParser(
     private val unpacker: (b: Byte) -> List<ByteArray>,

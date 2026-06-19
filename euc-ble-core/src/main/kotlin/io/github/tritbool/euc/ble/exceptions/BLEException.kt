@@ -1,13 +1,19 @@
 package io.github.tritbool.euc.ble.exceptions
 
 /**
- * Custom exception for BLE operations
+ * Custom exception for BLE operations.
+ *
+ * Provides detailed error information including error types for specific
+ * BLE failure scenarios encountered during EUC communication.
  */
 class BLEException : Exception {
     constructor(message: String) : super(message)
     constructor(message: String, cause: Throwable) : super(message, cause)
     constructor(cause: Throwable) : super(cause)
     
+    /**
+     * Error types for categorizing BLE exceptions.
+     */
     enum class ErrorType {
         BLUETOOTH_DISABLED,
         BLUETOOTH_NOT_SUPPORTED,

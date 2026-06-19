@@ -180,7 +180,7 @@ object ByteUtils {
         return -1
     }
 
-    // -- accès sûrs (retournent null si hors bornes) --
+    // -- Safe access methods (return null if out of bounds) --
     fun tryGetUnsignedByte(data: ByteArray, offset: Int): Int? =
         if (offset in 0 until data.size) data[offset].toInt() and 0xFF else null
 

@@ -1,8 +1,12 @@
 package io.github.tritbool.euc.ble.frames
 
 /**
- * Compatible avec l'implémentation legacy : cherche un header facultatif,
- * extrait des trames de taille fixe et valide un footer facultatif.
+ * Compatible with legacy implementation: looks for an optional header,
+ * extracts fixed-size frames and validates an optional footer.
+ *
+ * @param frameSize The fixed size of each frame in bytes
+ * @param header Optional header bytes that must precede each frame
+ * @param footer Optional footer bytes that must follow each frame
  */
 class FixedSizeFrameParser(
     private val frameSize: Int,

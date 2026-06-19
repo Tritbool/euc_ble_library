@@ -27,6 +27,13 @@ internal interface LegacyBleEngine {
     fun registerProtocol(protocol: EUCProtocol) {}
 }
 
+/**
+ * BLE backend that wraps a legacy [LegacyBleEngine] implementation.
+ *
+ * This adapter allows legacy WheelLog BLE code to be used through the modern [BleBackend] interface.
+ *
+ * @param legacyEngine The legacy BLE engine to wrap
+ */
 internal class LegacyBleBackend(
     private val legacyEngine: LegacyBleEngine
 ) : BleBackend {

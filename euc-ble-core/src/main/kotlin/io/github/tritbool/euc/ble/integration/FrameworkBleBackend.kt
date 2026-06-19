@@ -21,6 +21,16 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import java.util.UUID
 
+/**
+ * Framework-based BLE backend implementation.
+ *
+ * This backend delegates BLE operations to a [BLEManager] instance and forwards events
+ * to a registered [BleBackendListener]. It uses Kotlin coroutines for asynchronous operations.
+ *
+ * @param bleManager The BLE manager that handles actual BLE operations
+ * @param ownsScope If true, this backend owns and will cancel the coroutine scope on cleanup
+ * @param scope The coroutine scope for background operations
+ */
 internal class FrameworkBleBackend(
     private val bleManager: BLEManager,
     private val ownsScope: Boolean = true,

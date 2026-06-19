@@ -1,7 +1,54 @@
 package io.github.tritbool.euc.ble.models
 
 /**
- * Represents real-time data from an Electric Unicycle
+ * Represents real-time telemetry data from an Electric Unicycle.
+ *
+ * Contains all decoded data fields from BLE characteristic notifications,
+ * including speed, voltage, current, temperature, battery information, and
+ * various device-specific settings and status flags.
+ *
+ * @param frameType Internal identifier for the frame format
+ * @param speed Current speed in km/h
+ * @param voltage Battery voltage in volts
+ * @param current Current draw in amps (positive = discharge, negative = charge)
+ * @param temperature Temperature in degrees Celsius
+ * @param batteryLevel Battery level percentage (0-100)
+ * @param distance Current trip distance in kilometers
+ * @param power Current power consumption in watts
+ * @param pwm PWM duty cycle percentage (0-100), null if unavailable
+ * @param timestamp Timestamp in milliseconds
+ * @param rawData Raw byte data from the BLE characteristic
+ * @param manufacturer Manufacturer name
+ * @param model Device model name
+ * @param serialNumber Device serial number, null if unavailable
+ * @param firmwareVersion Firmware version, null if unavailable
+ * @param isCharging Current charging status
+ * @param rideTime Total ride time in seconds
+ * @param cellVoltages Individual cell voltages, null if unavailable
+ * @param motorTemperature Motor temperature in degrees Celsius, null if unavailable
+ * @param totalDistance Total distance traveled in kilometers, null if unavailable
+ * @param pedalsMode Pedals mode value (legacy-mapped, typically 0..2)
+ * @param alarmMode Encoded alarm mode value (firmware-dependent, usually 0..3)
+ * @param rollAngleMode Encoded roll-angle mode value (firmware-dependent, usually 0..3)
+ * @param usesMiles Whether the device uses miles instead of km/h
+ * @param autoPowerOffMinutes Auto power-off time in minutes, null if unavailable
+ * @param tiltBackSpeed Tilt-back speed threshold, null if unavailable
+ * @param ledMode LED mode setting, null if unavailable
+ * @param lightMode Light mode setting, null if unavailable
+ * @param alertFlags Alert flags bitmap, null if unavailable
+ * @param wheelAlarm Wheel alarm status, null if unavailable
+ * @param topSpeed Session top speed in km/h, null if unavailable
+ * @param fanStatus Fan on/off status, null if unavailable
+ * @param chargingStatus Charging status byte, null if unavailable
+ * @param temperature2 Secondary temperature (e.g., motor/board), null if unavailable
+ * @param cpuLoad CPU load percentage, null if unavailable
+ * @param speedLimit Configured speed limit in km/h, null if unavailable
+ * @param alarm1Speed Alarm 1 speed threshold, null if unavailable
+ * @param alarm2Speed Alarm 2 speed threshold, null if unavailable
+ * @param alarm3Speed Alarm 3 speed threshold, null if unavailable
+ * @param wheelMaxSpeed Maximum speed setting, null if unavailable
+ * @param wheelDistance Trip distance reported by wheel, null if unavailable
+ * @param angle Pitch/tilt angle in degrees, null if unavailable
  */
 data class EUCData(
     internal val frameType: String = "BASE",

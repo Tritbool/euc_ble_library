@@ -29,74 +29,74 @@ import kotlin.math.abs
 
 
 /**
- * Gotway/Begode reverse‑engineered protocol (mise à jour)
+ * Gotway/Begode reverse-engineered protocol (updated)
  *
- * Ce commentaire rassemble les variantes observées :
- *  - Trames "A" / "B" brutes (flux série du contrôleur, header 0x55 0xAA)
- *  - Paquets "legacy" courts (ex. 0x01 / 0x02) réémis par certains adaptateurs
- *  - Paquets de type 0xA5 (commandes / statuts compressés émis par firmwares/adaptateurs)
+ * This comment summarizes the observed variants:
+ *  - Raw "A" / "B" frames (controller serial stream, header 0x55 0xAA)
+ *  - Short "legacy" packets (e.g., 0x01 / 0x02) re-emitted by some adapters
+ *  - Type 0xA5 packets (compressed commands/status emitted by firmware/adapters)
  *
- * Observations générales
- *  - Les trames brutes A/B observées sur le port série utilisent typiquement un header
- *    0x55 0xAA et des champs en Big Endian (BE) pour les entiers 16/32 bits.
- *  - Les paquets "legacy" (0x01/0x02) et certains paquets 0xA5 utilisent souvent
- *    un encodage Little Endian (LE) et un format plus compact.
- *  - Les champs courant / température peuvent être signés ; il faut convertir correctement.
- *  - Beaucoup de firmwares/adaptateurs n'ajoutent pas de checksum. Le flux peut être
- *    fragmenté, retardé, ou perdre des octets côté BLE (pas de flow control).
- *  - Certains paquets incluent, à la fin, des tensions de cellules BMS encodées
- *    en paires de 2 octets (LE) ou en mV / centi‑volts selon la variante.
+ * General observations:
+ *  - Raw A/B frames observed on the serial port typically use header 0x55 0xAA
+ *    and Big Endian (BE) fields for 16/32 bit integers.
+ *  - Legacy packets (0x01/0x02) and some 0xA5 packets often use Little Endian (LE)
+ *    encoding and a more compact format.
+ *  - Current/temperature fields can be signed; must be converted correctly.
+ *  - Many firmware/adapters do not add checksum. The stream can be fragmented,
+ *    delayed, or lose bytes on the BLE side (no flow control).
+ *  - Some packets include BMS cell voltages at the end, encoded as pairs of 2 bytes (LE)
+ *    or in mV/centivolts depending on the variant.
  *
- * Exemple (observé)
+ * Example (observed):
  *   A: 55 AA 19 F0 00 00 00 00 00 00 01 2C FD CA 00 01 FF F8 00 18 5A 5A 5A 5A
  *   B: 55 AA 00 0A 4A 12 48 00 1C 20 00 2A 00 03 00 07 00 08 04 18 5A 5A 5A 5A
  *
- * Format résumé (à ajuster selon firmware / modèle) :
+ * Summary format (adjust according to firmware/model):
  *  - Frame A (header 0x55 0xAA):
  *      Bytes 0-1:  0x55 0xAA
- *      Bytes 2-3:  BE voltage (fixed point, ex: 1/100)
- *      Bytes 4-5:  BE speed (fixed point, ex: 3.6 * value / 100 -> km/h)
- *      Bytes 6-9:  BE distance (uint32, mètres)
+ *      Bytes 2-3:  BE voltage (fixed point, e.g., 1/100)
+ *      Bytes 4-5:  BE speed (fixed point, e.g., 3.6 * value / 100 -> km/h)
+ *      Bytes 6-9:  BE distance (uint32, meters)
  *      Bytes 10-11: BE current (signed, fixed point)
  *      Bytes 12-13: BE temperature (signed or raw MPU value)
- *      Bytes 14-17: inconnus / flags
- *      Byte 18:    frame type (ex. 0x00)
+ *      Bytes 14-17: unknown / flags
+ *      Byte 18:    frame type (e.g., 0x00)
  *      Byte 19:    footer (0x18)
- *      Bytes 20-..: footer 0x5A 0x5A 0x5A 0x5A (ou variantes) + éventuel BMS trailing
+ *      Bytes 20-..: footer 0x5A 0x5A 0x5A 0x5A (or variants) + optional BMS trailing
  *
  *  - Frame B (header 0x55 0xAA):
  *      Bytes 2-5:  BE total distance (uint32)
  *      Byte 6:     pedals mode / alarms (nibbles)
- *      Bytes 7-12: champs additionnels inconnus
+ *      Bytes 7-12: additional unknown fields
  *      Byte 13:    LED / mode
- *      Bytes 14-17: inconnus
- *      Byte 18:    frame type (ex. 0x04)
- *      Footer idem
+ *      Bytes 14-17: unknown
+ *      Byte 18:    frame type (e.g., 0x04)
+ *      Footer same
  *
- *  - Paquets "legacy" (ex. 0x01 / 0x02) :
- *      - Souvent envoyés par Serial->BLE adapter ou firmwares alternatifs.
- *      - Champs en LE, formats plus compacts; peuvent représenter voltage/speed/etc.
+ *  - Legacy packets (e.g., 0x01 / 0x02):
+ *      - Often sent by Serial->BLE adapter or alternative firmware.
+ *      - LE fields, more compact formats; can represent voltage/speed/etc.
  *
- *  - Paquets 0xA5 :
- *      - Utilisés pour commandes (LIGHT_ON/OFF, BEEP, POWER_OFF) et parfois
- *        pour états compressés. Structure différente (header 0xA5 ...).
+ *  - 0xA5 packets:
+ *      - Used for commands (LIGHT_ON/OFF, BEEP, POWER_OFF) and sometimes for compressed states.
+ *        Different structure (header 0xA5 ...).
  *
- * Recommandations de parsing
- *  - Dispatcher par premier octet / header : 0x55 (A/B raw), 0x01/0x02 (legacy),
- *    0xA5 (command/status), ou par octet type dans la trame si présent.
- *  - Pour A/B : traiter les entiers en BE. Pour legacy/0xA5 : essayer LE.
- *  - Gérer la fragmentation : tolérer tailles variables, ignorer trames trop courtes,
- *    tenter une re‑synchronisation sur 0x55 0xAA ou les headers adapter.
- *  - Extraire dynamiquement les tensions de cellules depuis la queue si présentes :
- *      lire paires de 2 octets (LE) et convertir en V (mV -> V ou /100 -> V selon plages).
- *  - Convertir correctement les valeurs signées (courant, températures moteur).
- *  - Rester défensif : valider plages plausibles (voltage, courant, température).
+ * Parsing recommendations:
+ *  - Dispatch by first byte/header: 0x55 (A/B raw), 0x01/0x02 (legacy), 0xA5 (command/status),
+ *    or by type byte in the frame if present.
+ *  - For A/B: process integers as BE. For legacy/0xA5: try LE.
+ *  - Handle fragmentation: tolerate variable sizes, ignore too short frames,
+ *    attempt re-synchronization on 0x55 0xAA or adapter headers.
+ *  - Dynamically extract cell voltages from the queue if present:
+ *      read pairs of 2 bytes (LE) and convert to V (mV -> V or /100 -> V depending on ranges).
+ *  - Correctly convert signed values (current, motor temperatures).
+ *  - Stay defensive: validate plausible ranges (voltage, current, temperature).
  *
- * Pourquoi ces variantes n'étaient pas dans l'ancien commentaire ?
- *  - Le commentaire d'origine décrit le flux série brut observé sur un contrôleur/firme
- *    donné. D'autres firmwares/adaptateurs (Serial->BLE) réémettent ou transforment
- *    ces octets (headers différents, endianness différente) — ces variantes n'étaient
- *    pas forcément présentes lors de la rétro‑ingénierie initiale.
+ * Why were these variants not in the old comment?
+ *  - The original comment described the raw serial stream observed on a specific controller/firmware.
+ *    Other firmware/adapters (Serial->BLE) re-emit or transform these bytes
+ *    (different headers, different endianness) — these variants were not necessarily
+ *    present during the initial reverse engineering.
  */
 open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
     EUCProtocol {

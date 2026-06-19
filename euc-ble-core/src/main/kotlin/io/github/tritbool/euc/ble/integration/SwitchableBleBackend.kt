@@ -5,6 +5,16 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import java.util.UUID
 
+/**
+ * BLE backend that can switch between framework and legacy implementations at runtime.
+ *
+ * This backend delegates all operations to the currently active backend (framework or legacy).
+ * The active backend can be switched using [switchTo] method.
+ *
+ * @param frameworkBackend The framework-based backend to use when in FRAMEWORK mode
+ * @param legacyBackend The legacy-based backend to use when in LEGACY mode
+ * @param initialType The initial backend type to use
+ */
 internal class SwitchableBleBackend(
     private val frameworkBackend: BleBackend,
     private val legacyBackend: BleBackend,
