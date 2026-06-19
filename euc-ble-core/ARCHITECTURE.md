@@ -102,7 +102,7 @@ java -jar plantuml.jar class_diagram.puml
 │               EUC BLE Core Library                │
 │                                                     │
 │  ┌─────────────┐    ┌─────────────────────────┐  │
-│  │ BLEManager  │───▶│ EUCProtocol Interface  │  │
+│  │ EucBleClient│───▶│ EUCProtocol Interface  │  │
 │  └─────────────┘    └─────────────────────────┘  │
 │          │                  │                    │
 │          ▼                  ▼                    │
@@ -116,7 +116,9 @@ java -jar plantuml.jar class_diagram.puml
 │  └─────────────┘    │ GotwayProtocol         │  │
 │                     │ InMotionProtocol       │  │
 │                     │ NinebotProtocol        │  │
-│                     │ VeteranProtocol        │  │
+│                     │ NinebotZProtocol       │  │
+│                     │ LeaperkimProtocol      │  │
+│                     │ NosfetProtocol         │  │
 │                     └─────────────────────────┘  │
 └─────────────────────────────────────────────────┘
                     │
@@ -181,218 +183,130 @@ dependencies {
 }
 ```
 
-### Step 2: Initialize BLE Manager
+### Step 2: Use EucBleClient (single entry point)
+
+`EucBleClient` is the public API. It registers all built-in protocols internally — client code must
+not register brand-specific handlers manually.
 
 ```kotlin
-val bleManager = BLEManager(context)
-bleManager.initialize()
-```
+val client = EucBleClient(context)
 
-### Step 3: Register Protocols
-
-```kotlin
-bleManager.registerProtocol(KingsongProtocol())
-bleManager.registerProtocol(GotwayProtocol())
-// Add more protocols as needed
-```
-
-### Step 4: Set Up Callbacks
-
-```kotlin
-bleManager.setScanCallback(object : ScanCallback {
+client.setConnectionCallback(object : ConnectionCallback() {
     override fun onDeviceDiscovered(device: EUCDevice) {
-        // Update UI with discovered device
+        client.connect(device)
+    }
+    override fun onConnected() { /* ... */ }
+    override fun onDisconnected() { /* ... */ }
+})
+
+client.setDataCallback(object : DataCallback {
+    override fun onDataReceived(data: EUCData) {
+        val speed = data.speed
+        val voltage = data.voltage
+        val batteryLevel = data.batteryLevel
     }
 })
 
-bleManager.setDataCallback(object : DataCallback {
-    override fun onDataReceived(data: EUCData) {
-        // Update dashboard with real-time data
-    }
+client.setErrorCallback(object : ErrorCallback {
+    override fun onError(error: BLEException) { /* ... */ }
 })
+
+client.initialize()
+client.startScan()
 ```
 
-### Step 5: Start Using the Library
+### Step 3: Send commands
 
 ```kotlin
-// Scan for devices
-bleManager.startScan()
-
-// Connect to a device
-bleManager.connect(discoveredDevice)
-
-// Send commands
-val command = KingsongProtocol().createCommand(CommandType.LIGHT_ON, Unit)
-bleManager.sendCommand(command, KingsongProtocol().getDataCharacteristicUUID())
+client.sendCommand(CommandType.LIGHT_ON)
 ```
 
 ## Best Practices
 
-### 1. **Error Handling**
+### Error Handling
 
 ```kotlin
-bleManager.setErrorCallback(object : ErrorCallback {
+client.setErrorCallback(object : ErrorCallback {
     override fun onError(error: BLEException) {
         when (error.errorType) {
             ErrorType.BLUETOOTH_DISABLED -> requestBluetoothEnable()
             ErrorType.CONNECTION_FAILED -> showRetryOption()
             ErrorType.DATA_DECODING_FAILED -> logError(error)
-            // Handle other error types appropriately
         }
     }
 })
 ```
 
-### 2. **Memory Management**
+### Memory Management
 
 ```kotlin
 override fun onDestroy() {
-    bleManager.cleanup()
+    client.cleanup()
     super.onDestroy()
 }
 ```
 
-### 3. **Configuration**
+### Logging
 
 ```kotlin
-// Customize timeouts and behavior
-bleManager.setScanTimeout(15000) // 15 seconds
-bleManager.setConnectionTimeout(8000) // 8 seconds
-bleManager.setAutoReconnect(true)
-bleManager.setMaxRetries(3)
-```
+// Use no-op logger for testing
+val bleManager = BLEManager(context, NoOpLogger())
 
-### 4. **Logging**
-
-```kotlin
-// Use custom logger for better control
-val customLogger = CustomLogger()
-val bleManager = BLEManager(context, customLogger)
+// Implement custom logger
+class CustomLogger : Logger {
+    override fun verbose(tag: String, message: String) { /* ... */ }
+    override fun debug(tag: String, message: String) { /* ... */ }
+    override fun info(tag: String, message: String) { /* ... */ }
+    override fun warn(tag: String, message: String) { /* ... */ }
+    override fun error(tag: String, message: String) { /* ... */ }
+    override fun error(tag: String, message: String, throwable: Throwable) { /* ... */ }
+}
 ```
 
 ## Extending the Library
 
 ### Adding New Manufacturers
 
-1. **Create Protocol Class**
+1. Implement `EUCProtocol`
+2. Register the new protocol inside `EucBleClient` alongside the existing ones
+3. Add a WheelLog capture test (see [README_TESTS.md](README_TESTS.md))
 
 ```kotlin
 class NewManufacturerProtocol : EUCProtocol {
     override val manufacturer: String = "NewManufacturer"
     override val supportedModels: List<String> = listOf("Model1", "Model2")
-    
-    override fun canHandle(device: EUCDevice): Boolean {
-        // Implement device detection logic
-    }
-    
-    override fun decode(data: ByteArray): EUCData? {
-        // Implement data parsing logic
-    }
-    
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
-        // Implement command creation
-    }
-    
+
+    override fun canHandle(device: EUCDevice): Boolean { /* device detection logic */ }
+    override fun decode(data: ByteArray): EUCData? { /* frame parsing logic */ }
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray { /* ... */ }
     override fun getServiceUUID(): UUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
     override fun getDataCharacteristicUUID(): UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
-    
-    override fun isDeviceReady(data: EUCData): Boolean {
-        // Implement readiness check
-    }
-}
-```
-
-2. **Register Protocol**
-
-```kotlin
-bleManager.registerProtocol(NewManufacturerProtocol())
-```
-
-### Customizing Data Processing
-
-```kotlin
-class CustomDataProcessor : DataCallback {
-    override fun onDataReceived(data: EUCData) {
-        // Apply custom processing
-        val processedData = processEUCData(data)
-        
-        // Forward to other components
-        analyticsService.logData(processedData)
-        cloudService.syncData(processedData)
-        uiService.updateDashboard(processedData)
-    }
-    
-    private fun processEUCData(rawData: EUCData): ProcessedData {
-        // Implement custom processing logic
-    }
+    override fun isDeviceReady(data: EUCData): Boolean { /* ... */ }
 }
 ```
 
 ## Performance Considerations
 
-### 1. **Scan Optimization**
-
-- Use appropriate scan settings for your use case
 - Limit scan duration to conserve battery
-- Filter devices early to reduce processing
-
-### 2. **Connection Management**
-
-- Implement proper connection timeouts
-- Handle reconnection logic appropriately
-- Clean up resources when done
-
-### 3. **Data Processing**
-
-- Process data on background threads
-- Batch UI updates when possible
-- Use efficient data structures
-
-### 4. **Memory Usage**
-
-- Be mindful of byte array allocations
-- Reuse buffers when possible
+- Process data on background threads; switch to main thread only for UI updates
+- Be mindful of byte array allocations in the decode hot path
 - Clean up callbacks to prevent leaks
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Bluetooth Not Enabled**
-   - Check `bleManager.isBluetoothEnabled()`
-   - Request Bluetooth enable if needed
+1. **Bluetooth Not Enabled** — check `client.isBluetoothEnabled()` and request Bluetooth enable if needed
+2. **Device Not Detected** — verify device is in range and powered on; check manufacturer ID and name patterns in the protocol's `canHandle()`
+3. **Connection Failures** — check for proper Android permissions; handle connection timeouts
+4. **Data Decoding Errors** — validate data packet structure; check for correct protocol implementation
 
-2. **Device Not Detected**
-   - Verify device is in range and powered on
-   - Check manufacturer ID and naming patterns
-   - Ensure protocol can handle the device
-
-3. **Connection Failures**
-   - Check for proper permissions
-   - Verify device compatibility
-   - Handle connection timeouts appropriately
-
-4. **Data Decoding Errors**
-   - Validate data packet structure
-   - Check for correct protocol implementation
-   - Handle malformed data gracefully
-
-### Debugging Tips
+### Debugging
 
 ```kotlin
-// Enable detailed logging
 val debugLogger = object : Logger {
-    override fun verbose(tag: String, message: String) {
-        Log.v("BLE_DEBUG", "$tag: $message")
-    }
-    // Implement other methods similarly
+    override fun verbose(tag: String, message: String) { Log.v("BLE_DEBUG", "$tag: $message") }
+    // implement other levels similarly
 }
-
 val bleManager = BLEManager(context, debugLogger)
 ```
-
-## Conclusion
-
-The EUC BLE Core Library provides a clean, modular architecture for working with Electric Unicycle Bluetooth protocols. The PlantUML diagrams help visualize the structure and relationships between components, making it easier to understand, extend, and maintain the library.
-
-For more detailed information, refer to the individual diagram files and the comprehensive README.
