@@ -1,9 +1,9 @@
-name: Publish Dokka docs to GitHub Pages
+name: Publish Dokka docs + Coverage to GitHub Pages
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}   # déclenchement manuel possible
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -29,15 +29,42 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run tests + coverage reports
+        run: >
+          ./gradlew :euc-ble-core:testDebugUnitTest
+          --tests io.github.tritbool.euc.ble.AllTests
+          :euc-ble-core:jacocoTestReport
+          :euc-ble-core:jacocoFocusedReport
+          -PmaxParallelForks=1
+          --no-daemon
+        env:
+          CI: true
+
       - name: Generate Dokka HTML
         run: ./gradlew :euc-ble-core:dokkaGeneratePublicationHtml --no-daemon
         env:
           CI: true
 
+      - name: Assemble site folder
+        run: |
+          mkdir -p site/api
+          mkdir -p site/test-coverage/full
+          mkdir -p site/test-coverage/focused
+          cp -r euc-ble-core/build/dokka/html/* site/api/
+          cp -r euc-ble-core/build/reports/jacoco/full/html/* site/test-coverage/full/
+          cp -r euc-ble-core/build/reports/jacoco/focused/html/* site/test-coverage/focused/
+          cp site/index.md site/index.md || true  # la page d'accueil est déjà versionnée dans git
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: euc-ble-core/build/dokka/html
+          path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
