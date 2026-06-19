@@ -59,12 +59,12 @@ jobs:
 
       - name: Copy Dokka + JaCoCo into Jekyll build output
         run: |
-          mkdir -p _site/api
-          mkdir -p _site/test-coverage/full
-          mkdir -p _site/test-coverage/focused
-          cp -r euc-ble-core/build/dokka/html/* _site/api/
-          cp -r euc-ble-core/build/reports/jacoco/full/html/* _site/test-coverage/full/
-          cp -r euc-ble-core/build/reports/jacoco/focused/html/* _site/test-coverage/focused/
+          sudo mkdir -p _site/api
+          sudo mkdir -p _site/test-coverage/full
+          sudo mkdir -p _site/test-coverage/focused
+          sudo cp -r euc-ble-core/build/dokka/html/* _site/api/
+          sudo cp -r euc-ble-core/build/reports/jacoco/full/html/* _site/test-coverage/full/
+          sudo cp -r euc-ble-core/build/reports/jacoco/focused/html/* _site/test-coverage/focused/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
