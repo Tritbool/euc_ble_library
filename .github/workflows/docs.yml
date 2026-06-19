@@ -1,92 +1,92 @@
-name: Publish Dokka docs + Coverage to GitHub Pages
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch: { }
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Run tests + coverage reports
-        run: >
-          ./gradlew :euc-ble-core:testDebugUnitTest
-          --tests io.github.tritbool.euc.ble.AllTests
-          :euc-ble-core:jacocoTestReport
-          :euc-ble-core:jacocoFocusedReport
-          -PmaxParallelForks=1
-          --no-daemon
-        env:
-          CI: true
-
-      - name: Generate Dokka HTML
-        run: ./gradlew :euc-ble-core:dokkaGeneratePublicationHtml --no-daemon
-        env:
-          CI: true
-
-      - name: Assemble site folder
-        run: |
-          mkdir -p site/api
-          mkdir -p site/test-coverage/full
-          mkdir -p site/test-coverage/focused
-
-          # Dokka -> /api
-          cp -r euc-ble-core/build/dokka/html/* site/api/
-
-          # JaCoCo -> /test-coverage
-          cp -r euc-ble-core/build/reports/jacoco/full/html/* site/test-coverage/full/
-          cp -r euc-ble-core/build/reports/jacoco/focused/html/* site/test-coverage/focused/
-
-          # Convert Markdown home pages to HTML (FR + EN)
-          pip install markdown
-
-          python - << 'EOF'
-          import markdown, pathlib
-
-          def md_to_html(src, dst):
-              src_path = pathlib.Path(src)
-              if not src_path.exists():
-                  return
-              html = markdown.markdown(src_path.read_text(encoding="utf-8"), extensions=["extra"])
-              dst_path = pathlib.Path(dst)
-              dst_path.write_text(html, encoding="utf-8")
-
-          md_to_html("site/index.md", "site/index.html")
-          md_to_html("site/en/index.md", "site/en/index.html")
-          EOF
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+#name: Publish Dokka docs + Coverage to GitHub Pages
+#
+#on:
+#  push:
+#    branches: [ main ]
+#  workflow_dispatch: { }
+#
+#permissions:
+#  contents: read
+#  pages: write
+#  id-token: write
+#
+#concurrency:
+#  group: "pages"
+#  cancel-in-progress: true
+#
+#jobs:
+#  build-and-deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - uses: actions/setup-java@v4
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v4
+#
+#      - name: Accept Android SDK licenses
+#        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+#
+#      - name: Make gradlew executable
+#        run: chmod +x ./gradlew
+#
+#      - name: Run tests + coverage reports
+#        run: >
+#          ./gradlew :euc-ble-core:testDebugUnitTest
+#          --tests io.github.tritbool.euc.ble.AllTests
+#          :euc-ble-core:jacocoTestReport
+#          :euc-ble-core:jacocoFocusedReport
+#          -PmaxParallelForks=1
+#          --no-daemon
+#        env:
+#          CI: true
+#
+#      - name: Generate Dokka HTML
+#        run: ./gradlew :euc-ble-core:dokkaGeneratePublicationHtml --no-daemon
+#        env:
+#          CI: true
+#
+#      - name: Assemble docs folder
+#        run: |
+#          mkdir -p docs/api
+#          mkdir -p docs/test-coverage/full
+#          mkdir -p docs/test-coverage/focused
+#
+#          # Dokka -> /api
+#          cp -r euc-ble-core/build/dokka/html/* site/api/
+#
+#          # JaCoCo -> /test-coverage
+#          cp -r euc-ble-core/build/reports/jacoco/full/html/* site/test-coverage/full/
+#          cp -r euc-ble-core/build/reports/jacoco/focused/html/* site/test-coverage/focused/
+#
+#          # Convert Markdown home pages to HTML (FR + EN)
+#          pip install markdown
+#
+#          python - << 'EOF'
+#          import markdown, pathlib
+#
+#          def md_to_html(src, dst):
+#              src_path = pathlib.Path(src)
+#              if not src_path.exists():
+#                  return
+#              html = markdown.markdown(src_path.read_text(encoding="utf-8"), extensions=["extra"])
+#              dst_path = pathlib.Path(dst)
+#              dst_path.write_text(html, encoding="utf-8")
+#
+#          md_to_html("site/index.md", "site/index.html")
+#          md_to_html("site/en/index.md", "site/en/index.html")
+#          EOF
+#
+#      - name: Upload Pages artifact
+#        uses: actions/upload-pages-artifact@v3
+#        with:
+#          path: docs
+#
+#      - name: Deploy to GitHub Pages
+#        id: deployment
+#        uses: actions/deploy-pages@v4
