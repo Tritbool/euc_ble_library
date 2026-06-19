@@ -108,9 +108,9 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
     dependsOn("testDebugUnitTest")
 
     val focusedPackages = listOf(
-        "com/euc/ble/protocols/**",
-        "com/euc/ble/models/**",
-        "com/euc/ble/frames/**"
+        "io/github/tritbool/euc/ble/protocols/**",
+        "io/github/tritbool/euc/ble/models/**",
+        "io/github/tritbool/euc/ble/frames/**"
     )
 
     reports {
