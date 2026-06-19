@@ -64,6 +64,9 @@ jobs:
           cp -r euc-ble-core/build/reports/jacoco/full/html/* docs/test-coverage/full/
           cp -r euc-ble-core/build/reports/jacoco/focused/html/* docs/test-coverage/focused/
 
+          touch docs/api/.nojekyll
+          touch docs/test-coverage/.nojekyll
+
           # Convert Markdown home pages to HTML (FR + EN)
           pip install markdown
 
@@ -81,3 +84,13 @@ jobs:
           md_to_html("docs/index.md", "docs/index.html")
           md_to_html("docs/en/index.md", "docs/en/index.html")
           EOF
+
+      - name: Commit generated docs to docs/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/api docs/test-coverage
+          git diff --cached --quiet || git commit -m "chore: update Dokka + JaCoCo reports [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
