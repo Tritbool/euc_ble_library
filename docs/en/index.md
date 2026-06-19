@@ -147,28 +147,11 @@ Additionally:
 To make coverage visible:
 
 - CI generates full and focused JaCoCo HTML reports.
-- These reports are copied into `site/test-coverage/` and published via GitHub Pages, for example:
+- These reports are copied into `site/test-coverage/` and published via GitHub Pages:
 
-```text
-site/
-  index.md                  # this page
-  api/                      # Dokka docs
-    index.html
-    ...
-  test-coverage/
-    full/                   # JaCoCo full report
-      index.html
-      ...
-    focused/                # JaCoCo focused (protocols/models/frames)
-      index.html
-      ...
-```
 
-You can link directly to:
-
-- `https://tritbool.github.io/euc_ble_library/test-coverage/full/`
-- `https://tritbool.github.io/euc_ble_library/test-coverage/focused/`
-
+- [https://tritbool.github.io/euc_ble_library/test-coverage/full/](https://tritbool.github.io/euc_ble_library/test-coverage/full/)
+- [https://tritbool.github.io/euc_ble_library/test-coverage/focused/](https://tritbool.github.io/euc_ble_library/test-coverage/focused/)
 as a “health check” for the library.
 
 ---
@@ -198,10 +181,10 @@ The library exposes structured errors via `BLEException` and `ErrorCallback` to 
 ## API documentation
 
 - **Home** (this page):  
-  `https://tritbool.github.io/euc_ble_library/`
+  [https://tritbool.github.io/euc_ble_library/](https://tritbool.github.io/euc_ble_library/)
 
 - **Kotlin API reference (Dokka)**:  
-  `https://tritbool.github.io/euc_ble_library/api/`
+  [https://tritbool.github.io/euc_ble_library/api/](https://tritbool.github.io/euc_ble_library/api/)
 
 The Dokka reference is automatically regenerated on every push to `main` and published under `/api/` via GitHub Actions.
 
