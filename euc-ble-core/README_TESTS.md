@@ -1,198 +1,139 @@
-# EUC BLE Library - Unit Tests
+# EUC BLE Library – Test Suite
 
-This document describes the comprehensive unit test suite for the EUC BLE Library.
+## Philosophy: real-device captures, not synthetic frames
 
-## Test Structure
+Most BLE protocol libraries test against hand-crafted byte arrays — frames the author *believes*
+to be valid. This library takes a different approach: **every protocol decoder is validated against
+raw BLE traffic recorded from physical wheels**, replayed offline under JUnit 5 without any Android
+device or emulator.
 
-The test suite is organized into several test classes that cover different components of the library:
+Captures are stored as CSV files exported from
+[WheelLog](https://github.com/Wheellog/Wheellog.Android) under:
 
-### 1. Core Utilities Tests
-- **ByteUtilsTest**: Tests for byte manipulation utilities including:
-  - Hex conversion (bytes ↔ hex strings)
-  - Unsigned/signed byte, short, and int operations (LE/BE)
-  - Checksum calculations (regular and XOR)
-  - Pattern matching in byte arrays
-  - Round-trip conversion validation
+```
+src/test/resources/bleframes/<brand>/RAWWHEELLOG/
+```
 
-### 2. Protocol Implementation Tests
-- **KingsongProtocolTest**: Tests for Kingsong EUC protocol including:
-  - Device detection and handling
-  - Data packet decoding (valid, invalid, edge cases)
-  - Command creation
-  - Device readiness checks
-  - Manufacturer and model validation
+Each CSV row contains the exact byte sequence received from the wheel over BLE. This means:
 
-- **GotwayProtocolTest**: Tests for Gotway/Begode EUC protocol including:
-  - Device detection and handling
-  - Data packet decoding (multiple packet types)
-  - Command creation
-  - Device readiness checks
-  - Motor temperature parsing
-  - Status flag parsing
+- Decoders are validated against **authentic protocol behaviour**, not assumptions
+- Edge cases encountered in the wild (fragmented frames, garbage between headers, firmware variants)
+  are permanently encoded as regression tests
+- Adding coverage for a new firmware version is as simple as dropping a new capture file in the
+  right folder
 
-### 3. Data Model Tests
-- **EUCDataTest**: Tests for the EUC data model including:
-  - Data creation and validation
-  - Null value handling
-  - Equality and hash code implementation
-  - Copy functionality
-  - Edge cases and boundary conditions
-  - Negative value handling
+---
 
-## Test Coverage
+## Test inventory
 
-### ByteUtilsTest (100% coverage)
-- **Hex Conversion**: `bytesToHex()`, `hexToBytes()`
-- **Byte Operations**: `getUnsignedByte()`
-- **Short Operations**: `getUnsignedShortLE/BE()`, `getSignedShortLE/BE()`, `shortToBytesLE/BE()`
-- **Int Operations**: `getUnsignedIntLE/BE()`, `getSignedIntLE/BE()`, `intToBytesLE/BE()`
-- **Checksums**: `calculateChecksum()`, `calculateXorChecksum()`
-- **Pattern Matching**: `startsWith()`, `findPattern()`
-- **Round-trip Validation**: Ensures conversion consistency
+### WheelLog integration tests (real captures)
 
-### KingsongProtocolTest
-- **Device Handling**: Manufacturer ID and name pattern matching
-- **Data Decoding**: Valid packets, invalid packets, edge cases
-- **Command Creation**: All supported command types
-- **Device Readiness**: Voltage, temperature, and speed validation
-- **Protocol Metadata**: Manufacturer info, supported models, UUIDs
+These tests feed actual BLE capture sequences through the full decode pipeline and assert on the
+resulting `EUCData` fields.
 
-### GotwayProtocolTest
-- **Device Handling**: Manufacturer ID and multiple name patterns
-- **Data Decoding**: Packet types 0x01 and 0x02, motor temperature parsing
-- **Command Creation**: All supported command types
-- **Device Readiness**: Voltage, temperature thresholds
-- **Status Flags**: Charging and alarm flag parsing
-- **Protocol Metadata**: Manufacturer info, supported models, UUIDs
+| Test class | Brand | Capture files |
+|---|---|---|
+| `WheelLogGotwayTest` | Gotway / Begode | `bleframes/gotway/RAWWHEELLOG/` |
+| `WheelLogKingsongTest` | KingSong | `bleframes/kingsong/RAWWHEELLOG/` |
+| `WheelLogLeaperkimTest` | Leaperkim / Veteran | `bleframes/leaperkim/RAWWHEELLOG/` |
+| `WheelLogInMotionTest` | InMotion | `bleframes/inmotion/RAWWHEELLOG/` |
+| `WheelLogNinebotTest` | Ninebot | `bleframes/ninebot/RAWWHEELLOG/` |
+| `WheelLogNosfetTest` | Nosfet | `bleframes/nosfet/RAWWHEELLOG/` |
 
-### EUCDataTest
-- **Data Creation**: All fields including optional ones
-- **Null Handling**: Serial number, firmware version, cell voltages, motor temperature
-- **Equality**: Based on timestamp, manufacturer, and model
-- **Copy Functionality**: Partial and full copying
-- **Edge Cases**: Maximum and minimum values
-- **Negative Values**: Speed, current, temperature, power
+### Protocol unit tests (edge cases)
 
-## Running Tests
+These tests cover boundary values, invalid frames, frame fragmentation, and firmware-specific
+branching that may not appear in captures.
 
-To run the tests, use the following commands:
+| Test class | What it covers |
+|---|---|
+| `GotwayProtocolTest` | Type A/B frames, PWM, trip distance, negative current, out-of-range drop |
+| `KingsongProtocolTest` | A4/A9/F5/F6/B3/B9/BB/F2 frame types, BMS pages, alarm speeds, speed limit |
+| `KingsongProtocolAsyncTest` | Fragmented frames, header variants (55AA), leading noise, resync |
+| `InMotionProtocolTest` | Legacy vs V2 dialect switching, alert frames |
+| `NinebotProtocolTest` | Query orchestration, serial/firmware/battery polling |
+| `NinebotZProtocolTest` | Z-series handshake, BMS, settings polling |
+| `LeaperkimProtocolTest` | Legacy settings fields, Smart BMS pages, out-of-range voltage drop |
+| `NosfetProtocolTest` | Telemetry decoding |
+
+### No-drop tests
+
+Verify that no decoded frame is silently lost between `decode()` and the `dataFlow` collector,
+under concurrent load.
+
+| Test class | Brand |
+|---|---|
+| `GotwayNoDropTest` | Gotway / Begode |
+| `KingsongNoDropTest` | KingSong |
+| `InmotionNoDropTest` | InMotion |
+| `LeaperkimNoDropTest` | Leaperkim / Veteran |
+| `NinebotNoDropTest` | Ninebot |
+| `NosfetNoDropTest` | Nosfet |
+
+### Cross-protocol and utility tests
+
+| Test class | What it covers |
+|---|---|
+| `ProtocolParityContractTest` | Same field semantics across all protocol implementations |
+| `BleFrequencyAnalysisTest` | Emission rate and timing characteristics per brand |
+| `GotwayFrameReassemblerTest` | Frame reassembly from fragmented BLE notifications |
+| `EucBleClientEntryPointWheelLogTest` | Full stack: metadata detection + frame selection per protocol |
+| `FrameReassemblerStaticFlowTest` | Static flow through the reassembler |
+| `ByteUtilsTest` / `ByteUtilsSafeAccessTest` | All byte manipulation helpers (LE/BE, checksums, pattern match) |
+| `EUCDataTest` | Data model: equality, copy, null handling, boundary values |
+
+### Test suites
+
+| Suite | Contents |
+|---|---|
+| `AllTests` | Entry point for CI – runs everything |
+| `RegularTestsSuite` | All tests except those tagged `@SlowTest` |
+| `NoDropTestsSuite` | No-drop tests only |
+
+---
+
+## Running tests
 
 ```bash
-# Run all tests
-./gradlew :euc-ble-core:test
+# Full suite (used in CI)
+./gradlew :euc-ble-core:testDebugUnitTest --tests com.euc.ble.AllTests
 
-# Run tests + full JaCoCo coverage report
-./gradlew :euc-ble-core:jacocoTestReport
+# Full suite + JaCoCo coverage reports
+./gradlew :euc-ble-core:testDebugUnitTest \
+  :euc-ble-core:jacocoTestReport \
+  :euc-ble-core:jacocoFocusedReport
 
-# Run tests + focused JaCoCo coverage report (protocols/models/frames)
-./gradlew :euc-ble-core:jacocoFocusedReport
+# Single test class
+./gradlew :euc-ble-core:testDebugUnitTest --tests com.euc.ble.protocols.KingsongProtocolTest
 
-# Run specific test class
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest"
-
-# Run specific test method
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest.testBytesToHex"
-
-# Run test suite
-./gradlew :euc-ble-core:test --tests "com.euc.ble.AllTestsSuite"
+# Single test method
+./gradlew :euc-ble-core:testDebugUnitTest \
+  --tests "com.euc.ble.protocols.KingsongProtocolTest.decodeA4ThenA9IncludesAlarmSpeeds"
 ```
 
 Coverage reports are generated under:
 
-- `euc-ble-core/build/reports/jacoco/full/html/index.html`
-- `euc-ble-core/build/reports/jacoco/focused/html/index.html`
-
-## Test Design Principles
-
-1. **Isolation**: Each test is independent and doesn't rely on other tests
-2. **Determinism**: Tests produce consistent results regardless of environment
-3. **Completeness**: Cover all code paths including edge cases
-4. **Readability**: Clear test names and organization
-5. **Maintainability**: Easy to add new tests as features are added
-
-## Test Data Examples
-
-### Kingsong Protocol Test Data
-```kotlin
-// Valid Kingsong packet
-val data = byteArrayOf(
-    0xAA.toByte(), 0x55.toByte(), // Header
-    0x64.toByte(), 0x01.toByte(), // Voltage (36.0V)
-    0x2C.toByte(), 0x01.toByte(), // Speed (30.0 km/h)
-    // ... rest of packet
-)
+```
+euc-ble-core/build/reports/jacoco/full/html/index.html      # full module
+euc-ble-core/build/reports/jacoco/focused/html/index.html   # protocols + models + frames only
 ```
 
-### Gotway Protocol Test Data
-```kotlin
-// Valid Gotway packet with motor temperature
-val data = byteArrayOf(
-    0x01.toByte(), // Packet type
-    0x64.toByte(), 0x01.toByte(), // Voltage (36.0V)
-    0x2C.toByte(), 0x01.toByte(), // Speed (30.0 km/h)
-    // ... rest of packet
-    0x1E.toByte(), // Motor temperature (30°C)
-)
-```
+---
 
-### ByteUtils Test Data
-```kotlin
-// Test hex conversion
-val bytes = byteArrayOf(0xAA.toByte(), 0x55.toByte(), 0x01.toByte(), 0xFF.toByte())
-val hex = "AA5501FF"
+## Adding a new protocol or firmware variant
 
-// Test endianness
-val shortLE = byteArrayOf(0x34.toByte(), 0x12.toByte()) // 0x1234 = 4660
-val shortBE = byteArrayOf(0x12.toByte(), 0x34.toByte()) // 0x1234 = 4660
-```
+1. Record a BLE session with WheelLog on the target wheel.
+2. Export the raw CSV and drop it in `src/test/resources/bleframes/<brand>/RAWWHEELLOG/`.
+3. Create a `WheelLog<Brand>Test` that loads the file and feeds frames through the protocol decoder.
+4. Add edge-case unit tests for any branching not covered by the capture.
+5. Add a `<Brand>NoDropTest` extending `ProtocolNoDropTestBase`.
 
-## Continuous Integration
+---
 
-The test suite is designed to work with CI/CD pipelines. All tests should pass before merging code changes.
+## Test environment
 
-## Adding New Tests
-
-When adding new features or modifying existing code:
-
-1. **Add corresponding unit tests** for new functionality
-2. **Update existing tests** if behavior changes
-3. **Run all tests** to ensure no regressions
-4. **Add test documentation** if new test patterns are introduced
-
-## Test Maintenance
-
-- **Regularly review** test coverage as code evolves
-- **Update test data** to reflect real-world scenarios
-- **Add performance tests** for critical paths if needed
-- **Consider property-based testing** for complex logic
-
-## Test Coverage Report
-
-The test suite provides comprehensive coverage of:
-
-| Component | Test Coverage | Description |
-|-----------|---------------|-------------|
-| ByteUtils | 100% | All byte manipulation functions |
-| KingsongProtocol | 95% | Protocol implementation (excluding Android-specific code) |
-| GotwayProtocol | 95% | Protocol implementation (excluding Android-specific code) |
-| EUCData | 100% | Data model and business logic |
-
-## Future Test Enhancements
-
-Potential areas for future test expansion:
-
-1. **Performance testing** for large data processing
-2. **Fuzz testing** for protocol robustness
-3. **Integration tests** for protocol switching
-4. **Mock device testing** for end-to-end scenarios
-5. **Concurrency testing** for multi-device scenarios
-
-## Test Execution Environment
-
-- **JVM**: Java 17+
-- **Kotlin**: 1.7+
-- **Test Framework**: JUnit 5 (Jupiter)
-- **Build System**: Gradle
-- **Dependencies**: JUnit, Kotlinx Coroutines Test, Mockito Kotlin
-
-The tests are designed to run on any standard JVM environment without requiring Android device connectivity or emulation.
+- **JVM**: Java 17
+- **Test framework**: JUnit 5 (Jupiter) + Platform Suite
+- **Async utilities**: kotlinx-coroutines-test, Turbine
+- **Mocking**: Mockito Kotlin
+- **No Android device or emulator required**
