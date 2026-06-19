@@ -1,6 +1,23 @@
+import org.gradle.api.tasks.testing.Test
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
+
 plugins {
     id("com.android.library") version "9.1.0"
+    id("jacoco")
 }
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+val jacocoClassExclusions = listOf(
+    "**/R.class",
+    "**/R$*.class",
+    "**/BuildConfig.*",
+    "**/Manifest*.*",
+    "**/*Test*.*"
+)
 
 android {
     namespace = "com.euc.ble"
@@ -15,6 +32,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -52,6 +72,77 @@ android {
             testTask.jvmArgs("-Xmx1g")
         }
     }
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    group = "verification"
+    description = "Generates JaCoCo coverage report for all debug unit tests."
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/full/jacoco.xml"))
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/full/html"))
+    }
+
+    classDirectories.setFrom(
+        fileTree(layout.buildDirectory.dir("intermediates/builtinkotlinc/debug/compileDebugKotlin/classes")) {
+            exclude(jacocoClassExclusions)
+        }
+    )
+
+    sourceDirectories.setFrom(
+        files("src/main/java", "src/main/kotlin")
+    )
+
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include(
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
+            )
+        }
+    )
+}
+
+tasks.register<JacocoReport>("jacocoFocusedReport") {
+    group = "verification"
+    description = "Generates JaCoCo coverage report focused on protocols, models, and frames."
+    dependsOn("testDebugUnitTest")
+
+    val focusedPackages = listOf(
+        "com/euc/ble/protocols/**",
+        "com/euc/ble/models/**",
+        "com/euc/ble/frames/**"
+    )
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/focused/jacoco.xml"))
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/focused/html"))
+    }
+
+    classDirectories.setFrom(
+        fileTree(layout.buildDirectory.dir("intermediates/builtinkotlinc/debug/compileDebugKotlin/classes")) {
+            include(focusedPackages)
+            exclude(jacocoClassExclusions)
+        }
+    )
+
+    sourceDirectories.setFrom(
+        files("src/main/java", "src/main/kotlin")
+    )
+
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include(
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
+            )
+        }
+    )
 }
 
 dependencies {
