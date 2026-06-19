@@ -101,7 +101,7 @@ under concurrent load.
 
 ```bash
 # Full suite (used in CI)
-./gradlew :euc-ble-core:testDebugUnitTest --tests com.euc.ble.AllTests
+./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.AllTests
 
 # Full suite + JaCoCo coverage reports
 ./gradlew :euc-ble-core:testDebugUnitTest \
@@ -109,11 +109,11 @@ under concurrent load.
   :euc-ble-core:jacocoFocusedReport
 
 # Single test class
-./gradlew :euc-ble-core:testDebugUnitTest --tests com.euc.ble.protocols.KingsongProtocolTest
+./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.protocols.KingsongProtocolTest
 
 # Single test method
 ./gradlew :euc-ble-core:testDebugUnitTest \
-  --tests "com.euc.ble.protocols.KingsongProtocolTest.decodeA4ThenA9IncludesAlarmSpeeds"
+  --tests "io.github.tritbool.euc.ble.protocols.KingsongProtocolTest.decodeA4ThenA9IncludesAlarmSpeeds"
 ```
 
 Coverage reports are generated under:
