@@ -19,8 +19,8 @@ import kotlin.math.roundToInt
 class InMotionProtocol : EUCProtocol {
 
     companion object {
-        private val HEADER = byteArrayOf(0xAA.toByte(), 0xAA.toByte())
-        private val LEGACY_TAIL = byteArrayOf(0x55.toByte(), 0x55.toByte())
+        private val HEADER = BLEConstants.INMOTION_FRAME_HEADER
+        private val LEGACY_TAIL = BLEConstants.INMOTION_LEGACY_TAIL
         private const val FLAG_INITIAL = 0x11
         private const val FLAG_DEFAULT = 0x14
         private const val FLAG_EXTENDED = 0x16
@@ -96,7 +96,7 @@ class InMotionProtocol : EUCProtocol {
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256,
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
@@ -655,11 +655,11 @@ class InMotionProtocol : EUCProtocol {
         for (b in body) xor = xor xor (b.toInt() and 0xFF)
         val checksum = xor.toByte()
 
-        return byteArrayOf(0xAA.toByte(), 0xAA.toByte()) + body + byteArrayOf(checksum)
+        return HEADER + body + byteArrayOf(checksum)
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {
-        return data.voltage > 30.0 && data.batteryLevel > 0
+        return data.voltage > BLEConstants.MIN_READY_VOLTAGE_V && data.batteryLevel > 0
     }
 
     override fun close() {

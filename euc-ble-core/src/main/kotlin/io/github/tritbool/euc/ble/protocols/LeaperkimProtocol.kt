@@ -165,7 +165,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256,
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()

@@ -3,12 +3,11 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
-import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.frames.FrameReassembler
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
@@ -16,11 +15,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.UUID
 
 /**
@@ -34,9 +31,8 @@ import java.util.UUID
 class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
     EUCProtocol {
 
-
-    private val header1 = byteArrayOf(0xAA.toByte(), 0x55.toByte())
-    private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
+    private val header1 = BLEConstants.KINGSONG_FRAME_HEADER_1
+    private val header2 = BLEConstants.KINGSONG_FRAME_HEADER_2
     private val MIN_LENGTH = 20
     // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
     private val unpackBuffer = ArrayList<Byte>()
@@ -155,7 +151,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256,
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
@@ -206,6 +202,36 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     companion object {
         private const val MAX_BMS_CELLS = 30
+
+        // Frame types
+        private const val FRAME_TYPE_A9 = 0xA9
+        private const val FRAME_TYPE_B9 = 0xB9
+        private const val FRAME_TYPE_BB = 0xBB
+        private const val FRAME_TYPE_B3 = 0xB3
+        private const val FRAME_TYPE_F5 = 0xF5
+        private const val FRAME_TYPE_F6 = 0xF6
+        private const val FRAME_TYPE_A4 = 0xA4
+        private const val FRAME_TYPE_B5 = 0xB5
+        private const val FRAME_TYPE_F1 = 0xF1
+        private const val FRAME_TYPE_F2 = 0xF2
+
+        // BMS page types
+        private const val BMS_PAGE_SUMMARY = 0x00
+        private const val BMS_PAGE_TEMPERATURES = 0x01
+        private const val BMS_PAGE_CELL_VOLTAGES_START = 0x02
+
+        // Special byte values
+        private const val PEDALS_MODE_MARKER = 0xE0
+        private const val BMS_FRAME_OFFSET = 0xF0
+
+        // Serial number length
+        private const val SERIAL_NUMBER_LENGTH = 17
+
+        // Frame byte offsets
+        private const val OFFSET_VOLTAGE = 2
+        private const val OFFSET_SPEED = 4
+        private const val OFFSET_MESSAGE_TYPE = 16
+        private const val OFFSET_PAGE_NUM = 17
     }
 
     init {
@@ -233,40 +259,40 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             return null
         }
 
-        val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
+        val messageType = ByteUtils.getUnsignedByte(data, headerIdx + OFFSET_MESSAGE_TYPE)
         return when (messageType) {
-            0xA9 -> parseTypeA9(data, headerIdx)
-            0xB9 -> {
+            FRAME_TYPE_A9 -> parseTypeA9(data, headerIdx)
+            FRAME_TYPE_B9 -> {
                 parseTypeB9(data, headerIdx)
                 null
             }
 
-            0xBB -> {
+            FRAME_TYPE_BB -> {
                 parseTypeBB(data, headerIdx)
                 null
             }
 
-            0xB3 -> {
+            FRAME_TYPE_B3 -> {
                 parseTypeB3(data, headerIdx)
                 null
             }
 
-            0xF5 -> {
+            FRAME_TYPE_F5 -> {
                 parseTypeF5(data, headerIdx)
                 null
             }
 
-            0xF6 -> {
+            FRAME_TYPE_F6 -> {
                 parseTypeF6(data, headerIdx)
                 null
             }
 
-            0xA4, 0xB5 -> {
+            FRAME_TYPE_A4, FRAME_TYPE_B5 -> {
                 parseTypeA4B5(data, headerIdx)
                 null
             }
 
-            0xF1, 0xF2 -> {
+            FRAME_TYPE_F1, FRAME_TYPE_F2 -> {
                 parseTypeBMS(data, headerIdx, messageType)
                 null
             }
@@ -277,11 +303,11 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     private fun parseTypeA9(data: ByteArray, base: Int): EUCData? {
         try {
-            val voltage = if (ensureRange(data, base + 2, 2))
-                ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0 else 0.0
+            val voltage = if (ensureRange(data, base + OFFSET_VOLTAGE, 2))
+                ByteUtils.getUnsignedShortLE(data, base + OFFSET_VOLTAGE) / 100.0 else 0.0
 
-            val speed = if (ensureRange(data, base + 4, 2))
-                ByteUtils.getUnsignedShortLE(data, base + 4) / 100.0 else 0.0
+            val speed = if (ensureRange(data, base + OFFSET_SPEED, 2))
+                ByteUtils.getUnsignedShortLE(data, base + OFFSET_SPEED) / 100.0 else 0.0
 
             val totalDistRaw = if (ensureRange(data, base + 6, 4))
                 ByteUtils.getUnsignedIntLE(data, base + 6).toDouble() else 0.0
@@ -308,11 +334,11 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
             val isCharging = (statusByte and 0x01) != 0
 
-            // Mode detection (legacy: byte 15 == 0xE0 means mode is in byte 14)
+            // Mode detection (legacy: byte 15 == PEDALS_MODE_MARKER means mode is in byte 14)
             if (ensureRange(data, base + 15, 1) && ByteUtils.getUnsignedByte(
                     data,
                     base + 15
-                ) == 0xE0
+                ) == PEDALS_MODE_MARKER
             ) {
                 // pedals mode is in byte 14 — but only when byte 15 is the mode marker
                 // This conflicts with battery %; in legacy KS the battery is sent separately.
@@ -421,7 +447,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private fun parseTypeB3(data: ByteArray, base: Int) {
         if (!ensureRange(data, base + 2, 14)) return
         if (!ensureRange(data, base + 17, 3)) return
-        val snBytes = ByteArray(17)
+        val snBytes = ByteArray(SERIAL_NUMBER_LENGTH)
         System.arraycopy(data, base + 2, snBytes, 0, 14)
         System.arraycopy(data, base + 17, snBytes, 14, 3)
         lastKnownSerialNumber = String(snBytes).trimEnd('\u0000').trim()
@@ -466,16 +492,16 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     /**
      * Frame 0xF1/0xF2: Smart BMS data
-     * BMS number = messageType - 0xF0 (1 or 2)
+     * BMS number = messageType - BMS_FRAME_OFFSET (1 or 2)
      * Page number @17 determines what data is in the payload:
-     *   0x00: voltage, current, remaining/factory cap, cycles
-     *   0x01: temperatures (6 probes + MOS temp)
-     *   0x02-0x06: cell voltages (7 cells per page)
+     *   BMS_PAGE_SUMMARY: voltage, current, remaining/factory cap, cycles
+     *   BMS_PAGE_TEMPERATURES: temperatures (6 probes + MOS temp)
+     *   BMS_PAGE_CELL_VOLTAGES_START..0x06: cell voltages (7 cells per page)
      */
     private fun parseTypeBMS(data: ByteArray, base: Int, messageType: Int) {
-        val bmsIndex = messageType - 0xF0
-        if (!ensureRange(data, base + 17, 1)) return
-        val pageNum = ByteUtils.getUnsignedByte(data, base + 17)
+        val bmsIndex = messageType - BMS_FRAME_OFFSET
+        if (!ensureRange(data, base + OFFSET_PAGE_NUM, 1)) return
+        val pageNum = ByteUtils.getUnsignedByte(data, base + OFFSET_PAGE_NUM)
 
         when (pageNum) {
             0x00 -> {
@@ -583,8 +609,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 -1
             }
             if (headerIdx >= 0 && frame.size - headerIdx >= MIN_LENGTH) {
-                val messageType = ByteUtils.getUnsignedByte(frame, headerIdx + 16)
-                if (messageType == 0xA4) {
+                val messageType = ByteUtils.getUnsignedByte(frame, headerIdx + OFFSET_MESSAGE_TYPE)
+                if (messageType == FRAME_TYPE_A4) {
                     val reply = frame.copyOfRange(headerIdx, headerIdx + MIN_LENGTH)
                     reply[16] = 0x98.toByte()
                     reply[2] = 0x01.toByte()
@@ -773,9 +799,9 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         if (headerIdx < 0 || data.size - headerIdx < MIN_LENGTH) return false
         val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
         return when (query.commandType) {
-            CommandType.REQUEST_FIRMWARE -> messageType == 0xBB
-            CommandType.REQUEST_SERIAL -> messageType == 0xB3
-            CommandType.CUSTOM -> messageType == 0xA4 || messageType == 0xB5
+            CommandType.REQUEST_FIRMWARE -> messageType == FRAME_TYPE_BB
+            CommandType.REQUEST_SERIAL -> messageType == FRAME_TYPE_B3
+            CommandType.CUSTOM -> messageType == FRAME_TYPE_A4 || messageType == FRAME_TYPE_B5
             else -> false
         }
     }

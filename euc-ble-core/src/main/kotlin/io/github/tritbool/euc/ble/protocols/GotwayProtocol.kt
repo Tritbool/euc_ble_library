@@ -10,15 +10,14 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.UUID
 import kotlin.math.abs
 
@@ -103,9 +102,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
     companion object {
         const val FRAME_SIZE = 24
-        val HEADER: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())
-        val FOOTER: ByteArray =
-            byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())
+        val HEADER: ByteArray = BLEConstants.GOTWAY_FRAME_HEADER
+        val FOOTER: ByteArray = BLEConstants.GOTWAY_FRAME_FOOTER
         private const val MIN_BATTERY_VOLTAGE = 52.0
         private const val MAX_BATTERY_VOLTAGE = 134.4
         private const val MAX_BMS_CELL_SLOTS = 56
@@ -117,7 +115,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256,
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
@@ -499,15 +497,16 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+        val header = BLEConstants.GOTWAY_COMMAND_HEADER
         return when (commandType) {
-            CommandType.LIGHT_ON -> byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x01, 0x01, 0x01)
-            CommandType.LIGHT_OFF -> byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x01, 0x01, 0x00)
-            CommandType.BEEP -> byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x02, 0x01)
-            CommandType.POWER_OFF -> byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x03, 0x01)
+            CommandType.LIGHT_ON -> header + byteArrayOf(0x01, 0x01, 0x01)
+            CommandType.LIGHT_OFF -> header + byteArrayOf(0x01, 0x01, 0x00)
+            CommandType.BEEP -> header + byteArrayOf(0x02, 0x01)
+            CommandType.POWER_OFF -> header + byteArrayOf(0x03, 0x01)
             CommandType.LIGHT_BRIGHTNESS -> {
                 if (value is Int && value in 0..100) {
                     val brightness = (value * 255 / 100).toByte()
-                    byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x04, brightness)
+                    header + byteArrayOf(0x04, brightness)
                 } else byteArrayOf()
             }
 

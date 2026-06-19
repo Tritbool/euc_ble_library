@@ -171,7 +171,7 @@ dokka {
     moduleName.set("EUC BLE Library")
 
     dokkaSourceSets.configureEach {
-        includes.from("README.md") // optionnel
+        //includes.from("README.md") // optionnel
 
         sourceLink {
             localDirectory.set(file("src/main/kotlin"))
@@ -206,7 +206,9 @@ mavenPublishing {
     )
 
     publishToMavenCentral()
-    signAllPublications()
+    if (project.hasProperty("signingInMemoryKey")) {
+        signAllPublications()
+    }
 
     coordinates("io.github.tritbool", "euc-ble-library", "0.0.1")
 

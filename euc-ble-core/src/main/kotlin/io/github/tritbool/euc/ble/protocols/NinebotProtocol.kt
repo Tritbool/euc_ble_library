@@ -34,7 +34,7 @@ class NinebotProtocol : EUCProtocol {
         private const val WHEELLOG_SERIAL_TYPE_PART3 = 0x16
         private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
         private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
-        private const val MIN_READY_VOLTAGE_V = 30.0
+        private const val MIN_READY_VOLTAGE_V = BLEConstants.MIN_READY_VOLTAGE_V
         private const val MIN_READY_BATTERY_LEVEL = 1
         private const val BATTERY_OFFSET = 16
         private const val STATUS_OFFSET = 17
@@ -60,7 +60,7 @@ class NinebotProtocol : EUCProtocol {
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256,
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()

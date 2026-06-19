@@ -58,6 +58,35 @@ object BLEConstants {
     const val DEFAULT_MTU_SIZE = 23
     const val MAX_MTU_SIZE = 517
 
+    // Reconnection settings
+    const val RECONNECT_BASE_DELAY_MS = 1000L
+    const val MAX_RECONNECT_DELAY_MS = 30_000L
+    const val RECONNECT_JITTER_MAX_MS = 500L
+
+    // Common value ranges
+    const val MIN_PERCENTAGE = 0
+    const val MAX_PERCENTAGE = 100
+    const val MIN_BYTE_VALUE = 0
+    const val MAX_BYTE_VALUE = 255
+
+    // Frame footer patterns
+    val INMOTION_LEGACY_TAIL: ByteArray = byteArrayOf(0x55.toByte(), 0x55.toByte())
+
+    // Flow buffer sizes
+    const val DEFAULT_FLOW_BUFFER_CAPACITY = 256
+
+    // Common scaling factors
+    const val VOLTAGE_CURRENT_SCALE = 100.0
+    const val VOLTAGE_SCALE_1000 = 1000.0
+
+    // Polling intervals
+    const val POLLING_INTERVAL_FAST_MS = 1000L
+    const val POLLING_INTERVAL_NORMAL_MS = 5000L
+
+    // Battery and voltage thresholds
+    const val MIN_READY_VOLTAGE_V = 30.0
+    const val MIN_BATTERY_VOLTAGE_V = 50.0
+
     // Manufacturer identifiers
     const val MANUFACTURER_KINGSONG = 0x004B
     const val MANUFACTURER_EXTREMEBULL = 0x0045
@@ -88,4 +117,7 @@ object BLEConstants {
     const val NINEBOT_FRAME_FIRST_BYTE: Int = 0x55
     val NINEBOT_WHEELLOG_FRAME_HEADER: ByteArray = byteArrayOf(0x5A.toByte(), 0xA5.toByte())
     val LEAPERKIM_FRAME_HEADER: ByteArray = byteArrayOf(0xDC.toByte(), 0x5A.toByte(), 0x5C.toByte())
+
+    // Command frame header for Gotway (used in command generation, reverse of WheelLog header)
+    val GOTWAY_COMMAND_HEADER: ByteArray = byteArrayOf(0xA5.toByte(), 0x5A.toByte())
 }

@@ -13,26 +13,26 @@ import java.util.UUID
 class NinebotZProtocol : EUCProtocol {
 
     companion object {
-        private const val FRAME_HEADER = 0x55
+        private const val FRAME_HEADER = BLEConstants.NINEBOT_FRAME_FIRST_BYTE
         private const val FRAME_ACTION = 0x21
         private const val FRAME_QUERY = 0x22
-        private const val MIN_READY_VOLTAGE_V = 30.0
+        private const val MIN_READY_VOLTAGE_V = BLEConstants.MIN_READY_VOLTAGE_V
         private const val MIN_READY_BATTERY_LEVEL = 1
-        private const val WHEELLOG_HEADER_FIRST = 0x5A
-        private const val WHEELLOG_HEADER_SECOND = 0xA5
         private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
         private const val WHEELLOG_SERIAL_TYPE = 0x10
         private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
 
+        private val WHEELLOG_HEADER: ByteArray = BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER
+
         private val QUERY_BLE_VERSION =
-            byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x1C)
-        private val QUERY_AUTH_KEY = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x1D)
+            WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x1C)
+        private val QUERY_AUTH_KEY = WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x1D)
         private val QUERY_PARAMS_PAGE_1 =
-            byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x20)
+            WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x20)
         private val QUERY_PARAMS_PAGE_2 =
-            byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x21)
-        private val QUERY_BMS_1 = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x24)
-        private val QUERY_BMS_2 = byteArrayOf(0x5A, 0xA5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x25)
+            WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x21)
+        private val QUERY_BMS_1 = WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x24)
+        private val QUERY_BMS_2 = WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x25)
     }
 
     private val delegate = NinebotProtocol()
@@ -167,7 +167,7 @@ class NinebotZProtocol : EUCProtocol {
 
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
         if (data.isEmpty()) return false
-        if (data.size >= 7 && (data[0].toInt() and 0xFF) == WHEELLOG_HEADER_FIRST && (data[1].toInt() and 0xFF) == WHEELLOG_HEADER_SECOND) {
+        if (data.size >= 7 && data[0] == BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER[0] && data[1] == BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER[1]) {
             val frameType = data[6].toInt() and 0xFF
             return when (query.commandType) {
                 CommandType.REQUEST_SERIAL -> frameType == WHEELLOG_SERIAL_TYPE

@@ -88,8 +88,8 @@ class BLEManager internal constructor(
     private var reconnectRetryCount: Int = 0
     private var reconnectJob: Job? = null
     private var manualDisconnect: Boolean = false
-    private val reconnectBaseDelayMs: Long = 1000L
-    private val maxReconnectDelayMs: Long = 30_000L
+    private val reconnectBaseDelayMs: Long = BLEConstants.RECONNECT_BASE_DELAY_MS
+    private val maxReconnectDelayMs: Long = BLEConstants.MAX_RECONNECT_DELAY_MS
 
     // Protocol management
     @VisibleForTesting(otherwise = PRIVATE)
@@ -112,7 +112,7 @@ class BLEManager internal constructor(
 
     // Raw frame capture: every raw BLE characteristic notification is emitted here
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     /**
@@ -137,7 +137,7 @@ class BLEManager internal constructor(
     val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val _queryTraceFlow = MutableSharedFlow<QueryTraceEvent>(
-        extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = _queryTraceFlow.asSharedFlow()
 
@@ -548,7 +548,7 @@ class BLEManager internal constructor(
         // calculate delay with backoff and jitter
         val multiplier = 1L shl reconnectRetryCount.coerceAtMost(30) // prevent overflow
         val baseDelay = (reconnectBaseDelayMs * multiplier).coerceAtMost(maxReconnectDelayMs)
-        val jitter = kotlin.random.Random.nextLong(0, 500)
+        val jitter = kotlin.random.Random.nextLong(0, BLEConstants.RECONNECT_JITTER_MAX_MS)
         val delayMs = (baseDelay + jitter).coerceAtMost(maxReconnectDelayMs)
 
         reconnectJob = coroutineScope.launch {
