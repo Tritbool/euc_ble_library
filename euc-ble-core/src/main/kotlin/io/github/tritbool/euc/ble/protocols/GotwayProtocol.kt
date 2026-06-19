@@ -1,4 +1,3 @@
-// File: `euc-ble-core/src/main/java/com/euc/ble/protocols/GotwayProtocol.kt`
 package io.github.tritbool.euc.ble.protocols
 
 import androidx.annotation.VisibleForTesting

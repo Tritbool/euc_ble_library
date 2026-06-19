@@ -1,6 +1,12 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
+
 plugins {
     id("com.android.library") version "9.1.0"
     id("jacoco")
+    id("org.jetbrains.dokka") version "2.2.0"
+    id("com.vanniktech.maven.publish") version "0.36.0"
 }
 
 jacoco {
@@ -33,7 +39,10 @@ android {
         }
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
@@ -141,6 +150,9 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
     )
 }
 
+
+
+
 dependencies {
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
@@ -154,3 +166,73 @@ dependencies {
     testImplementation("app.cash.turbine:turbine:1.1.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
 }
+
+dokka {
+    moduleName.set("EUC BLE Library")
+
+    dokkaSourceSets.configureEach {
+        includes.from("README.md") // optionnel
+
+        sourceLink {
+            localDirectory.set(file("src/main/kotlin"))
+            remoteUrl("https://github.com/Tritbool/euc_ble_library/tree/main/euc-ble-core/src/main/kotlin")
+            remoteLineSuffix.set("#L")
+        }
+    }
+
+    dokkaPublications.html {
+        outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+    }
+}
+
+
+mavenPublishing {
+    configure(
+        AndroidSingleVariantLibrary(
+            // quel type de javadoc.jar publier
+            // - JavadocJar.None()
+            // - JavadocJar.Empty()
+            // - JavadocJar.Javadoc()
+            // - JavadocJar.Dokka("nomDeTaTâcheDokka")
+            javadocJar = JavadocJar.Dokka("dokkaGeneratePublicationHtml"),
+            // sources.jar :
+            // - SourcesJar.None()
+            // - SourcesJar.Empty()
+            // - SourcesJar.Sources()
+            sourcesJar = SourcesJar.Sources(),
+            // le variant Android publié
+            variant = "release",
+        )
+    )
+
+    publishToMavenCentral()
+    signAllPublications()
+
+    coordinates("io.github.tritbool", "euc-ble-library", "0.0.1")
+
+    pom {
+        name.set("EUC BLE Library")
+        description.set("Android BLE library for Electric Unicycles (KingSong, Begode/Gotway, InMotion, Ninebot, Leaperkim, Nosfet).")
+        url.set("https://github.com/Tritbool/euc_ble_library")
+        licenses {
+            license {
+                name.set("MIT License")
+                url.set("https://opensource.org/licenses/MIT")
+            }
+        }
+        developers {
+            developer {
+                id.set("Tritbool")
+                name.set("Gauthier Le Bartz Lyan")
+                url.set("https://github.com/Tritbool")
+            }
+        }
+        scm {
+            url.set("https://github.com/Tritbool/euc_ble_library")
+            connection.set("scm:git:git://github.com/Tritbool/euc_ble_library.git")
+            developerConnection.set("scm:git:ssh://git@github.com:Tritbool/euc_ble_library.git")
+        }
+    }
+}
+
+

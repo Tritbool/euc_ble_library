@@ -39,7 +39,6 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private val header2 = byteArrayOf(0x55.toByte(), 0xAA.toByte())
     private val MIN_LENGTH = 20
     // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
-
     private val unpackBuffer = ArrayList<Byte>()
 
     // Unpacker: accumule octets et retourne 0..N trames complètes.
