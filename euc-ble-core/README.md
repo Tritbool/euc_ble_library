@@ -29,6 +29,10 @@ A modular Bluetooth Low Energy library for Electric Unicycles (EUC) that provide
 | Ninebot (Z-series) | `NinebotZProtocol` | `ProtocolParityContractTest` | Light/BEEP/Lock/Unlock + Z settings/query flow (speed/alarm/calibrate/BMS/auth/custom) | Dedicated Z handshake/BMS/settings polling path |
 | Leaperkim/Veteran | `LeaperkimProtocol` | `WheelLogLeaperkimTest` | Light/BEEP + custom payload | Rich telemetry + session ride time fallback |
 
+> **Test methodology:** protocol decoders are validated against real BLE captures recorded from
+> physical wheels and exported from WheelLog. No mock frames — real bytes, real edge cases.
+> See [Testing](#testing) in the root README for details.
+
 ## Installation
 
 Add the library to your project by including it in your `settings.gradle`:
@@ -435,7 +439,7 @@ Contributions are welcome! Please follow the existing code style and architectur
 - [x] InMotion protocol implementation
 - [x] Ninebot protocol MVP implementation
 - [x] Leaperkim/Veteran protocol implementation
-- [ ] Comprehensive test suite
+- [x] Comprehensive test suite (real-device capture methodology, 84%+ line coverage on protocols/models/frames)
 - [ ] Sample application
 - [ ] Documentation improvements
 
