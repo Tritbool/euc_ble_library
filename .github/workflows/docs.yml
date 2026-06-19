@@ -6,7 +6,7 @@ on:
   workflow_dispatch: { }
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -64,26 +66,9 @@ jobs:
           cp -r euc-ble-core/build/reports/jacoco/full/html/* docs/test-coverage/full/
           cp -r euc-ble-core/build/reports/jacoco/focused/html/* docs/test-coverage/focused/
 
+          # Empêche Jekyll de retraiter ces dossiers HTML statiques
           touch docs/api/.nojekyll
           touch docs/test-coverage/.nojekyll
-
-          # Convert Markdown home pages to HTML (FR + EN)
-          pip install markdown
-
-          python - << 'EOF'
-          import markdown, pathlib
-
-          def md_to_html(src, dst):
-              src_path = pathlib.Path(src)
-              if not src_path.exists():
-                  return
-              html = markdown.markdown(src_path.read_text(encoding="utf-8"), extensions=["extra"])
-              dst_path = pathlib.Path(dst)
-              dst_path.write_text(html, encoding="utf-8")
-
-          md_to_html("docs/index.md", "docs/index.html")
-          md_to_html("docs/en/index.md", "docs/en/index.html")
-          EOF
 
       - name: Commit generated docs to docs/
         run: |
