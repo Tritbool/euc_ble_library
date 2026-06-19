@@ -179,9 +179,9 @@ backend.switchTo(BleBackendType.FRAMEWORK)
 ### Client Example: Save Raw + Decoded Frames to Two CSV Files
 
 ```kotlin
-import com.euc.ble.core.BLEManager
-import com.euc.ble.core.DataCallback
-import com.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.core.BLEManager
+import io.github.tritbool.euc.ble.core.DataCallback
+import io.github.tritbool.euc.ble.models.EUCData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

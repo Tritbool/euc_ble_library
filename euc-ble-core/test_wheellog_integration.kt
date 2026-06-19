@@ -1,5 +1,5 @@
-import com.euc.ble.core.ByteUtils
-import com.euc.ble.protocols.KingsongProtocol
+import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.protocols.KingsongProtocol
 import java.io.BufferedReader
 import java.io.File
 
@@ -145,7 +145,7 @@ fun testKingsongProtocolDecoding() {
     println("📈 Success rate: ${(decodedFrames * 100.0 / lineCount).toInt()}%")
 }
 
-fun describeFrame(data: com.euc.ble.models.EUCData): String {
+fun describeFrame(data: io.github.tritbool.euc.ble.models.EUCData): String {
     return "${data.speed.toInt()} km/h, ${data.voltage.toInt()} V, ${data.batteryLevel}% battery, " +
            "${data.current.toInt()} A, ${data.temperature.toInt()}°C"
 }

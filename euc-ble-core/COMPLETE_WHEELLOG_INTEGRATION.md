@@ -299,12 +299,12 @@ euc-ble-core/src/test/resources/ble_frames/
 ./gradlew :euc-ble-core:test
 
 # Run manufacturer-specific tests
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.WheelLogKingsongTest"
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.WheelLogNinebotTest"
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.WheelLogGotwayTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.WheelLogNinebotTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.WheelLogGotwayTest"
 
 # Run specific test methods
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesDecoding"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesDecoding"
 ```
 
 ### Expected Outcomes

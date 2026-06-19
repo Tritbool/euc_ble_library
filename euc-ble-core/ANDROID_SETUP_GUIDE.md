@@ -85,8 +85,8 @@ Since the tests don't actually need Android devices (they use mock data), we can
 ```bash
 cd /home/tritbool/Workspace/euc-ble-library/euc-ble-core
 cat > SimpleTestRunner.kt << 'EOF'
-import com.euc.ble.core.ByteUtils
-import com.euc.ble.protocols.KingsongProtocol
+import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.protocols.KingsongProtocol
 import java.io.File
 
 fun main() {
@@ -235,13 +235,13 @@ Successfully decoded 10 out of 10 frames
 ```
 > Task :euc-ble-core:test
 
-com.euc.ble.core.ByteUtilsTest > testBytesToHex PASSED
-com.euc.ble.core.ByteUtilsTest > testHexToBytes PASSED
+io.github.tritbool.euc.ble.core.ByteUtilsTest > testBytesToHex PASSED
+io.github.tritbool.euc.ble.core.ByteUtilsTest > testHexToBytes PASSED
 ... (63+ test methods)
 
-com.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesDecoding PASSED
-com.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesConsistency PASSED
-com.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongDecodingPerformance PASSED
+io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesDecoding PASSED
+io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesConsistency PASSED
+io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongDecodingPerformance PASSED
 
 BUILD SUCCESSFUL in 2m 15s
 ```

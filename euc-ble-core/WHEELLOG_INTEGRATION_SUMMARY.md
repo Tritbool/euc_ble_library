@@ -248,10 +248,10 @@ euc-ble-core/src/test/resources/ble_frames/kingsong/RAW_WHEELLOG/*.csv
 ./gradlew :euc-ble-core:test
 
 # Run only WheelLog tests
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.WheelLogKingsongTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest"
 
 # Run specific WheelLog test
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesDecoding"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesDecoding"
 ```
 
 ### Expected Outcomes

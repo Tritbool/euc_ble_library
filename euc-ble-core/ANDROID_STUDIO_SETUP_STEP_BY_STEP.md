@@ -122,7 +122,7 @@ EOF
 3. Configure as follows:
    - Name: `Kingsong Tests`
    - Test kind: "Class"
-   - Class: `com.euc.ble.protocols.WheelLogKingsongTest`
+   - Class: `io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest`
    - Module: `euc-ble-core`
 4. Click "OK"
 
@@ -157,7 +157,7 @@ cd euc-ble-core
 ./gradlew test
 
 # Or run specific tests
-./gradlew test --tests "com.euc.ble.protocols.WheelLogKingsongTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest"
 ```
 
 ## 🚀 Step 7: Troubleshooting
@@ -183,12 +183,12 @@ cd euc-ble-core
 ```
 > Task :euc-ble-core:test
 
-com.euc.ble.core.ByteUtilsTest > testBytesToHex PASSED
-com.euc.ble.core.ByteUtilsTest > testHexToBytes PASSED
+io.github.tritbool.euc.ble.core.ByteUtilsTest > testBytesToHex PASSED
+io.github.tritbool.euc.ble.core.ByteUtilsTest > testHexToBytes PASSED
 ... (many more tests)
 
-com.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesDecoding PASSED
-com.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesConsistency PASSED
+io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesDecoding PASSED
+io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest > testRealKingsongFramesConsistency PASSED
 
 BUILD SUCCESSFUL in 2m 15s
 ```

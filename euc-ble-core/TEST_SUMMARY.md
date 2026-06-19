@@ -108,10 +108,10 @@ I have successfully created a comprehensive unit test suite for the EUC BLE Libr
 ./gradlew :euc-ble-core:test
 
 # Run specific test class
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.core.ByteUtilsTest"
 
 # Run test suite
-./gradlew :euc-ble-core:test --tests "com.euc.ble.AllTestsSuite"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.AllTestsSuite"
 ```
 
 ### 📚 Documentation Provided

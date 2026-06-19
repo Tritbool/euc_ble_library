@@ -67,30 +67,30 @@ euc-ble-core/
 ### Run Specific Test Class
 ```bash
 # Test byte utilities
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.core.ByteUtilsTest"
 
 # Test Kingsong protocol
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.KingsongProtocolTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.KingsongProtocolTest"
 
 # Test Gotway protocol
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.GotwayProtocolTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.GotwayProtocolTest"
 
 # Test data models
-./gradlew :euc-ble-core:test --tests "com.euc.ble.models.EUCDataTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.models.EUCDataTest"
 ```
 
 ### Run Test Suite
 ```bash
-./gradlew :euc-ble-core:test --tests "com.euc.ble.AllTestsSuite"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.AllTestsSuite"
 ```
 
 ### Run Specific Test Method
 ```bash
 # Test hex conversion
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest.testBytesToHex"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.core.ByteUtilsTest.testBytesToHex"
 
 # Test Kingsong packet decoding
-./gradlew :euc-ble-core:test --tests "com.euc.ble.protocols.KingsongProtocolTest.testDecodeValidPacket"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.protocols.KingsongProtocolTest.testDecodeValidPacket"
 ```
 
 ## 📊 Test Coverage Highlights

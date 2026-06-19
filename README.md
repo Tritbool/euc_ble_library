@@ -5,7 +5,7 @@
 
 ## Usage (single entry point)
 
-`com.euc.ble.EucBleClient` is the public BLE entry point for client applications.
+`io.github.tritbool.euc.ble.EucBleClient` is the public BLE entry point for client applications.
 It registers built-in protocols internally, so client code must not register brand-specific handlers.
 
 Scan lifecycle and connection events are exposed through `ConnectionCallback`.

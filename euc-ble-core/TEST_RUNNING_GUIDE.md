@@ -28,37 +28,37 @@ cd /home/tritbool/Workspace/euc-ble-library/euc-ble-core
 ### Option 2: Run Specific Test Classes
 ```bash
 # Run Kingsong tests with real WheelLog data
-./gradlew test --tests "com.euc.ble.protocols.WheelLogKingsongTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest"
 
 # Run Ninebot tests with real WheelLog data
-./gradlew test --tests "com.euc.ble.protocols.WheelLogNinebotTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogNinebotTest"
 
 # Run Gotway tests with real WheelLog data
-./gradlew test --tests "com.euc.ble.protocols.WheelLogGotwayTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogGotwayTest"
 
 # Run core byte manipulation tests
-./gradlew test --tests "com.euc.ble.core.ByteUtilsTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.core.ByteUtilsTest"
 
 # Run protocol implementation tests
-./gradlew test --tests "com.euc.ble.protocols.KingsongProtocolTest"
-./gradlew test --tests "com.euc.ble.protocols.GotwayProtocolTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.KingsongProtocolTest"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.GotwayProtocolTest"
 ```
 
 ### Option 3: Run Specific Test Methods
 ```bash
 # Run Kingsong frame decoding test
-./gradlew test --tests "com.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesDecoding"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesDecoding"
 
 # Run Kingsong consistency test
-./gradlew test --tests "com.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesConsistency"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongFramesConsistency"
 
 # Run Kingsong performance test
-./gradlew test --tests "com.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongDecodingPerformance"
+./gradlew test --tests "io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest.testRealKingsongDecodingPerformance"
 ```
 
 ### Option 4: Run Test Suite
 ```bash
-./gradlew test --tests "com.euc.ble.AllTestsSuite"
+./gradlew test --tests "io.github.tritbool.euc.ble.AllTestsSuite"
 ```
 
 ## 📚 Expected Test Results

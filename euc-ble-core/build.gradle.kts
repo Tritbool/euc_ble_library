@@ -1,7 +1,3 @@
-import org.gradle.api.tasks.testing.Test
-import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
-import org.gradle.testing.jacoco.tasks.JacocoReport
-
 plugins {
     id("com.android.library") version "9.1.0"
     id("jacoco")
@@ -20,7 +16,7 @@ val jacocoClassExclusions = listOf(
 )
 
 android {
-    namespace = "com.euc.ble"
+    namespace = "io.github.tritbool.euc.ble"
     compileSdk = 36
 
     defaultConfig {

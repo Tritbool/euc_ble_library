@@ -88,13 +88,13 @@ To run the tests, use the following commands:
 ./gradlew :euc-ble-core:jacocoFocusedReport
 
 # Run specific test class
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.core.ByteUtilsTest"
 
 # Run specific test method
-./gradlew :euc-ble-core:test --tests "com.euc.ble.core.ByteUtilsTest.testBytesToHex"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.core.ByteUtilsTest.testBytesToHex"
 
 # Run test suite
-./gradlew :euc-ble-core:test --tests "com.euc.ble.AllTestsSuite"
+./gradlew :euc-ble-core:test --tests "io.github.tritbool.euc.ble.AllTestsSuite"
 ```
 
 Coverage reports are generated under:
