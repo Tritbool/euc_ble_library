@@ -35,11 +35,11 @@ jobs:
 
       - name: Run unit tests + coverage reports
         run: >
-          ./gradlew :euc-ble-core:jacocoTestReport
-          :euc-ble-core:jacocoFocusedReport
-          -PmaxParallelForks=1
-          --no-daemon
-          --stacktrace
+          run: ./gradlew :euc-ble-core:testDebugUnitTest 
+          :euc-ble-core:jacocoTestReport 
+          :euc-ble-core:jacocoFocusedReport 
+          -PmaxParallelForks=1 --no-daemon 
+          --stacktrace 
           -Dkotlinx.coroutines.io.parallelism=4
         env:
           GRADLE_OPTS: "-Xmx2g -Dfile.encoding=UTF-8"

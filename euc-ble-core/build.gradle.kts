@@ -57,7 +57,7 @@ android {
 
             testTask.useJUnitPlatform {
                 if (isCi) {
-                    excludeTags("slow") // NoDrop exclus en CI
+                    //excludeTags("slow") // NoDrop exclus en CI
                 }
             }
 
