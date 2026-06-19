@@ -48,6 +48,20 @@ jobs:
           GRADLE_OPTS: "-Xmx2g -Dfile.encoding=UTF-8"
           CI: "true"
 
+      - name: Dump .exec files found
+        if: always()
+        run: find euc-ble-core/build -name "*.exec" -o -name "*.ec" 2>/dev/null | sort
+
+      - name: Dump .class directories (main code only, not test)
+        if: always()
+        run: |
+          find euc-ble-core/build/intermediates -name "*.class" \
+            | grep -v "Test" \
+            | grep "com/euc/ble" \
+            | head -20 \
+            | sed 's|/[^/]*\.class$||' \
+            | sort -u
+
       - name: Coverage summary (protocols/models/frames)
         if: always()
         run: |
