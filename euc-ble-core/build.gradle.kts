@@ -84,7 +84,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     }
 
     classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("intermediates/builtinkotlinc/debug/compileDebugKotlin/classes")) {
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
             exclude(jacocoClassExclusions)
         }
     )
@@ -122,7 +122,7 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
     }
 
     classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("intermediates/builtinkotlinc/debug/compileDebugKotlin/classes")) {
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
             include(focusedPackages)
             exclude(jacocoClassExclusions)
         }

@@ -55,10 +55,11 @@ jobs:
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
-          report = Path("euc-ble-core/build/reports/jacoco/focused/jacoco.xml")
+          focused_report = Path("euc-ble-core/build/reports/jacoco/focused/jacoco.xml")
+          full_report    = Path("euc-ble-core/build/reports/jacoco/full/jacoco.xml")
           summary = Path(".coverage-summary.md")
 
-          if not report.exists():
+          if not focused_report.exists():
               summary.write_text(
                   "## Coverage (protocols/models/frames)\n\n"
                   "Coverage XML not found at "
@@ -67,30 +68,66 @@ jobs:
               )
               raise SystemExit(0)
 
-          root = ET.parse(report).getroot()
+          def ratio(root, counter_type):
+              covered, missed = 0, 0
+              for pkg in root.findall("package"):
+                  for c in pkg.findall("counter"):
+                      if c.attrib.get("type") == counter_type:
+                          covered += int(c.attrib.get("covered", "0"))
+                          missed  += int(c.attrib.get("missed",  "0"))
+              total = covered + missed
+              return covered, missed, (covered / total * 100.0) if total else 0.0
 
-          def ratio(counter_type):
-            covered = 0
-            missed = 0
-            for pkg in root.findall("package"):
+          def pkg_ratio(pkg, counter_type):
               for c in pkg.findall("counter"):
-                if c.attrib.get("type") == counter_type:
-                  covered += int(c.attrib.get("covered", "0"))
-                  missed += int(c.attrib.get("missed", "0"))
-            total = covered + missed
-            pct = (covered / total * 100.0) if total else 0.0
-            return covered, missed, pct
+                  if c.attrib.get("type") == counter_type:
+                      cov  = int(c.attrib.get("covered", "0"))
+                      miss = int(c.attrib.get("missed",  "0"))
+                      tot  = cov + miss
+                      return cov, miss, (cov / tot * 100.0) if tot else 0.0
+              return 0, 0, 0.0
 
-          lines = ratio("LINE")
-          branches = ratio("BRANCH")
+          focused_root = ET.parse(focused_report).getroot()
+          lines    = ratio(focused_root, "LINE")
+          branches = ratio(focused_root, "BRANCH")
 
-          summary.write_text(
-              "## Coverage (protocols/models/frames)\n\n"
-              f"- Line coverage: **{lines[2]:.2f}%** ({lines[0]} covered / {lines[1]} missed)\n"
-              f"- Branch coverage: **{branches[2]:.2f}%** ({branches[0]} covered / {branches[1]} missed)\n"
-              "- Full report: `euc-ble-core/build/reports/jacoco/full/html/index.html`\n"
-              "- Focused report: `euc-ble-core/build/reports/jacoco/focused/html/index.html`\n"
-          )
+          out = [
+              "## Coverage (protocols/models/frames)\n",
+              f"- Line coverage: **{lines[2]:.2f}%** ({lines[0]} covered / {lines[1]} missed)",
+              f"- Branch coverage: **{branches[2]:.2f}%** ({branches[0]} covered / {branches[1]} missed)",
+              "- Full report: `euc-ble-core/build/reports/jacoco/full/html/index.html`",
+              "- Focused report: `euc-ble-core/build/reports/jacoco/focused/html/index.html`",
+              "",
+              "### Per-package breakdown (focused)",
+              "",
+              "| Package | Line % | Lines (cov/miss) | Branch % | Branches (cov/miss) |",
+              "|---------|-------:|-----------------|----------:|--------------------|",
+          ]
+
+          pkgs = sorted(focused_root.findall("package"), key=lambda p: p.attrib.get("name", ""))
+          for pkg in pkgs:
+              name = pkg.attrib.get("name", "").replace("com/euc/ble/", "").replace("/", ".")
+              if not name:
+                  name = "(root)"
+              lc = pkg_ratio(pkg, "LINE")
+              bc = pkg_ratio(pkg, "BRANCH")
+              out.append(
+                  f"| `{name}` | {lc[2]:.1f}% | {lc[0]}/{lc[1]} | {bc[2]:.1f}% | {bc[0]}/{bc[1]} |"
+              )
+
+          if full_report.exists():
+              full_root = ET.parse(full_report).getroot()
+              fl = ratio(full_root, "LINE")
+              fb = ratio(full_root, "BRANCH")
+              out += [
+                  "",
+                  "### Full module coverage",
+                  "",
+                  f"- Line coverage: **{fl[2]:.2f}%** ({fl[0]} covered / {fl[1]} missed)",
+                  f"- Branch coverage: **{fb[2]:.2f}%** ({fb[0]} covered / {fb[1]} missed)",
+              ]
+
+          summary.write_text("\n".join(out) + "\n")
           PY
           cat .coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
 
