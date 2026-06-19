@@ -2,7 +2,7 @@
 
 ## Philosophy: real-device captures, not synthetic frames
 
-Most BLE protocol libraries test against hand-crafted byte arrays — frames the author *believes*
+Most BLE protocol libraries test against hand-crafted byte arrays — frames that are  *thought*
 to be valid. This library takes a different approach: **every protocol decoder is validated against
 raw BLE traffic recorded from physical wheels**, replayed offline under JUnit 5 without any Android
 device or emulator.
@@ -90,6 +90,11 @@ under concurrent load.
 | `RegularTestsSuite` | All tests except those tagged `@SlowTest` |
 | `NoDropTestsSuite` | No-drop tests only |
 
+### Enhancement needed
+| Class | What it covers |
+|---|---|
+| `ExtremeBullProtocol` | Raw frames needed for test |
+| `NinebotProtocol` | Raw frames from ninebot non-Z wheel needed to enhance testing |
 ---
 
 ## Running tests
