@@ -57,7 +57,7 @@ android {
 
             testTask.useJUnitPlatform {
                 if (isCi) {
-                    excludeTags("slow") // NoDrop exclus en CI
+                    //excludeTags("slow") // NoDrop exclus en CI
                 }
             }
 
@@ -92,10 +92,10 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     }
 
     classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/classes")) {
             exclude(jacocoClassExclusions)
         },
-        fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+        fileTree(layout.buildDirectory.dir("intermediates/java_res/debug/processDebugJavaRes")) {
             exclude(jacocoClassExclusions)
         }
     )
@@ -135,11 +135,11 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
     }
 
     classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/classes")) {
             include(focusedPackages)
             exclude(jacocoClassExclusions)
         },
-        fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+        fileTree(layout.buildDirectory.dir("intermediates/java_res/debug/processDebugJavaRes")) {
             include(focusedPackages)
             exclude(jacocoClassExclusions)
         }
