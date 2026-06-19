@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Logger.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.core</a> &gt; <span class="el_source">Logger.kt</span></div><h1>Logger.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.core
+
+/**
+ * Simple logging interface to avoid external dependencies
+ */
+interface Logger {
+    fun verbose(tag: String, message: String)
+    fun debug(tag: String, message: String)
+    fun info(tag: String, message: String)
+    fun warn(tag: String, message: String)
+    fun error(tag: String, message: String)
+    fun error(tag: String, message: String, throwable: Throwable)
+}
+
+/**
+ * Default logger implementation using Android logging
+ */
+<span class="nc" id="L18">class AndroidLogger : Logger {</span>
+    override fun verbose(tag: String, message: String) {
+<span class="nc" id="L20">        android.util.Log.v(tag, message)</span>
+<span class="nc" id="L21">    }</span>
+
+    override fun debug(tag: String, message: String) {
+<span class="nc" id="L24">        android.util.Log.d(tag, message)</span>
+<span class="nc" id="L25">    }</span>
+
+    override fun info(tag: String, message: String) {
+<span class="nc" id="L28">        android.util.Log.i(tag, message)</span>
+<span class="nc" id="L29">    }</span>
+
+    override fun warn(tag: String, message: String) {
+<span class="nc" id="L32">        android.util.Log.w(tag, message)</span>
+<span class="nc" id="L33">    }</span>
+
+    override fun error(tag: String, message: String) {
+<span class="nc" id="L36">        android.util.Log.e(tag, message)</span>
+<span class="nc" id="L37">    }</span>
+
+    override fun error(tag: String, message: String, throwable: Throwable) {
+<span class="nc" id="L40">        android.util.Log.e(tag, message, throwable)</span>
+<span class="nc" id="L41">    }</span>
+}
+
+/**
+ * No-op logger for testing or environments without logging
+ */
+<span class="fc" id="L47">class NoOpLogger : Logger {</span>
+<span class="nc" id="L48">    override fun verbose(tag: String, message: String) {}</span>
+<span class="nc" id="L49">    override fun debug(tag: String, message: String) {}</span>
+<span class="fc" id="L50">    override fun info(tag: String, message: String) {}</span>
+<span class="nc" id="L51">    override fun warn(tag: String, message: String) {}</span>
+<span class="nc" id="L52">    override fun error(tag: String, message: String) {}</span>
+<span class="nc" id="L53">    override fun error(tag: String, message: String, throwable: Throwable) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

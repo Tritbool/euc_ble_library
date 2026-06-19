@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaperkimProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">LeaperkimProtocol.kt</span></div><h1>LeaperkimProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
+import io.github.tritbool.euc.ble.frames.FrameReassembler
+import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
+import java.util.zip.CRC32
+import kotlin.math.roundToInt
+
+/**
+ * Leaperkim/Veteran protocol implementation based on WheelLog raw frame behavior.
+ *
+ * Stream framing:
+ * - Header: DC 5A 5C
+ * - Byte 3: frame length marker (len)
+ * - Full frame size: len + 4 bytes
+ * - For long frames (len &gt; 38), trailing CRC32 is expected
+ */
+<span class="pc" id="L34">open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : EUCProtocol {</span>
+    companion object {
+        private const val LEAPERKIM_MAX_BMS_CELLS = 42
+    }
+
+<span class="fc" id="L39">    override val manufacturer: String = &quot;Leaperkim&quot;</span>
+<span class="fc" id="L40">    override val supportedModels: List&lt;String&gt; = listOf(</span>
+<span class="fc" id="L41">        &quot;Patton&quot;, &quot;Patton S&quot;, &quot;Sherman&quot;, &quot;Sherman S&quot;, &quot;Sherman L&quot;,</span>
+<span class="fc" id="L42">        &quot;Lynx&quot;, &quot;Lynx S&quot;, &quot;Abrams&quot;, &quot;Oryx&quot;</span>
+    )
+<span class="pc" id="L44">    override val supportedCommandTypes: Set&lt;CommandType&gt; = setOf(</span>
+<span class="fc" id="L45">        CommandType.LIGHT_ON,</span>
+<span class="fc" id="L46">        CommandType.LIGHT_OFF,</span>
+<span class="fc" id="L47">        CommandType.BEEP,</span>
+<span class="fc" id="L48">        CommandType.SET_PEDALS_MODE,</span>
+<span class="fc" id="L49">        CommandType.RESET_TRIP,</span>
+<span class="fc" id="L50">        CommandType.CUSTOM</span>
+    )
+
+<span class="nc" id="L53">    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_SERVICE_UUID)</span>
+    override fun getDataCharacteristicUUID(): UUID =
+<span class="nc" id="L55">        UUID.fromString(BLEConstants.LEAPERKIM_READ_CHARACTERISTIC)</span>
+
+    override fun getWriteCharacteristicUUID(): UUID =
+<span class="nc" id="L58">        UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)</span>
+
+    override fun canHandle(device: EUCDevice): Boolean {
+<span class="fc" id="L61">        val name = device.name</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        return device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN ||</span>
+<span class="fc" id="L64">                supportedModels.map { model -&gt;</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                    model.contains(</span>
+<span class="fc" id="L66">                        name,</span>
+<span class="fc" id="L67">                        ignoreCase = true</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                    ) || name.contains(model, ignoreCase = true)</span>
+<span class="fc bfc" id="L69" title="All 6 branches covered.">                }.reduce { a, b -&gt; a || b }</span>
+    }
+
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (chunk.size &lt; 3) return false</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        return (chunk[0].toInt() and 0xFF) == 0xDC &amp;&amp;</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                (chunk[1].toInt() and 0xFF) == 0x5A &amp;&amp;</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                (chunk[2].toInt() and 0xFF) == 0x5C</span>
+    }
+
+    private enum class ParseState {
+<span class="fc" id="L80">        UNKNOWN,</span>
+<span class="fc" id="L81">        LENGTH_SEARCH,</span>
+<span class="fc" id="L82">        COLLECTING</span>
+    }
+
+<span class="fc" id="L85">    private var parseState: ParseState = ParseState.UNKNOWN</span>
+    private var old1: Int = 0
+    private var old2: Int = 0
+    private var expectedLen: Int = 0
+<span class="fc" id="L89">    private val streamBuffer = ArrayList&lt;Byte&gt;()</span>
+
+<span class="fc" id="L91">    private val unpacker: (Byte) -&gt; List&lt;ByteArray&gt; = unpacker@{ next -&gt;</span>
+<span class="fc" id="L92">        val out = mutableListOf&lt;ByteArray&gt;()</span>
+<span class="fc" id="L93">        val c = next.toInt() and 0xFF</span>
+<span class="fc bfc" id="L94" title="All 3 branches covered.">        when (parseState) {</span>
+            ParseState.COLLECTING -&gt; {
+<span class="fc" id="L96">                val currentSize = streamBuffer.size</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">                if ((currentSize == 22 &amp;&amp; c != 0x00) ||</span>
+<span class="pc bpc" id="L98" title="1 of 6 branches missed.">                    (currentSize == 30 &amp;&amp; c != 0x00 &amp;&amp; c != 0x07) ||</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">                    (currentSize == 23 &amp;&amp; (c and 0xFE) != 0x00)</span>
+                ) {
+<span class="nc" id="L101">                    resetUnpacker()</span>
+<span class="nc" id="L102">                    return@unpacker out</span>
+                }
+<span class="fc" id="L104">                streamBuffer.add(c.toByte())</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                if (currentSize == expectedLen + 3) {</span>
+<span class="fc" id="L106">                    out.add(streamBuffer.toByteArray())</span>
+<span class="fc" id="L107">                    resetUnpacker()</span>
+                }
+            }
+
+            ParseState.LENGTH_SEARCH -&gt; {
+<span class="fc" id="L112">                streamBuffer.add(c.toByte())</span>
+<span class="fc" id="L113">                expectedLen = c</span>
+<span class="fc" id="L114">                parseState = ParseState.COLLECTING</span>
+<span class="fc" id="L115">                old2 = old1</span>
+<span class="fc" id="L116">                old1 = c</span>
+            }
+
+            ParseState.UNKNOWN -&gt; {
+<span class="pc bpc" id="L120" title="2 of 6 branches missed.">                if (c == 0x5C &amp;&amp; old1 == 0x5A &amp;&amp; old2 == 0xDC) {</span>
+<span class="fc" id="L121">                    streamBuffer.clear()</span>
+<span class="fc" id="L122">                    streamBuffer.add(0xDC.toByte())</span>
+<span class="fc" id="L123">                    streamBuffer.add(0x5A.toByte())</span>
+<span class="fc" id="L124">                    streamBuffer.add(0x5C.toByte())</span>
+<span class="fc" id="L125">                    parseState = ParseState.LENGTH_SEARCH</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">                } else if (c == 0x5A &amp;&amp; old1 == 0xDC) {</span>
+<span class="fc" id="L127">                    old2 = old1</span>
+                } else {
+<span class="fc" id="L129">                    old2 = 0</span>
+                }
+<span class="fc" id="L131">                old1 = c</span>
+            }
+        }
+<span class="fc" id="L134">        out</span>
+    }
+
+    private fun resetUnpacker() {
+<span class="fc" id="L138">        old1 = 0</span>
+<span class="fc" id="L139">        old2 = 0</span>
+<span class="fc" id="L140">        expectedLen = 0</span>
+<span class="fc" id="L141">        parseState = ParseState.UNKNOWN</span>
+<span class="fc" id="L142">        streamBuffer.clear()</span>
+<span class="fc" id="L143">    }</span>
+
+<span class="fc" id="L145">    @Volatile</span>
+    var debugFramesObserved: Int = 0
+        private set
+
+<span class="fc" id="L149">    @Volatile</span>
+    var debugFramesParsed: Int = 0
+        private set
+
+<span class="fc" id="L153">    @Volatile</span>
+    var debugFramesSent: Int = 0
+        private set
+
+<span class="fc" id="L157">    @Volatile</span>
+    var debugSendFailures: Int = 0
+        private set
+
+<span class="pc" id="L161">    private val frameParser = ByteByByteFrameParser(unpacker, resetUnpacker = { resetUnpacker() })</span>
+<span class="fc" id="L162">    private val frameReassembler = FrameReassembler(frameParser)</span>
+
+<span class="fc" id="L164">    private val _channel = Channel&lt;EUCData&gt;(capacity = Channel.UNLIMITED)</span>
+<span class="fc" id="L165">    override val dataFlow: Flow&lt;EUCData&gt; = _channel.receiveAsFlow()</span>
+
+<span class="fc" id="L167">    private val _rawFrameFlow = MutableSharedFlow&lt;ByteArray&gt;(</span>
+<span class="fc" id="L168">        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,</span>
+<span class="fc" id="L169">        onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+<span class="pc" id="L171">    override val rawFrameFlow: Flow&lt;ByteArray&gt; = _rawFrameFlow.asSharedFlow()</span>
+    //private val scope = CoroutineScope(Dispatchers.IO)
+    private var sessionStartTimestampMs: Long? = null
+    @Volatile
+    private var lastMajorVersion: Int? = null
+<span class="fc" id="L176">    private val bmsCellPages: MutableMap&lt;Int, DoubleArray&gt; = mutableMapOf()</span>
+<span class="fc" id="L177">    private val bmsTemperatures: MutableMap&lt;Int, List&lt;Double&gt;&gt; = mutableMapOf()</span>
+<span class="fc" id="L178">    private val bmsCurrents: MutableMap&lt;Int, Double&gt; = mutableMapOf()</span>
+
+<span class="fc" id="L180">    init {</span>
+<span class="fc" id="L181">        scope.launch {</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            frameReassembler.observeFrames().collectLatest { frame -&gt;</span>
+<span class="fc" id="L183">                processFrame(frame)</span>
+<span class="fc" id="L184">            }</span>
+<span class="nc" id="L185">        }</span>
+<span class="fc" id="L186">    }</span>
+
+    override fun decode(data: ByteArray): EUCData? {
+<span class="pc bpc" id="L189" title="2 of 4 branches missed.">        if (data.isEmpty()) return null</span>
+<span class="fc" id="L190">        _rawFrameFlow.tryEmit(data.clone())</span>
+<span class="fc" id="L191">        updateLastKnownVersionFromRawChunk(data)</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        scope.launch {</span>
+<span class="fc" id="L193">            frameReassembler.processIncomingBytes(data)</span>
+<span class="fc" id="L194">        }</span>
+<span class="fc" id="L195">        return null</span>
+    }
+
+    private fun updateLastKnownVersionFromRawChunk(data: ByteArray) {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (data.size &lt; 30) return</span>
+<span class="pc bpc" id="L200" title="3 of 6 branches missed.">        if (data[0] != 0xDC.toByte() || data[1] != 0x5A.toByte() || data[2] != 0x5C.toByte()) return</span>
+
+<span class="fc" id="L202">        val len = ByteUtils.getUnsignedByte(data, 3)</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        if (data.size != len + 4) return</span>
+        // WheelLog-compatible Leaperkim frames longer than 38 bytes carry trailing CRC32.
+<span class="pc bpc" id="L205" title="1 of 4 branches missed.">        if (len &gt; 38 &amp;&amp; !isCrcValid(data, len)) return</span>
+
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        val versionRaw = ByteUtils.tryGetUnsignedShortBE(data, 28) ?: return</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (versionRaw &gt; 0) {</span>
+<span class="fc" id="L209">            lastMajorVersion = extractMajorVersion(versionRaw)</span>
+        }
+<span class="fc" id="L211">    }</span>
+
+    private fun processFrame(frame: ByteArray) {
+<span class="fc" id="L214">        debugFramesObserved++</span>
+<span class="fc" id="L215">        val parsed = parseFrame(frame)</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        if (parsed != null) {</span>
+<span class="fc" id="L217">            debugFramesParsed++</span>
+<span class="fc" id="L218">            val result = _channel.trySend(parsed)</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">            if (result.isSuccess) {</span>
+<span class="fc" id="L220">                debugFramesSent++</span>
+            } else {
+<span class="nc" id="L222">                debugSendFailures++</span>
+            }
+        }
+<span class="fc" id="L225">    }</span>
+
+    private fun parseFrame(frame: ByteArray): EUCData? {
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">        if (frame.size &lt; 36) return null</span>
+<span class="pc bpc" id="L229" title="3 of 6 branches missed.">        if (frame[0] != 0xDC.toByte() || frame[1] != 0x5A.toByte() || frame[2] != 0x5C.toByte()) return null</span>
+
+<span class="fc" id="L231">        val len = ByteUtils.getUnsignedByte(frame, 3)</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">        if (frame.size != len + 4) return null</span>
+        // WheelLog-compatible Leaperkim frames longer than 38 bytes carry trailing CRC32.
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">        if (len &gt; 38 &amp;&amp; !isCrcValid(frame, len)) return null</span>
+
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        val voltageRaw = ByteUtils.tryGetUnsignedShortBE(frame, 4) ?: return null</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">        val speedRaw = ByteUtils.tryGetSignedShortBE(frame, 6) ?: return null</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        val distanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 8) ?: return null</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        val totalDistanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 12) ?: return null</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        val currentRaw = ByteUtils.tryGetSignedShortBE(frame, 16) ?: return null</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        val tempRaw = ByteUtils.tryGetSignedShortBE(frame, 18) ?: return null</span>
+<span class="fc" id="L242">        val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 32)</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        val pwmRaw = ByteUtils.tryGetUnsignedShortBE(frame, 34) ?: 0</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        val chargeMode = ByteUtils.tryGetUnsignedShortBE(frame, 22) ?: 0</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        val autoOffSeconds = ByteUtils.tryGetUnsignedShortBE(frame, 20) ?: 0</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        val speedAlertRaw = ByteUtils.tryGetUnsignedShortBE(frame, 24) ?: 0</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        val speedTiltBackRaw = ByteUtils.tryGetUnsignedShortBE(frame, 26) ?: 0</span>
+<span class="fc" id="L248">        val pedalsMode = ByteUtils.tryGetUnsignedShortBE(frame, 30)</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0</span>
+
+<span class="fc" id="L251">        val voltage = voltageRaw / 100.0</span>
+<span class="fc" id="L252">        val speed = speedRaw / 100.0</span>
+<span class="fc" id="L253">        val current = currentRaw / 100.0</span>
+<span class="fc" id="L254">        val temperature = tempRaw / 100.0</span>
+<span class="fc" id="L255">        val pwm = pwmRaw / 100.0</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        val angle = angleRaw?.let { it / 100.0 }</span>
+
+<span class="pc bpc" id="L258" title="3 of 6 branches missed.">        if (voltage !in 20.0..180.0) return null</span>
+<span class="pc bpc" id="L259" title="3 of 6 branches missed.">        if (speed !in -120.0..120.0) return null</span>
+<span class="pc bpc" id="L260" title="3 of 6 branches missed.">        if (current !in -300.0..300.0) return null</span>
+<span class="pc bpc" id="L261" title="3 of 6 branches missed.">        if (temperature !in -50.0..130.0) return null</span>
+
+<span class="fc" id="L263">        val majorVersion = extractMajorVersion(versionRaw)</span>
+<span class="fc" id="L264">        lastMajorVersion = majorVersion</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (majorVersion &gt;= 5) {</span>
+<span class="fc" id="L266">            parseSmartBms(frame)</span>
+        }
+<span class="fc" id="L268">        val model = modelByMajorVersion(majorVersion)</span>
+<span class="fc" id="L269">        val battery = estimateBatteryPercent(voltageRaw, majorVersion)</span>
+
+<span class="fc" id="L271">        val tripDistanceKm = decodeDistanceKm(distanceRaw)</span>
+<span class="fc" id="L272">        val totalDistanceKm = decodeDistanceKm(totalDistanceRaw)</span>
+<span class="fc" id="L273">        val now = System.currentTimeMillis()</span>
+<span class="fc" id="L274">        val rideTimeSeconds = deriveRideTimeSeconds(now)</span>
+
+<span class="fc" id="L276">        return EUCData(</span>
+<span class="fc" id="L277">            speed = speed,</span>
+<span class="fc" id="L278">            voltage = voltage,</span>
+<span class="fc" id="L279">            current = current,</span>
+<span class="fc" id="L280">            temperature = temperature,</span>
+<span class="fc" id="L281">            batteryLevel = battery,</span>
+<span class="fc" id="L282">            distance = tripDistanceKm,</span>
+<span class="fc" id="L283">            power = voltage * current,</span>
+<span class="fc" id="L284">            pwm = pwm,</span>
+<span class="fc" id="L285">            timestamp = now,</span>
+<span class="fc" id="L286">            rawData = frame,</span>
+<span class="fc" id="L287">            manufacturer = manufacturer,</span>
+<span class="fc" id="L288">            model = model,</span>
+<span class="fc" id="L289">            serialNumber = null,</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">            firmwareVersion = if (versionRaw &gt; 0) formatVersion(versionRaw) else null,</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">            isCharging = chargeMode &gt; 0,</span>
+<span class="fc" id="L292">            rideTime = rideTimeSeconds,</span>
+<span class="fc" id="L293">            cellVoltages = getCombinedCellVoltages(),</span>
+<span class="fc" id="L294">            motorTemperature = null,</span>
+<span class="fc" id="L295">            totalDistance = totalDistanceKm,</span>
+<span class="fc" id="L296">            angle = angle,</span>
+<span class="fc" id="L297">            pedalsMode = pedalsMode,</span>
+<span class="fc bfc" id="L298" title="All 6 branches covered.">            autoPowerOffMinutes = autoOffSeconds.takeIf { it &gt; 0 }?.let { it / 60 },</span>
+<span class="fc bfc" id="L299" title="All 6 branches covered.">            tiltBackSpeed = speedTiltBackRaw.takeIf { it &gt; 0 }?.let { it * 10 },</span>
+<span class="fc bfc" id="L300" title="All 6 branches covered.">            alarm1Speed = speedAlertRaw.takeIf { it &gt; 0 }?.let { it * 10 }</span>
+        )
+    }
+
+    private fun parseSmartBms(frame: ByteArray) {
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        val packetNum = ByteUtils.tryGetUnsignedByte(frame, 46) ?: return</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        val bmsIndex = if (packetNum &lt; 4) 1 else 2</span>
+<span class="fc" id="L307">        val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(LEAPERKIM_MAX_BMS_CELLS) }</span>
+<span class="fc bfc" id="L308" title="All 5 branches covered.">        when (packetNum) {</span>
+            0, 4 -&gt; {
+<span class="fc" id="L310">                val bms1CurrentRaw = ByteUtils.tryGetSignedShortBE(frame, 69)</span>
+<span class="fc" id="L311">                val bms2CurrentRaw = ByteUtils.tryGetSignedShortBE(frame, 71)</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">                bms1CurrentRaw?.let { bmsCurrents[1] = it / 100.0 }</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">                bms2CurrentRaw?.let { bmsCurrents[2] = it / 100.0 }</span>
+            }
+
+            1, 5 -&gt; {
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                for (i in 0 until 15) {</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">                    val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue</span>
+<span class="fc" id="L319">                    cells[i] = raw / 1000.0</span>
+                }
+            }
+
+            2, 6 -&gt; {
+<span class="fc bfc" id="L324" title="All 2 branches covered.">                for (i in 0 until 15) {</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">                    val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue</span>
+<span class="fc" id="L326">                    val index = i + 15</span>
+<span class="pc bpc" id="L327" title="3 of 6 branches missed.">                    if (index in cells.indices) {</span>
+<span class="fc" id="L328">                        cells[index] = raw / 1000.0</span>
+                    }
+                }
+            }
+
+            3, 7 -&gt; {
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                for (i in 0 until 12) {</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">                    val raw = ByteUtils.tryGetUnsignedShortBE(frame, 59 + i * 2) ?: continue</span>
+<span class="fc" id="L336">                    val index = i + 30</span>
+<span class="pc bpc" id="L337" title="3 of 6 branches missed.">                    if (index in cells.indices) {</span>
+<span class="fc" id="L338">                        cells[index] = raw / 1000.0</span>
+                    }
+                }
+<span class="fc" id="L341">                val temps = buildList {</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">                    for (i in 0 until 6) {</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">                        val raw = ByteUtils.tryGetSignedShortBE(frame, 47 + i * 2) ?: continue</span>
+<span class="fc" id="L344">                        add(raw / 100.0)</span>
+                    }
+<span class="fc" id="L346">                }</span>
+<span class="pc bpc" id="L347" title="2 of 4 branches missed.">                if (temps.isNotEmpty()) {</span>
+<span class="fc" id="L348">                    bmsTemperatures[bmsIndex] = temps</span>
+                }
+            }
+        }
+<span class="fc" id="L352">    }</span>
+
+    private fun getCombinedCellVoltages(): List&lt;Double&gt;? {
+<span class="fc bfc" id="L355" title="All 2 branches covered.">        if (bmsCellPages.isEmpty()) return null</span>
+<span class="fc" id="L356">        val combined = bmsCellPages.values</span>
+<span class="fc" id="L357">            .flatMap { it.asList() }</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            .filter { it &gt; 0.0 }</span>
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        return combined.ifEmpty { null }</span>
+    }
+
+    fun getBMSData(): List&lt;BMSData&gt; {
+<span class="fc" id="L363">        val allIndices =</span>
+<span class="fc" id="L364">            (bmsCellPages.keys + bmsTemperatures.keys + bmsCurrents.keys).distinct().sorted()</span>
+<span class="fc" id="L365">        return allIndices.map { index -&gt;</span>
+<span class="fc" id="L366">            BMSData(</span>
+<span class="fc" id="L367">                bmsIndex = index,</span>
+<span class="fc" id="L368">                voltage = null,</span>
+<span class="fc" id="L369">                current = bmsCurrents[index],</span>
+<span class="fc" id="L370">                remainingCapacity = null,</span>
+<span class="fc" id="L371">                factoryCapacity = null,</span>
+<span class="fc" id="L372">                cycles = null,</span>
+<span class="fc" id="L373">                temperatures = bmsTemperatures[index],</span>
+<span class="pc bpc" id="L374" title="3 of 8 branches missed.">                cellVoltages = bmsCellPages[index]?.asList()?.filter { it &gt; 0.0 }?.ifEmpty { null }</span>
+<span class="fc" id="L375">            )</span>
+        }
+    }
+
+    private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">        if (frame.size &lt; len + 4) return false</span>
+<span class="fc" id="L381">        val crc = CRC32()</span>
+<span class="fc" id="L382">        crc.update(frame, 0, len)</span>
+<span class="fc" id="L383">        val calc = crc.value</span>
+<span class="fc" id="L384">        val provided = ByteUtils.getUnsignedIntBE(frame, len).toLong()</span>
+<span class="pc bpc" id="L385" title="1 of 2 branches missed.">        return calc == provided</span>
+    }
+
+    private fun decodeDistanceKm(raw: Long): Double {
+<span class="fc" id="L389">        val masked = raw and 0x00FF_FFFFL</span>
+<span class="fc" id="L390">        return masked / 1000.0</span>
+    }
+
+    protected open fun modelByMajorVersion(version: Int): String {
+<span class="pc bpc" id="L394" title="6 of 10 branches missed.">        return when (version) {</span>
+<span class="nc" id="L395">            0, 1 -&gt; &quot;Sherman&quot;</span>
+<span class="nc" id="L396">            2 -&gt; &quot;Abrams&quot;</span>
+<span class="nc" id="L397">            3 -&gt; &quot;Sherman S&quot;</span>
+<span class="fc" id="L398">            4 -&gt; &quot;Patton&quot;</span>
+<span class="fc" id="L399">            5 -&gt; &quot;Lynx&quot;</span>
+<span class="nc" id="L400">            6 -&gt; &quot;Sherman L&quot;</span>
+<span class="fc" id="L401">            7 -&gt; &quot;Patton S&quot;</span>
+<span class="nc" id="L402">            8 -&gt; &quot;Oryx&quot;</span>
+<span class="nc" id="L403">            9 -&gt; &quot;Lynx S&quot;</span>
+<span class="fc" id="L404">            else -&gt; &quot;Leaperkim&quot;</span>
+        }
+    }
+
+    protected open fun estimateBatteryPercent(voltageRaw: Int, majorVersion: Int): Int {
+<span class="pc bpc" id="L409" title="1 of 4 branches missed.">        val battery = when (majorVersion) {</span>
+<span class="fc" id="L410">            4, 7 -&gt; ((voltageRaw - 9600) / (12525.0 - 9600.0) * 100.0)</span>
+<span class="fc" id="L411">            5, 6, 9 -&gt; ((voltageRaw - 11520) / (15030.0 - 11520.0) * 100.0)</span>
+<span class="nc" id="L412">            8 -&gt; ((voltageRaw - 13886) / (17535.0 - 13886.0) * 100.0)</span>
+<span class="fc" id="L413">            else -&gt; ((voltageRaw - 7935) / (10020.0 - 7935.0) * 100.0)</span>
+        }
+<span class="fc" id="L415">        return battery.roundToInt().coerceIn(0, 100)</span>
+    }
+
+<span class="fc" id="L418">    protected open fun extractMajorVersion(versionRaw: Int): Int = versionRaw / 1000</span>
+
+    protected open fun formatVersion(versionRaw: Int): String {
+<span class="fc" id="L421">        val major = versionRaw / 1000</span>
+<span class="fc" id="L422">        val minor = (versionRaw % 1000) / 100</span>
+<span class="fc" id="L423">        val patch = versionRaw % 100</span>
+<span class="fc" id="L424">        return &quot;%03d.%01d.%02d&quot;.format(major, minor, patch)</span>
+    }
+
+    private fun deriveRideTimeSeconds(nowMs: Long): Long {
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        val start = sessionStartTimestampMs ?: nowMs.also { sessionStartTimestampMs = it }</span>
+<span class="fc" id="L429">        return ((nowMs - start) / 1000L).coerceAtLeast(0L)</span>
+    }
+
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+<span class="pc bpc" id="L433" title="2 of 7 branches missed.">        return when (commandType) {</span>
+<span class="fc" id="L434">            CommandType.LIGHT_ON -&gt; &quot;SetLightON&quot;.encodeToByteArray()</span>
+<span class="fc" id="L435">            CommandType.LIGHT_OFF -&gt; &quot;SetLightOFF&quot;.encodeToByteArray()</span>
+            CommandType.BEEP -&gt; {
+<span class="fc bfc" id="L437" title="All 4 branches covered.">                if ((lastMajorVersion ?: 0) &lt; 3) {</span>
+<span class="fc" id="L438">                    &quot;b&quot;.encodeToByteArray()</span>
+                } else {
+                    byteArrayOf(
+<span class="fc" id="L441">                        0x4c, 0x6b, 0x41, 0x70, 0x0e, 0x00,</span>
+<span class="fc" id="L442">                        0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01,</span>
+<span class="fc" id="L443">                        0xca.toByte(), 0x87.toByte(), 0xe6.toByte(), 0x6f</span>
+                    )
+                }
+            }
+
+            CommandType.SET_PEDALS_MODE -&gt; {
+<span class="pc bpc" id="L449" title="2 of 4 branches missed.">                when ((value as? Int)?.coerceIn(0, 2)) {</span>
+<span class="pc bpc" id="L450" title="1 of 4 branches missed.">                    0 -&gt; &quot;SETh&quot;.encodeToByteArray()</span>
+<span class="pc bpc" id="L451" title="1 of 4 branches missed.">                    1 -&gt; &quot;SETm&quot;.encodeToByteArray()</span>
+<span class="pc bpc" id="L452" title="2 of 4 branches missed.">                    2 -&gt; &quot;SETs&quot;.encodeToByteArray()</span>
+                    else -&gt; byteArrayOf()
+                }
+            }
+
+<span class="fc" id="L457">            CommandType.RESET_TRIP -&gt; &quot;CLEARMETER&quot;.encodeToByteArray()</span>
+            CommandType.CUSTOM -&gt; {
+<span class="nc" id="L459">                when (value) {</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">                    is ByteArray -&gt; value.clone()</span>
+<span class="nc bnc" id="L461" title="All 2 branches missed.">                    is String -&gt; value.encodeToByteArray()</span>
+                    else -&gt; byteArrayOf()
+                }
+            }
+
+            else -&gt; byteArrayOf()
+        }
+    }
+
+    override fun isDeviceReady(data: EUCData): Boolean {
+<span class="nc bnc" id="L471" title="All 6 branches missed.">        return data.voltage &gt; 40.0 &amp;&amp; data.model.isNotBlank()</span>
+    }
+
+    override fun close() {
+<span class="fc" id="L475">        scope.cancel()</span>
+<span class="fc" id="L476">        bmsCellPages.clear()</span>
+<span class="fc" id="L477">        bmsTemperatures.clear()</span>
+<span class="fc" id="L478">        bmsCurrents.clear()</span>
+<span class="fc" id="L479">        _channel.close()</span>
+<span class="fc" id="L480">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

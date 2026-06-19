@@ -1,0 +1,1 @@
+sourceset_dependencies='{":euc-ble-core/release":[]}'

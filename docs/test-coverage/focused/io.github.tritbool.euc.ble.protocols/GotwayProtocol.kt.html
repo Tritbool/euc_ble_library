@@ -1,0 +1,556 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GotwayProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">GotwayProtocol.kt</span></div><h1>GotwayProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import androidx.annotation.VisibleForTesting
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
+import io.github.tritbool.euc.ble.frames.FrameReassembler
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
+import kotlin.math.abs
+
+/**
+ * Gotway EUC Protocol Implementation
+ * Supports Gotway series electric unicycles
+ */
+
+
+/**
+ * Gotway/Begode reverse-engineered protocol (updated)
+ *
+ * This comment summarizes the observed variants:
+ *  - Raw &quot;A&quot; / &quot;B&quot; frames (controller serial stream, header 0x55 0xAA)
+ *  - Short &quot;legacy&quot; packets (e.g., 0x01 / 0x02) re-emitted by some adapters
+ *  - Type 0xA5 packets (compressed commands/status emitted by firmware/adapters)
+ *
+ * General observations:
+ *  - Raw A/B frames observed on the serial port typically use header 0x55 0xAA
+ *    and Big Endian (BE) fields for 16/32 bit integers.
+ *  - Legacy packets (0x01/0x02) and some 0xA5 packets often use Little Endian (LE)
+ *    encoding and a more compact format.
+ *  - Current/temperature fields can be signed; must be converted correctly.
+ *  - Many firmware/adapters do not add checksum. The stream can be fragmented,
+ *    delayed, or lose bytes on the BLE side (no flow control).
+ *  - Some packets include BMS cell voltages at the end, encoded as pairs of 2 bytes (LE)
+ *    or in mV/centivolts depending on the variant.
+ *
+ * Example (observed):
+ *   A: 55 AA 19 F0 00 00 00 00 00 00 01 2C FD CA 00 01 FF F8 00 18 5A 5A 5A 5A
+ *   B: 55 AA 00 0A 4A 12 48 00 1C 20 00 2A 00 03 00 07 00 08 04 18 5A 5A 5A 5A
+ *
+ * Summary format (adjust according to firmware/model):
+ *  - Frame A (header 0x55 0xAA):
+ *      Bytes 0-1:  0x55 0xAA
+ *      Bytes 2-3:  BE voltage (fixed point, e.g., 1/100)
+ *      Bytes 4-5:  BE speed (fixed point, e.g., 3.6 * value / 100 -&gt; km/h)
+ *      Bytes 6-9:  BE distance (uint32, meters)
+ *      Bytes 10-11: BE current (signed, fixed point)
+ *      Bytes 12-13: BE temperature (signed or raw MPU value)
+ *      Bytes 14-17: unknown / flags
+ *      Byte 18:    frame type (e.g., 0x00)
+ *      Byte 19:    footer (0x18)
+ *      Bytes 20-..: footer 0x5A 0x5A 0x5A 0x5A (or variants) + optional BMS trailing
+ *
+ *  - Frame B (header 0x55 0xAA):
+ *      Bytes 2-5:  BE total distance (uint32)
+ *      Byte 6:     pedals mode / alarms (nibbles)
+ *      Bytes 7-12: additional unknown fields
+ *      Byte 13:    LED / mode
+ *      Bytes 14-17: unknown
+ *      Byte 18:    frame type (e.g., 0x04)
+ *      Footer same
+ *
+ *  - Legacy packets (e.g., 0x01 / 0x02):
+ *      - Often sent by Serial-&gt;BLE adapter or alternative firmware.
+ *      - LE fields, more compact formats; can represent voltage/speed/etc.
+ *
+ *  - 0xA5 packets:
+ *      - Used for commands (LIGHT_ON/OFF, BEEP, POWER_OFF) and sometimes for compressed states.
+ *        Different structure (header 0xA5 ...).
+ *
+ * Parsing recommendations:
+ *  - Dispatch by first byte/header: 0x55 (A/B raw), 0x01/0x02 (legacy), 0xA5 (command/status),
+ *    or by type byte in the frame if present.
+ *  - For A/B: process integers as BE. For legacy/0xA5: try LE.
+ *  - Handle fragmentation: tolerate variable sizes, ignore too short frames,
+ *    attempt re-synchronization on 0x55 0xAA or adapter headers.
+ *  - Dynamically extract cell voltages from the queue if present:
+ *      read pairs of 2 bytes (LE) and convert to V (mV -&gt; V or /100 -&gt; V depending on ranges).
+ *  - Correctly convert signed values (current, motor temperatures).
+ *  - Stay defensive: validate plausible ranges (voltage, current, temperature).
+ *
+ * Why were these variants not in the old comment?
+ *  - The original comment described the raw serial stream observed on a specific controller/firmware.
+ *    Other firmware/adapters (Serial-&gt;BLE) re-emit or transform these bytes
+ *    (different headers, different endianness) — these variants were not necessarily
+ *    present during the initial reverse engineering.
+ */
+<span class="pc" id="L100">open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :</span>
+    EUCProtocol {
+
+    companion object {
+        const val FRAME_SIZE = 24
+<span class="fc" id="L105">        val HEADER: ByteArray = BLEConstants.GOTWAY_FRAME_HEADER</span>
+<span class="fc" id="L106">        val FOOTER: ByteArray = BLEConstants.GOTWAY_FRAME_FOOTER</span>
+        private const val MIN_BATTERY_VOLTAGE = 52.0
+        private const val MAX_BATTERY_VOLTAGE = 134.4
+        private const val MAX_BMS_CELL_SLOTS = 56
+    }
+
+<span class="fc" id="L112">    private val frameParser = FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)</span>
+<span class="fc" id="L113">    private val frameReassembler: FrameReassembler = FrameReassembler(frameParser)</span>
+<span class="fc" id="L114">    private val _channel = Channel&lt;EUCData&gt;(capacity = Channel.UNLIMITED)</span>
+<span class="fc" id="L115">    override val dataFlow: Flow&lt;EUCData&gt; = _channel.receiveAsFlow()</span>
+
+<span class="fc" id="L117">    private val _rawFrameFlow = MutableSharedFlow&lt;ByteArray&gt;(</span>
+<span class="fc" id="L118">        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,</span>
+<span class="fc" id="L119">        onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+<span class="pc" id="L121">    override val rawFrameFlow: Flow&lt;ByteArray&gt; = _rawFrameFlow.asSharedFlow()</span>
+
+    //private val scope = CoroutineScope(Dispatchers.IO)
+    private var lastKnownVoltage: Double? = null
+    private var lastKnownCurrent: Double? = null
+    private var hasType1Voltage = false
+    private var hasType7Current = false
+    private var lastKnownSpeed = 0.0
+    private var lastKnownTemperature = 0.0
+    private var lastKnownTripDistance = 0.0
+    private var lastKnownTotalDistance: Double? = null
+    private var lastKnownMotorTemperature: Double? = null
+    private var lastKnownPwm: Double? = null
+    private var lastKnownModel: String? = null
+    private var lastKnownFirmwareVersion: String? = null
+    private var gotwayFirmwareVariant: String? = null
+    private var useHwPwm = false
+<span class="fc" id="L138">    private val smartBmsCellPages: MutableMap&lt;Int, DoubleArray&gt; = mutableMapOf()</span>
+
+<span class="fc" id="L140">    init {</span>
+        // Start observing frames asynchronously
+<span class="fc" id="L142">        scope.launch {</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">            frameReassembler.observeFrames().collectLatest { frame -&gt;</span>
+<span class="fc" id="L144">                processFrame(frame)</span>
+<span class="fc" id="L145">            }</span>
+<span class="nc" id="L146">        }</span>
+<span class="fc" id="L147">    }</span>
+
+<span class="fc" id="L149">    override val manufacturer: String = &quot;Gotway&quot;</span>
+<span class="fc" id="L150">    override val supportedModels: List&lt;String&gt; = listOf(</span>
+<span class="fc" id="L151">        &quot;MSuper&quot;, &quot;MSX&quot;, &quot;MSX Pro&quot;, &quot;Mten3&quot;, &quot;Mten4&quot;, &quot;MTen5&quot;,</span>
+<span class="fc" id="L152">        &quot;Nikola&quot;, &quot;Nikola Plus&quot;, &quot;Tesla&quot;, &quot;Monster&quot;, &quot;Monster Pro&quot;,</span>
+<span class="fc" id="L153">        &quot;Begode&quot;, &quot;Begode RS&quot;, &quot;Begode Master&quot;, &quot;Begode Hero&quot;, &quot;Master Pro&quot;,</span>
+<span class="fc" id="L154">        &quot;blitz&quot;, &quot;blitz pro&quot;, &quot;mten3&quot;, &quot;mten4&quot;, &quot;mten5&quot;, &quot;A1&quot;, &quot;A2&quot;, &quot;race&quot;,</span>
+<span class="fc" id="L155">        &quot;Extreme&quot;</span>
+    )
+<span class="pc" id="L157">    override val supportedCommandTypes: Set&lt;CommandType&gt; = setOf(</span>
+<span class="fc" id="L158">        CommandType.LIGHT_ON,</span>
+<span class="fc" id="L159">        CommandType.LIGHT_OFF,</span>
+<span class="fc" id="L160">        CommandType.BEEP,</span>
+<span class="fc" id="L161">        CommandType.POWER_OFF,</span>
+<span class="fc" id="L162">        CommandType.LIGHT_BRIGHTNESS,</span>
+<span class="fc" id="L163">        CommandType.REQUEST_SERIAL,</span>
+<span class="fc" id="L164">        CommandType.REQUEST_FIRMWARE</span>
+    )
+
+<span class="nc" id="L167">    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)</span>
+    override fun getDataCharacteristicUUID(): UUID =
+<span class="nc" id="L169">        UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)</span>
+
+    override fun canHandle(device: EUCDevice): Boolean {
+<span class="fc" id="L172">        val name = device.name</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        return device.manufacturerId == BLEConstants.MANUFACTURER_GOTWAY ||</span>
+<span class="fc" id="L174">                supportedModels.map { model -&gt; model.contains(name, ignoreCase = true) }</span>
+<span class="fc bfc" id="L175" title="All 6 branches covered.">                    .reduce { a, b -&gt; a || b }</span>
+    }
+
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        if (chunk.size &lt; 2) return false</span>
+<span class="pc bpc" id="L180" title="1 of 4 branches missed.">        val hasHeader = (chunk[0].toInt() and 0xFF) == 0x55 &amp;&amp; (chunk[1].toInt() and 0xFF) == 0xAA</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        val hasFooter = chunk.size &gt;= 4 &amp;&amp;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                (chunk[chunk.size - 4].toInt() and 0xFF) == 0x5A &amp;&amp;</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                (chunk[chunk.size - 3].toInt() and 0xFF) == 0x5A &amp;&amp;</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                (chunk[chunk.size - 2].toInt() and 0xFF) == 0x5A &amp;&amp;</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                (chunk[chunk.size - 1].toInt() and 0xFF) == 0x5A</span>
+<span class="fc bfc" id="L186" title="All 4 branches covered.">        return hasHeader || hasFooter</span>
+    }
+
+    override fun close() {
+<span class="fc" id="L190">        scope.cancel()</span>
+<span class="fc" id="L191">        smartBmsCellPages.clear()</span>
+<span class="fc" id="L192">        lastKnownVoltage = null</span>
+<span class="fc" id="L193">        lastKnownCurrent = null</span>
+<span class="fc" id="L194">        hasType1Voltage = false</span>
+<span class="fc" id="L195">        hasType7Current = false</span>
+<span class="fc" id="L196">        lastKnownSpeed = 0.0</span>
+<span class="fc" id="L197">        lastKnownTemperature = 0.0</span>
+<span class="fc" id="L198">        lastKnownTripDistance = 0.0</span>
+<span class="fc" id="L199">        lastKnownTotalDistance = null</span>
+<span class="fc" id="L200">        lastKnownMotorTemperature = null</span>
+<span class="fc" id="L201">        lastKnownPwm = null</span>
+<span class="fc" id="L202">        lastKnownModel = null</span>
+<span class="fc" id="L203">        lastKnownFirmwareVersion = null</span>
+<span class="fc" id="L204">        gotwayFirmwareVariant = null</span>
+<span class="fc" id="L205">        useHwPwm = false</span>
+<span class="fc" id="L206">        _channel.close()</span>
+<span class="fc" id="L207">    }</span>
+
+    override fun decode(data: ByteArray): EUCData? {
+<span class="fc" id="L210">        _rawFrameFlow.tryEmit(data.clone())</span>
+<span class="fc" id="L211">        parseLegacyAsciiMetadata(data)</span>
+        // Let the reassembler handle the incoming bytes asynchronously
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        scope.launch {</span>
+<span class="fc" id="L214">            frameReassembler.processIncomingBytes(data)</span>
+<span class="fc" id="L215">        }</span>
+        // Return null because data is emitted asynchronously via the dataFlow
+<span class="fc" id="L217">        return null</span>
+    }
+
+    @VisibleForTesting
+    private fun processFrame(frame: ByteArray) {
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {</span>
+<span class="pc bpc" id="L223" title="1 of 4 branches missed.">            0x00 -&gt; parseTypeA(frame)</span>
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">            0x01 -&gt; {</span>
+<span class="fc" id="L225">                parseType1(frame)</span>
+<span class="fc" id="L226">                null</span>
+            }
+
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">            0x02 -&gt; {</span>
+<span class="fc" id="L230">                parseType2or3(frame, bmsIndex = 0)</span>
+<span class="fc" id="L231">                null</span>
+            }
+
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">            0x03 -&gt; {</span>
+<span class="fc" id="L235">                parseType2or3(frame, bmsIndex = 1)</span>
+<span class="fc" id="L236">                null</span>
+            }
+
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">            0x04 -&gt; parseTypeB(frame)</span>
+<span class="pc bpc" id="L240" title="2 of 4 branches missed.">            0x07 -&gt; parseType7(frame)</span>
+<span class="nc" id="L241">            else -&gt; null // Ignore unknown frame types from the reassembler</span>
+        }
+
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        eucData?.let { _channel.trySend(it) }</span>
+<span class="fc" id="L245">    }</span>
+
+    @VisibleForTesting
+    private fun parseTypeA(data: ByteArray): EUCData? {
+
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        val speedRaw = ByteUtils.tryGetSignedShortBE(data, 4)?.toInt() ?: return null</span>
+<span class="fc" id="L251">        val speed = abs((speedRaw * 3.6) / 100.0)</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">        if (abs(speed) &gt; 200.0) return null  // frame corrompue ou sentinel</span>
+
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null</span>
+<span class="fc" id="L255">        val fallbackVoltage = voltageRaw / 100.0</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        val voltage = lastKnownVoltage ?: fallbackVoltage</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        if (!hasType1Voltage) {</span>
+            // Before the dedicated Type 1 battery-voltage frame is seen, keep tracking
+            // voltage from Type A so Type B/Type 7 carry-forward telemetry remains usable.
+<span class="fc" id="L260">            lastKnownVoltage = fallbackVoltage</span>
+        }
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (voltage &gt; 300.0) return null  // pareil pour voltage</span>
+
+<span class="fc" id="L264">        val frameVariant = ByteUtils.tryGetUnsignedByte(data, 19)</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">        val tripDistanceKm = when (frameVariant) {</span>
+<span class="pc bpc" id="L266" title="2 of 6 branches missed.">            0x18 -&gt; ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">            else -&gt; ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()</span>
+<span class="nc" id="L268">        } ?: return null</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null</span>
+
+<span class="fc" id="L272">        val currentFromTypeA = currentRaw / 100.0</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (!hasType7Current) {</span>
+            // Before authoritative battery current from Type 7 is seen, keep Type A current
+            // as the carry-forward source for Type B updates.
+<span class="fc" id="L276">            lastKnownCurrent = currentFromTypeA</span>
+        }
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        val current = lastKnownCurrent ?: currentFromTypeA</span>
+<span class="fc" id="L279">        val temperature = tempRaw / 100.0 // Assuming a 1/100 scale</span>
+<span class="fc" id="L280">        lastKnownSpeed = speed</span>
+<span class="fc" id="L281">        lastKnownTemperature = temperature</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        val pwmFromTypeA = if (useHwPwm) {</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">            abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble())</span>
+        } else {
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">            abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0</span>
+        }
+<span class="fc" id="L287">        lastKnownPwm = pwmFromTypeA</span>
+<span class="fc" id="L288">        val power = voltage * current</span>
+<span class="fc" id="L289">        val batteryLevel = estimateBatteryLevel(voltage)</span>
+<span class="fc" id="L290">        lastKnownTripDistance = tripDistanceKm</span>
+
+<span class="fc" id="L292">        return EUCData(</span>
+<span class="fc" id="L293">            frameType = &quot;Type A&quot;,</span>
+<span class="fc" id="L294">            speed = speed,</span>
+<span class="fc" id="L295">            voltage = voltage,</span>
+<span class="fc" id="L296">            current = current,</span>
+<span class="fc" id="L297">            temperature = temperature,</span>
+<span class="fc" id="L298">            batteryLevel = batteryLevel,</span>
+<span class="fc" id="L299">            distance = tripDistanceKm,</span>
+<span class="fc" id="L300">            power = power,</span>
+<span class="fc" id="L301">            pwm = lastKnownPwm,</span>
+<span class="fc" id="L302">            timestamp = System.currentTimeMillis(),</span>
+<span class="fc" id="L303">            rawData = data,</span>
+<span class="fc" id="L304">            manufacturer = manufacturer,</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            model = lastKnownModel ?: &quot;Gotway (Type A)&quot;,</span>
+<span class="fc" id="L306">            serialNumber = null,</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,</span>
+<span class="fc" id="L308">            isCharging = false, // Not available in this frame</span>
+<span class="fc" id="L309">            rideTime = 0,</span>
+<span class="fc" id="L310">            cellVoltages = getCombinedCellVoltages(),</span>
+<span class="fc" id="L311">            motorTemperature = lastKnownMotorTemperature,</span>
+<span class="fc" id="L312">            totalDistance = lastKnownTotalDistance</span>
+        )
+    }
+
+    @VisibleForTesting
+    private fun parseTypeB(data: ByteArray): EUCData? {
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">        val distanceRaw = ByteUtils.tryGetUnsignedIntBE(data, 2) ?: return null</span>
+<span class="fc" id="L319">        val settings = ByteUtils.tryGetUnsignedShortBE(data, 6)</span>
+        // Legacy WheelLog maps firmware pedals bits with &quot;2 - raw&quot; before exposing the
+        // mode value to the app layer (typically mapped into 0..2); keep this behavior
+        // for compatibility with existing consumers.
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">        val pedalsMode = settings?.let { 2 - ((it shr 13) and 0x03) }</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">        val alarmMode = settings?.let { (it shr 10) and 0x03 }</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">        val rollAngleMode = settings?.let { (it shr 7) and 0x03 }</span>
+<span class="pc bpc" id="L326" title="1 of 4 branches missed.">        val usesMiles = settings?.let { (it and 0x01) == 1 }</span>
+<span class="fc" id="L327">        val autoPowerOffMinutes = ByteUtils.tryGetUnsignedShortBE(data, 8)</span>
+        // Legacy parser ignores values &gt;= 100, treating them as unset/invalid in this field.
+<span class="pc bpc" id="L329" title="1 of 6 branches missed.">        val tiltBackSpeed = ByteUtils.tryGetUnsignedShortBE(data, 10)?.takeIf { it &lt; 100 }</span>
+<span class="fc" id="L330">        val ledMode = ByteUtils.tryGetUnsignedByte(data, 13)</span>
+<span class="fc" id="L331">        val alertFlags = ByteUtils.tryGetUnsignedByte(data, 14)</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">        val lightMode = ByteUtils.tryGetUnsignedByte(data, 15)?.and(0x03)</span>
+<span class="pc bpc" id="L333" title="1 of 4 branches missed.">        val wheelAlarm = alertFlags?.let { (it and 0x01) == 1 }</span>
+
+<span class="fc" id="L335">        lastKnownTotalDistance = distanceRaw.toDouble()</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        val voltage = lastKnownVoltage ?: 0.0</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">        val current = lastKnownCurrent ?: 0.0</span>
+<span class="fc" id="L338">        val power = voltage * current</span>
+<span class="fc" id="L339">        val batteryLevel = estimateBatteryLevel(voltage)</span>
+
+<span class="fc" id="L341">        return EUCData(</span>
+<span class="fc" id="L342">            frameType = &quot;Type B&quot;,</span>
+<span class="fc" id="L343">            speed = lastKnownSpeed,</span>
+<span class="fc" id="L344">            voltage = voltage,</span>
+<span class="fc" id="L345">            current = current,</span>
+<span class="fc" id="L346">            temperature = lastKnownTemperature,</span>
+<span class="fc" id="L347">            batteryLevel = batteryLevel,</span>
+<span class="fc" id="L348">            distance = lastKnownTripDistance,</span>
+<span class="fc" id="L349">            power = power,</span>
+<span class="fc" id="L350">            pwm = lastKnownPwm,</span>
+<span class="fc" id="L351">            timestamp = System.currentTimeMillis(),</span>
+<span class="fc" id="L352">            rawData = data,</span>
+<span class="fc" id="L353">            manufacturer = manufacturer,</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">            model = lastKnownModel ?: &quot;Gotway (Type B)&quot;,</span>
+<span class="fc" id="L355">            serialNumber = null,</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">            firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,</span>
+<span class="fc" id="L357">            isCharging = false,</span>
+<span class="fc" id="L358">            rideTime = 0,</span>
+<span class="fc" id="L359">            cellVoltages = null,</span>
+<span class="fc" id="L360">            motorTemperature = null,</span>
+<span class="fc" id="L361">            totalDistance = lastKnownTotalDistance,</span>
+<span class="fc" id="L362">            pedalsMode = pedalsMode,</span>
+<span class="fc" id="L363">            alarmMode = alarmMode,</span>
+<span class="fc" id="L364">            rollAngleMode = rollAngleMode,</span>
+<span class="fc" id="L365">            usesMiles = usesMiles,</span>
+<span class="fc" id="L366">            autoPowerOffMinutes = autoPowerOffMinutes,</span>
+<span class="fc" id="L367">            tiltBackSpeed = tiltBackSpeed,</span>
+<span class="fc" id="L368">            ledMode = ledMode,</span>
+<span class="fc" id="L369">            lightMode = lightMode,</span>
+<span class="fc" id="L370">            alertFlags = alertFlags,</span>
+<span class="fc" id="L371">            wheelAlarm = wheelAlarm</span>
+        )
+    }
+
+    @VisibleForTesting
+    private fun parseType1(data: ByteArray) {
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">        val batteryVoltageTenth = ByteUtils.tryGetUnsignedShortBE(data, 6) ?: return</span>
+<span class="fc" id="L378">        lastKnownVoltage = batteryVoltageTenth / 10.0</span>
+<span class="fc" id="L379">        hasType1Voltage = true</span>
+<span class="fc" id="L380">    }</span>
+
+    @VisibleForTesting
+    private fun parseType2or3(data: ByteArray, bmsIndex: Int) {
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">        val page = ByteUtils.tryGetUnsignedByte(data, 19) ?: return</span>
+<span class="fc" id="L385">        val cells = smartBmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELL_SLOTS) }</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">        for (i in 0 until 8) {</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">            val cellRaw = ByteUtils.tryGetUnsignedShortBE(data, (i + 1) * 2) ?: continue</span>
+<span class="fc" id="L388">            val cellIndex = page * 8 + i</span>
+<span class="pc bpc" id="L389" title="3 of 6 branches missed.">            if (cellIndex in cells.indices) {</span>
+<span class="fc" id="L390">                cells[cellIndex] = cellRaw / 1000.0</span>
+            }
+        }
+<span class="fc" id="L393">    }</span>
+
+    @VisibleForTesting
+    private fun parseType7(data: ByteArray): EUCData? {
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">        val batteryCurrentRaw = ByteUtils.tryGetSignedShortBE(data, 2) ?: return null</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">        val motorTemperatureRaw = ByteUtils.tryGetSignedShortBE(data, 6) ?: return null</span>
+<span class="fc" id="L399">        val truePwmRaw = ByteUtils.tryGetSignedShortBE(data, 8)</span>
+
+        // WheelLog/Begode Type 7 convention: positive raw value means charge/regen, so
+        // published battery current is inverted to match discharge-positive telemetry.
+<span class="fc" id="L403">        lastKnownCurrent = (-batteryCurrentRaw) / 100.0</span>
+<span class="fc" id="L404">        hasType7Current = true</span>
+<span class="fc" id="L405">        lastKnownMotorTemperature = motorTemperatureRaw.toDouble()</span>
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">        truePwmRaw?.let { raw -&gt;</span>
+            // WheelLog maps Type 7 PWM raw values as whole-percent units (used as-is),
+            // while Type A fallback values represent tenths of percent.
+<span class="fc" id="L409">            val truePwm = abs(raw.toDouble())</span>
+            // WheelLog only switches to Type 7 as authoritative PWM once a non-zero value is
+            // observed; keep the latest Type A fallback when Type 7 reports zero/unset.
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            if (truePwm &gt; 0.0) {</span>
+<span class="fc" id="L413">                lastKnownPwm = truePwm</span>
+            }
+<span class="fc" id="L415">        }</span>
+
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">        val voltage = lastKnownVoltage ?: 0.0</span>
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">        val current = lastKnownCurrent ?: 0.0</span>
+<span class="fc" id="L419">        val power = voltage * current</span>
+
+<span class="fc" id="L421">        return EUCData(</span>
+<span class="fc" id="L422">            frameType = &quot;Type 7&quot;,</span>
+<span class="fc" id="L423">            speed = lastKnownSpeed,</span>
+<span class="fc" id="L424">            voltage = voltage,</span>
+<span class="fc" id="L425">            current = current,</span>
+<span class="fc" id="L426">            temperature = lastKnownTemperature,</span>
+<span class="fc" id="L427">            batteryLevel = estimateBatteryLevel(voltage),</span>
+<span class="fc" id="L428">            distance = lastKnownTripDistance,</span>
+<span class="fc" id="L429">            power = power,</span>
+<span class="fc" id="L430">            pwm = lastKnownPwm,</span>
+<span class="fc" id="L431">            timestamp = System.currentTimeMillis(),</span>
+<span class="fc" id="L432">            rawData = data,</span>
+<span class="fc" id="L433">            manufacturer = manufacturer,</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">            model = lastKnownModel ?: &quot;Gotway (Type 7)&quot;,</span>
+<span class="fc" id="L435">            serialNumber = null,</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">            firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,</span>
+<span class="fc" id="L437">            isCharging = false,</span>
+<span class="fc" id="L438">            rideTime = 0,</span>
+<span class="fc" id="L439">            cellVoltages = getCombinedCellVoltages(),</span>
+<span class="fc" id="L440">            motorTemperature = lastKnownMotorTemperature,</span>
+<span class="fc" id="L441">            totalDistance = lastKnownTotalDistance</span>
+        )
+    }
+
+    private fun estimateBatteryLevel(voltage: Double): Int {
+<span class="fc bfc" id="L446" title="All 2 branches covered.">        if (voltage &lt;= 0.0) return 0</span>
+<span class="fc" id="L447">        return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)</span>
+<span class="fc" id="L448">            .toInt()</span>
+<span class="fc" id="L449">            .coerceIn(0, 100)</span>
+    }
+
+    private fun getCombinedCellVoltages(): List&lt;Double&gt;? {
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        if (smartBmsCellPages.isEmpty()) return null</span>
+<span class="fc" id="L454">        val combined = smartBmsCellPages.values</span>
+<span class="fc" id="L455">            .flatMap { it.asList() }</span>
+<span class="pc bpc" id="L456" title="1 of 2 branches missed.">            .filter { it &gt; 0.0 }</span>
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">        return combined.ifEmpty { null }</span>
+    }
+
+    private fun parseLegacyAsciiMetadata(data: ByteArray) {
+<span class="pc bpc" id="L461" title="2 of 4 branches missed.">        if (data.isEmpty()) return</span>
+<span class="pc bpc" id="L462" title="2 of 6 branches missed.">        if (data.size &gt;= 2 &amp;&amp; data[0] == HEADER[0] &amp;&amp; data[1] == HEADER[1]) return</span>
+<span class="fc" id="L463">        val message = data.decodeToString().trim()</span>
+<span class="pc bpc" id="L464" title="2 of 4 branches missed.">        if (message.isEmpty()) return</span>
+<span class="fc" id="L465">        when {</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            message.startsWith(&quot;NAME&quot;, ignoreCase = true) -&gt; {</span>
+<span class="fc" id="L467">                val name = message.substringAfter(&quot;NAME&quot;, &quot;&quot;).trim()</span>
+<span class="pc bpc" id="L468" title="2 of 4 branches missed.">                if (name.isNotEmpty()) {</span>
+<span class="fc" id="L469">                    lastKnownModel = name</span>
+                }
+            }
+
+<span class="fc bfc" id="L473" title="All 2 branches covered.">            message.startsWith(&quot;GW&quot;, ignoreCase = true) -&gt; {</span>
+<span class="pc bpc" id="L474" title="2 of 4 branches missed.">                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }</span>
+<span class="fc" id="L475">                gotwayFirmwareVariant = &quot;Begode&quot;</span>
+<span class="fc" id="L476">                useHwPwm = false</span>
+            }
+
+<span class="pc bpc" id="L479" title="1 of 2 branches missed.">            message.startsWith(&quot;JN&quot;, ignoreCase = true) -&gt; {</span>
+<span class="nc bnc" id="L480" title="All 4 branches missed.">                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }</span>
+<span class="nc" id="L481">                gotwayFirmwareVariant = &quot;ExtremeBull&quot;</span>
+<span class="nc" id="L482">                useHwPwm = false</span>
+            }
+
+<span class="fc bfc" id="L485" title="All 2 branches covered.">            message.startsWith(&quot;CF&quot;, ignoreCase = true) -&gt; {</span>
+<span class="pc bpc" id="L486" title="2 of 4 branches missed.">                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }</span>
+<span class="fc" id="L487">                gotwayFirmwareVariant = &quot;Freestyl3r&quot;</span>
+<span class="fc" id="L488">                useHwPwm = true</span>
+            }
+
+<span class="pc bpc" id="L491" title="1 of 2 branches missed.">            message.startsWith(&quot;BF&quot;, ignoreCase = true) -&gt; {</span>
+<span class="nc bnc" id="L492" title="All 4 branches missed.">                lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }</span>
+<span class="nc" id="L493">                gotwayFirmwareVariant = &quot;SV&quot;</span>
+<span class="nc" id="L494">                useHwPwm = true</span>
+            }
+        }
+<span class="fc" id="L497">    }</span>
+
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+<span class="fc" id="L500">        val header = BLEConstants.GOTWAY_COMMAND_HEADER</span>
+<span class="pc bpc" id="L501" title="1 of 8 branches missed.">        return when (commandType) {</span>
+<span class="fc" id="L502">            CommandType.LIGHT_ON -&gt; header + byteArrayOf(0x01, 0x01, 0x01)</span>
+<span class="fc" id="L503">            CommandType.LIGHT_OFF -&gt; header + byteArrayOf(0x01, 0x01, 0x00)</span>
+<span class="fc" id="L504">            CommandType.BEEP -&gt; header + byteArrayOf(0x02, 0x01)</span>
+<span class="fc" id="L505">            CommandType.POWER_OFF -&gt; header + byteArrayOf(0x03, 0x01)</span>
+            CommandType.LIGHT_BRIGHTNESS -&gt; {
+<span class="pc bpc" id="L507" title="2 of 8 branches missed.">                if (value is Int &amp;&amp; value in 0..100) {</span>
+<span class="fc" id="L508">                    val brightness = (value * 255 / 100).toByte()</span>
+<span class="fc" id="L509">                    header + byteArrayOf(0x04, brightness)</span>
+                } else byteArrayOf()
+            }
+
+<span class="fc" id="L513">            CommandType.REQUEST_SERIAL -&gt; &quot;N&quot;.encodeToByteArray()</span>
+<span class="pc" id="L514">            CommandType.REQUEST_FIRMWARE -&gt; &quot;V&quot;.encodeToByteArray()</span>
+            else -&gt; byteArrayOf()
+        }
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+<span class="fc" id="L520">        return ProtocolPollingPlan(</span>
+<span class="fc" id="L521">            enabled = true,</span>
+<span class="fc" id="L522">            startupQueries = listOf(</span>
+<span class="fc" id="L523">                ProtocolQuerySpec(</span>
+<span class="fc" id="L524">                    id = &quot;gotway.request-model&quot;,</span>
+<span class="fc" id="L525">                    commandType = CommandType.REQUEST_SERIAL,</span>
+<span class="fc" id="L526">                    maxRetries = 3</span>
+                ),
+<span class="fc" id="L528">                ProtocolQuerySpec(</span>
+<span class="fc" id="L529">                    id = &quot;gotway.request-firmware&quot;,</span>
+<span class="fc" id="L530">                    commandType = CommandType.REQUEST_FIRMWARE,</span>
+<span class="fc" id="L531">                    initialDelayMs = 200L,</span>
+<span class="fc" id="L532">                    maxRetries = 3</span>
+                )
+            ),
+<span class="fc" id="L535">            periodicQueries = emptyList()</span>
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+        // Gotway responds to &quot;N&quot; and &quot;V&quot; with ASCII strings (not framed telemetry)
+<span class="fc bfc" id="L541" title="All 4 branches covered.">        if (data.isEmpty()) return false</span>
+        // If the response starts with the standard frame header 0x55 0xAA, it's telemetry not a query response
+<span class="pc bpc" id="L543" title="2 of 6 branches missed.">        if (data.size &gt;= 2 &amp;&amp; data[0] == 0x55.toByte() &amp;&amp; data[1] == 0xAA.toByte()) return false</span>
+        // ASCII responses to name/version queries
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        return when (query.commandType) {</span>
+<span class="fc" id="L546">            CommandType.REQUEST_SERIAL, CommandType.REQUEST_FIRMWARE -&gt; true</span>
+<span class="fc" id="L547">            else -&gt; false</span>
+        }
+    }
+
+    override fun isDeviceReady(data: EUCData): Boolean {
+        // Conservative readiness checks: p
+<span class="fc bfc" id="L553" title="All 4 branches covered.">        return data.voltage &gt; 0 &amp;&amp; data.speed &gt;= 0</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

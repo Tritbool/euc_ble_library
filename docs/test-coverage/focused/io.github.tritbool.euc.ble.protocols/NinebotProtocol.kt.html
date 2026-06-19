@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NinebotProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">NinebotProtocol.kt</span></div><h1>NinebotProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import java.util.UUID
+
+/**
+ * Ninebot protocol MVP parser for common WheelLog-style telemetry payloads.
+ */
+<span class="pc" id="L20">class NinebotProtocol : EUCProtocol {</span>
+
+    companion object {
+        private const val FRAME_HEADER = 0x55
+        private const val FRAME_ACTION = 0x21
+        private const val FRAME_QUERY = 0x22
+        private const val MIN_FRAME_SIZE = 18
+        private const val WHEELLOG_HEADER_FIRST = 0x5A
+        private const val WHEELLOG_HEADER_SECOND = 0xA5
+        private const val WHEELLOG_MIN_FRAME_SIZE = 9
+        private const val WHEELLOG_MAX_FRAME_SIZE = 128
+        private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
+        private const val WHEELLOG_SERIAL_TYPE = 0x10
+        private const val WHEELLOG_SERIAL_TYPE_PART2 = 0x13
+        private const val WHEELLOG_SERIAL_TYPE_PART3 = 0x16
+        private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
+        private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
+        private const val MIN_READY_VOLTAGE_V = BLEConstants.MIN_READY_VOLTAGE_V
+        private const val MIN_READY_BATTERY_LEVEL = 1
+        private const val BATTERY_OFFSET = 16
+        private const val STATUS_OFFSET = 17
+        private const val RIDE_TIME_OFFSET = 18
+    }
+
+<span class="fc" id="L44">    override val manufacturer: String = &quot;Ninebot&quot;</span>
+<span class="fc" id="L45">    override val supportedModels: List&lt;String&gt; = listOf(</span>
+<span class="fc" id="L46">        &quot;S1&quot;, &quot;S2&quot;, &quot;S2 Pro&quot;, &quot;A1&quot;, &quot;A1 Pro&quot;, &quot;One S2&quot;, &quot;One E+&quot;, &quot;One C+&quot;</span>
+    )
+<span class="pc" id="L48">    override val supportedCommandTypes: Set&lt;CommandType&gt; = setOf(</span>
+<span class="fc" id="L49">        CommandType.LIGHT_ON,</span>
+<span class="fc" id="L50">        CommandType.LIGHT_OFF,</span>
+<span class="fc" id="L51">        CommandType.BEEP,</span>
+<span class="fc" id="L52">        CommandType.LOCK,</span>
+<span class="fc" id="L53">        CommandType.UNLOCK,</span>
+<span class="fc" id="L54">        CommandType.REQUEST_SERIAL,</span>
+<span class="fc" id="L55">        CommandType.REQUEST_FIRMWARE,</span>
+<span class="fc" id="L56">        CommandType.REQUEST_BATTERY_INFO</span>
+    )
+
+<span class="fc" id="L59">    private val _channel = Channel&lt;EUCData&gt;(capacity = Channel.UNLIMITED)</span>
+<span class="fc" id="L60">    override val dataFlow: Flow&lt;EUCData&gt; = _channel.receiveAsFlow()</span>
+
+<span class="fc" id="L62">    private val _rawFrameFlow = MutableSharedFlow&lt;ByteArray&gt;(</span>
+<span class="fc" id="L63">        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,</span>
+<span class="fc" id="L64">        onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+<span class="fc" id="L66">    override val rawFrameFlow: Flow&lt;ByteArray&gt; = _rawFrameFlow.asSharedFlow()</span>
+
+    private var sessionStartTimestampMs: Long? = null
+<span class="fc" id="L69">    private val wheelLogBuffer = mutableListOf&lt;Byte&gt;()</span>
+<span class="fc" id="L70">    private val serialBuffer = StringBuilder()</span>
+    private var serialNumber: String? = null
+    private var firmwareVersion: String? = null
+
+<span class="nc" id="L74">    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)</span>
+    override fun getDataCharacteristicUUID(): UUID =
+<span class="nc" id="L76">        UUID.fromString(BLEConstants.NINEBOT_READ_CHARACTERISTIC)</span>
+
+    override fun getWriteCharacteristicUUID(): UUID =
+<span class="nc" id="L79">        UUID.fromString(BLEConstants.NINEBOT_WRITE_CHARACTERISTIC)</span>
+
+    override fun canHandle(device: EUCDevice): Boolean {
+<span class="fc" id="L82">        val name = device.name</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &amp;&amp;</span>
+<span class="fc" id="L84">                supportedModels.map { model -&gt;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                    model.contains(</span>
+<span class="fc" id="L86">                        name,</span>
+<span class="fc" id="L87">                        ignoreCase = true</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                    ) || name.contains(model, ignoreCase = true)</span>
+<span class="fc bfc" id="L89" title="All 6 branches covered.">                }.reduce { a, b -&gt; a || b }</span>
+    }
+
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">        if (chunk.isEmpty()) return false</span>
+<span class="fc" id="L94">        val first = chunk[0].toInt() and 0xFF</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (first == FRAME_HEADER) return true</span>
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">        if (chunk.size &gt;= 2 &amp;&amp; first == WHEELLOG_HEADER_FIRST &amp;&amp;</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            (chunk[1].toInt() and 0xFF) == WHEELLOG_HEADER_SECOND</span>
+<span class="fc" id="L98">        ) return true</span>
+<span class="fc" id="L99">        return false</span>
+    }
+
+    override fun decode(data: ByteArray): EUCData? {
+<span class="fc" id="L103">        _rawFrameFlow.tryEmit(data.clone())</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        parseLegacyFrame(data)?.let { decoded -&gt;</span>
+<span class="fc" id="L105">            _channel.trySend(decoded)</span>
+<span class="fc" id="L106">            return decoded</span>
+        }
+
+<span class="fc" id="L109">        var lastDecoded: EUCData? = null</span>
+<span class="fc" id="L110">        parseWheelLogFrames(data).forEach { decoded -&gt;</span>
+<span class="fc" id="L111">            _channel.trySend(decoded)</span>
+<span class="fc" id="L112">            lastDecoded = decoded</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc" id="L114">        return lastDecoded</span>
+    }
+
+    private fun parseLegacyFrame(data: ByteArray): EUCData? {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (data.size &lt; MIN_FRAME_SIZE) return null</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if ((data[0].toInt() and 0xFF) != FRAME_HEADER) return null</span>
+
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        val voltage = (ByteUtils.tryGetUnsignedShortLE(data, 4) ?: return null) / 100.0</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        val speed = (ByteUtils.tryGetSignedShortLE(data, 6)?.toInt() ?: return null) / 100.0</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        val distance = (ByteUtils.tryGetUnsignedIntLE(data, 8) ?: return null) / 1000.0</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        val current = (ByteUtils.tryGetSignedShortLE(data, 12)?.toInt() ?: return null) / 100.0</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        val temperature = (ByteUtils.tryGetSignedShortLE(data, 14)?.toInt() ?: return null) / 100.0</span>
+
+<span class="pc bpc" id="L127" title="3 of 6 branches missed.">        if (voltage !in 20.0..150.0) return null</span>
+<span class="pc bpc" id="L128" title="3 of 6 branches missed.">        if (speed !in -120.0..120.0) return null</span>
+<span class="pc bpc" id="L129" title="3 of 6 branches missed.">        if (current !in -300.0..300.0) return null</span>
+<span class="pc bpc" id="L130" title="3 of 6 branches missed.">        if (temperature !in -50.0..130.0) return null</span>
+
+<span class="fc" id="L132">        val battery = ByteUtils.tryGetUnsignedByte(data, BATTERY_OFFSET)</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            ?.coerceIn(0, 100)</span>
+<span class="nc" id="L134">            ?: estimateBatteryPercent(voltage)</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        val status = ByteUtils.tryGetUnsignedByte(data, STATUS_OFFSET) ?: 0</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        val isCharging = (status and 0x01) != 0</span>
+
+<span class="fc" id="L138">        val now = System.currentTimeMillis()</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        val rideTime = ByteUtils.tryGetUnsignedIntLE(data, RIDE_TIME_OFFSET)?.toLong()</span>
+<span class="nc" id="L140">            ?: deriveRideTimeSeconds(now)</span>
+
+<span class="fc" id="L142">        return EUCData(</span>
+<span class="fc" id="L143">            speed = speed,</span>
+<span class="fc" id="L144">            voltage = voltage,</span>
+<span class="fc" id="L145">            current = current,</span>
+<span class="fc" id="L146">            temperature = temperature,</span>
+<span class="fc" id="L147">            batteryLevel = battery,</span>
+<span class="fc" id="L148">            distance = distance,</span>
+<span class="fc" id="L149">            power = voltage * current,</span>
+<span class="fc" id="L150">            timestamp = now,</span>
+<span class="fc" id="L151">            rawData = data,</span>
+<span class="fc" id="L152">            manufacturer = manufacturer,</span>
+<span class="fc" id="L153">            model = inferModel(data),</span>
+<span class="fc" id="L154">            serialNumber = null,</span>
+<span class="fc" id="L155">            firmwareVersion = null,</span>
+<span class="fc" id="L156">            isCharging = isCharging,</span>
+<span class="fc" id="L157">            rideTime = rideTime,</span>
+<span class="fc" id="L158">            cellVoltages = null,</span>
+<span class="fc" id="L159">            motorTemperature = null,</span>
+<span class="fc" id="L160">            totalDistance = null</span>
+        )
+    }
+
+    private fun parseWheelLogFrames(chunk: ByteArray): List&lt;EUCData&gt; {
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">        if (chunk.isEmpty()) return emptyList()</span>
+<span class="fc" id="L166">        wheelLogBuffer.addAll(chunk.toList())</span>
+
+<span class="fc" id="L168">        val decodedFrames = mutableListOf&lt;EUCData&gt;()</span>
+
+<span class="fc" id="L170">        while (true) {</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (wheelLogBuffer.size &lt; 3) break</span>
+
+<span class="fc" id="L173">            val headerIndex = findWheelLogHeaderIndex()</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            if (headerIndex &lt; 0) {</span>
+                // Keep the last byte to preserve a possible partial header (0x5A) across BLE chunks.
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                if (wheelLogBuffer.size &gt; WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP) {</span>
+<span class="fc" id="L177">                    wheelLogBuffer.subList(</span>
+<span class="fc" id="L178">                        0,</span>
+<span class="fc" id="L179">                        wheelLogBuffer.size - WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP</span>
+<span class="fc" id="L180">                    ).clear()</span>
+                }
+<span class="fc" id="L182">                break</span>
+            }
+
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            if (headerIndex &gt; 0) {</span>
+<span class="fc" id="L186">                wheelLogBuffer.subList(0, headerIndex).clear()</span>
+            }
+
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (wheelLogBuffer.size &lt; 3) break</span>
+
+<span class="fc" id="L191">            val payloadLength = wheelLogBuffer[2].toInt() and 0xFF</span>
+<span class="fc" id="L192">            val expectedFrameLength = payloadLength + WHEELLOG_MIN_FRAME_SIZE</span>
+<span class="pc bpc" id="L193" title="3 of 6 branches missed.">            if (expectedFrameLength !in WHEELLOG_MIN_FRAME_SIZE..WHEELLOG_MAX_FRAME_SIZE) {</span>
+<span class="nc" id="L194">                wheelLogBuffer.removeAt(0)</span>
+<span class="nc" id="L195">                continue</span>
+            }
+
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (wheelLogBuffer.size &lt; expectedFrameLength) break</span>
+
+<span class="fc" id="L200">            val frame = wheelLogBuffer.subList(0, expectedFrameLength).toByteArray()</span>
+<span class="fc" id="L201">            wheelLogBuffer.subList(0, expectedFrameLength).clear()</span>
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            parseWheelLogFrame(frame)?.let(decodedFrames::add)</span>
+        }
+
+<span class="fc" id="L206">        return decodedFrames</span>
+    }
+
+    private fun findWheelLogHeaderIndex(): Int {
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (wheelLogBuffer.size &lt; 2) return -1</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        for (index in 0 until wheelLogBuffer.size - 1) {</span>
+<span class="fc" id="L212">            val first = wheelLogBuffer[index].toInt() and 0xFF</span>
+<span class="fc" id="L213">            val second = wheelLogBuffer[index + 1].toInt() and 0xFF</span>
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">            if (first == WHEELLOG_HEADER_FIRST &amp;&amp; second == WHEELLOG_HEADER_SECOND) {</span>
+<span class="fc" id="L215">                return index</span>
+            }
+        }
+<span class="fc" id="L218">        return -1</span>
+    }
+
+    private fun parseWheelLogFrame(frame: ByteArray): EUCData? {
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if (frame.size &lt; WHEELLOG_MIN_FRAME_SIZE) return null</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        if ((frame[0].toInt() and 0xFF) != WHEELLOG_HEADER_FIRST) return null</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if ((frame[1].toInt() and 0xFF) != WHEELLOG_HEADER_SECOND) return null</span>
+<span class="fc" id="L225">        val frameType = frame[6].toInt() and 0xFF</span>
+
+<span class="fc bfc" id="L227" title="All 4 branches covered.">        return when (frameType) {</span>
+<span class="fc" id="L228">            WHEELLOG_TELEMETRY_TYPE -&gt; parseWheelLogTelemetryFrame(frame)</span>
+            WHEELLOG_SERIAL_TYPE,
+            WHEELLOG_SERIAL_TYPE_PART2,
+            WHEELLOG_SERIAL_TYPE_PART3 -&gt; {
+<span class="fc" id="L232">                parseWheelLogSerialFrame(frame)</span>
+<span class="fc" id="L233">                null</span>
+            }
+
+            WHEELLOG_FIRMWARE_TYPE -&gt; {
+<span class="fc" id="L237">                parseWheelLogFirmwareFrame(frame)</span>
+<span class="fc" id="L238">                null</span>
+            }
+
+<span class="fc" id="L241">            else -&gt; null</span>
+        }
+    }
+
+    private fun parseWheelLogTelemetryFrame(frame: ByteArray): EUCData? {
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (frame.size &lt; 41) return null</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        if ((frame[6].toInt() and 0xFF) != WHEELLOG_TELEMETRY_TYPE) return null</span>
+
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        val voltage = (ByteUtils.tryGetUnsignedShortLE(frame, 31) ?: return null) / 100.0</span>
+<span class="fc" id="L250">        val speed = decodeWheelLogSpeed(frame)</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        val current = (ByteUtils.tryGetSignedShortLE(frame, 33)?.toInt() ?: return null) / 100.0</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">        val temperature = (ByteUtils.tryGetUnsignedShortLE(frame, 29) ?: return null) / 10.0</span>
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">        val battery = decodeWheelLogBattery(frame) ?: return null</span>
+
+<span class="pc bpc" id="L255" title="1 of 6 branches missed.">        if (voltage !in 20.0..150.0) return null</span>
+<span class="pc bpc" id="L256" title="3 of 6 branches missed.">        if (speed !in -120.0..120.0) return null</span>
+<span class="pc bpc" id="L257" title="3 of 6 branches missed.">        if (current !in -300.0..300.0) return null</span>
+<span class="pc bpc" id="L258" title="3 of 6 branches missed.">        if (temperature !in -30.0..120.0) return null</span>
+<span class="pc bpc" id="L259" title="3 of 6 branches missed.">        if (battery !in 0..100) return null</span>
+
+<span class="fc" id="L261">        val now = System.currentTimeMillis()</span>
+        // Legacy Ninebot B0 provides odometer-style distance; we expose it on both fields until trip data is available.
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        val distance = (ByteUtils.tryGetUnsignedIntLE(frame, 21) ?: return null).toDouble() / 1000.0</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        val rideTime = ByteUtils.tryGetUnsignedShortLE(frame, 27)</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">            ?.toLong()</span>
+<span class="pc bpc" id="L266" title="3 of 6 branches missed.">            ?.takeIf { it in 0L..604_800L }</span>
+<span class="nc" id="L267">            ?: deriveRideTimeSeconds(now)</span>
+
+<span class="fc" id="L269">        return EUCData(</span>
+<span class="fc" id="L270">            speed = speed,</span>
+<span class="fc" id="L271">            voltage = voltage,</span>
+<span class="fc" id="L272">            current = current,</span>
+<span class="fc" id="L273">            temperature = temperature,</span>
+<span class="fc" id="L274">            batteryLevel = battery,</span>
+<span class="fc" id="L275">            distance = distance,</span>
+<span class="fc" id="L276">            power = voltage * current,</span>
+<span class="fc" id="L277">            timestamp = now,</span>
+<span class="fc" id="L278">            rawData = frame,</span>
+<span class="fc" id="L279">            manufacturer = manufacturer,</span>
+<span class="fc" id="L280">            model = inferModel(frame),</span>
+<span class="fc" id="L281">            serialNumber = serialNumber,</span>
+<span class="fc" id="L282">            firmwareVersion = firmwareVersion,</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">            isCharging = current &gt; 0.5,</span>
+<span class="fc" id="L284">            rideTime = rideTime,</span>
+<span class="fc" id="L285">            cellVoltages = null,</span>
+<span class="fc" id="L286">            motorTemperature = null,</span>
+<span class="fc" id="L287">            totalDistance = distance</span>
+        )
+    }
+
+    private fun decodeWheelLogSpeed(frame: ByteArray): Double {
+        // Legacy default protocol uses signed short /10 at offset 17; S2 variant reports speed /100 at offset 35.
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">        val signedLegacySpeed = ByteUtils.tryGetSignedShortLE(frame, 17)?.toInt()</span>
+<span class="fc" id="L294">            ?.let { abs(it) / 10.0 }</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        val protoS2Speed = ByteUtils.tryGetUnsignedShortLE(frame, 35)?.toDouble()?.div(100.0)</span>
+<span class="fc" id="L296">        return when {</span>
+<span class="pc bpc" id="L297" title="2 of 4 branches missed.">            signedLegacySpeed != null &amp;&amp; signedLegacySpeed in 0.0..120.0 -&gt; signedLegacySpeed</span>
+<span class="nc bnc" id="L298" title="All 4 branches missed.">            protoS2Speed != null &amp;&amp; protoS2Speed in 0.0..120.0 -&gt; protoS2Speed</span>
+<span class="nc bnc" id="L299" title="All 4 branches missed.">            else -&gt; signedLegacySpeed ?: protoS2Speed ?: 0.0</span>
+        }
+    }
+
+    private fun decodeWheelLogBattery(frame: ByteArray): Int? {
+<span class="pc bpc" id="L304" title="3 of 4 branches missed.">        val batteryRaw = ByteUtils.tryGetUnsignedShortLE(frame, 15)</span>
+<span class="nc" id="L305">            ?: ByteUtils.tryGetUnsignedByte(frame, 15)</span>
+<span class="nc" id="L306">            ?: return null</span>
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">        return if (batteryRaw &lt;= 100) {</span>
+<span class="fc" id="L308">            batteryRaw</span>
+        } else {
+<span class="nc" id="L310">            (batteryRaw / 100.0).roundToInt().coerceIn(0, 100)</span>
+        }
+    }
+
+    private fun parseWheelLogSerialFrame(frame: ByteArray) {
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if ((frame[6].toInt() and 0xFF) == WHEELLOG_SERIAL_TYPE) {</span>
+<span class="fc" id="L316">            serialBuffer.clear()</span>
+        }
+
+<span class="fc" id="L319">        val payloadLength = frame[2].toInt() and 0xFF</span>
+<span class="fc" id="L320">        val payloadStart = 7</span>
+<span class="fc" id="L321">        val payloadEnd = (payloadStart + payloadLength).coerceAtMost(frame.size - 2)</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (payloadEnd &lt;= payloadStart) return</span>
+
+<span class="fc" id="L324">        val part = frame.copyOfRange(payloadStart, payloadEnd)</span>
+<span class="fc" id="L325">            .decodeToString()</span>
+<span class="fc" id="L326">            .trim('\u0000', ' ', '\r', '\n')</span>
+<span class="pc bpc" id="L327" title="2 of 4 branches missed.">        if (part.isEmpty()) return</span>
+
+<span class="fc" id="L329">        serialBuffer.append(part)</span>
+<span class="pc bpc" id="L330" title="2 of 4 branches missed.">        serialNumber = serialBuffer.toString().takeIf { it.isNotBlank() }</span>
+<span class="fc" id="L331">    }</span>
+
+    private fun parseWheelLogFirmwareFrame(frame: ByteArray) {
+<span class="fc" id="L334">        val payloadLength = frame[2].toInt() and 0xFF</span>
+<span class="fc" id="L335">        val payloadStart = 7</span>
+<span class="fc" id="L336">        val payloadEnd = (payloadStart + payloadLength).coerceAtMost(frame.size - 2)</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        if (payloadEnd - payloadStart &lt; 2) return</span>
+
+<span class="fc" id="L339">        val majorByte = frame[payloadStart + 1].toInt() and 0xFF</span>
+<span class="fc" id="L340">        val minorBuildByte = frame[payloadStart].toInt() and 0xFF</span>
+        // Legacy variants encode major in different nibbles; prefer high nibble and fall back to low nibble.
+<span class="pc bpc" id="L342" title="3 of 6 branches missed.">        val major = (majorByte shr 4).takeIf { it &gt; 0 } ?: (majorByte and 0x0F)</span>
+<span class="fc" id="L343">        val minor = (minorBuildByte shr 4) and 0x0F</span>
+<span class="fc" id="L344">        val build = minorBuildByte and 0x0F</span>
+<span class="fc" id="L345">        firmwareVersion = &quot;$major.$minor.$build&quot;</span>
+<span class="fc" id="L346">    }</span>
+
+    private fun inferModel(data: ByteArray): String {
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        val messageType = ByteUtils.tryGetUnsignedByte(data, 2) ?: return &quot;Ninebot&quot;</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        return if (messageType == 0x01) &quot;Ninebot Z-series&quot; else &quot;Ninebot&quot;</span>
+    }
+
+    private fun deriveRideTimeSeconds(nowMs: Long): Long {
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        val start = sessionStartTimestampMs ?: nowMs.also { sessionStartTimestampMs = it }</span>
+<span class="nc" id="L355">        return ((nowMs - start) / 1000L).coerceAtLeast(0L)</span>
+    }
+
+    private fun estimateBatteryPercent(voltage: Double): Int {
+<span class="nc" id="L359">        return (((voltage - 52.0) / (84.0 - 52.0)) * 100.0).toInt().coerceIn(0, 100)</span>
+    }
+
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+<span class="pc bpc" id="L363" title="6 of 9 branches missed.">        return when (commandType) {</span>
+<span class="fc" id="L364">            CommandType.LIGHT_ON -&gt; buildControlCommand(0x50, 0x01)</span>
+<span class="nc" id="L365">            CommandType.LIGHT_OFF -&gt; buildControlCommand(0x50, 0x00)</span>
+<span class="nc" id="L366">            CommandType.BEEP -&gt; buildControlCommand(0x18, 0x01)</span>
+<span class="fc" id="L367">            CommandType.LOCK -&gt; buildControlCommand(0x31, 0x01)</span>
+<span class="nc" id="L368">            CommandType.UNLOCK -&gt; buildControlCommand(0x31, 0x00)</span>
+<span class="nc" id="L369">            CommandType.REQUEST_SERIAL -&gt; buildQueryCommand(0x10)</span>
+<span class="fc" id="L370">            CommandType.REQUEST_FIRMWARE -&gt; buildQueryCommand(0x1A)</span>
+<span class="nc" id="L371">            CommandType.REQUEST_BATTERY_INFO -&gt; buildQueryCommand(0xB0)</span>
+            else -&gt; byteArrayOf()
+        }
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+<span class="nc" id="L377">        return ProtocolPollingPlan(</span>
+<span class="nc" id="L378">            enabled = true,</span>
+<span class="nc" id="L379">            startupQueries = listOf(</span>
+<span class="nc" id="L380">                ProtocolQuerySpec(</span>
+<span class="nc" id="L381">                    id = &quot;ninebot.serial&quot;,</span>
+<span class="nc" id="L382">                    commandType = CommandType.REQUEST_SERIAL,</span>
+<span class="nc" id="L383">                    maxRetries = 3</span>
+                ),
+<span class="nc" id="L385">                ProtocolQuerySpec(</span>
+<span class="nc" id="L386">                    id = &quot;ninebot.firmware&quot;,</span>
+<span class="nc" id="L387">                    commandType = CommandType.REQUEST_FIRMWARE,</span>
+<span class="nc" id="L388">                    maxRetries = 3</span>
+                ),
+<span class="nc" id="L390">                ProtocolQuerySpec(</span>
+<span class="nc" id="L391">                    id = &quot;ninebot.battery.init&quot;,</span>
+<span class="nc" id="L392">                    commandType = CommandType.REQUEST_BATTERY_INFO,</span>
+<span class="nc" id="L393">                    maxRetries = 2</span>
+                )
+            ),
+<span class="nc" id="L396">            periodicQueries = listOf(</span>
+<span class="nc" id="L397">                ProtocolQuerySpec(</span>
+<span class="nc" id="L398">                    id = &quot;ninebot.battery.periodic&quot;,</span>
+<span class="nc" id="L399">                    commandType = CommandType.REQUEST_BATTERY_INFO,</span>
+<span class="nc" id="L400">                    intervalMs = 5_000L,</span>
+<span class="nc" id="L401">                    responseTimeoutMs = 1_500L,</span>
+<span class="nc" id="L402">                    maxRetries = 2</span>
+                )
+            )
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        if (data.size &lt; 7) return false</span>
+<span class="nc" id="L410">        val typeAt6 = data[6].toInt() and 0xFF</span>
+<span class="nc" id="L411">        val typeAt2 = data[2].toInt() and 0xFF</span>
+<span class="nc bnc" id="L412" title="All 4 branches missed.">        return when (query.commandType) {</span>
+<span class="nc bnc" id="L413" title="All 6 branches missed.">            CommandType.REQUEST_SERIAL -&gt; typeAt6 == WHEELLOG_SERIAL_TYPE || typeAt6 == WHEELLOG_SERIAL_TYPE_PART2 || typeAt6 == WHEELLOG_SERIAL_TYPE_PART3</span>
+<span class="nc bnc" id="L414" title="All 2 branches missed.">            CommandType.REQUEST_FIRMWARE -&gt; typeAt6 == WHEELLOG_FIRMWARE_TYPE</span>
+<span class="nc bnc" id="L415" title="All 4 branches missed.">            CommandType.REQUEST_BATTERY_INFO -&gt; typeAt6 == WHEELLOG_TELEMETRY_TYPE || typeAt2 == 0x01</span>
+<span class="nc" id="L416">            else -&gt; false</span>
+        }
+    }
+
+    private fun buildControlCommand(code: Int, value: Int): ByteArray {
+<span class="fc" id="L421">        val payload = byteArrayOf(</span>
+<span class="fc" id="L422">            FRAME_HEADER.toByte(),</span>
+<span class="fc" id="L423">            0x05,</span>
+<span class="fc" id="L424">            FRAME_ACTION.toByte(),</span>
+<span class="fc" id="L425">            code.toByte(),</span>
+<span class="fc" id="L426">            value.toByte()</span>
+        )
+<span class="fc" id="L428">        var checksum = 0</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        for (i in 1 until payload.size) {</span>
+<span class="fc" id="L430">            checksum = checksum xor (payload[i].toInt() and 0xFF)</span>
+        }
+<span class="fc" id="L432">        return payload + byteArrayOf((checksum and 0xFF).toByte())</span>
+    }
+
+    private fun buildQueryCommand(code: Int): ByteArray {
+<span class="fc" id="L436">        val payload = byteArrayOf(</span>
+<span class="fc" id="L437">            FRAME_HEADER.toByte(),</span>
+<span class="fc" id="L438">            0x04,</span>
+<span class="fc" id="L439">            FRAME_QUERY.toByte(),</span>
+<span class="fc" id="L440">            code.toByte()</span>
+        )
+<span class="fc" id="L442">        var checksum = 0</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        for (i in 1 until payload.size) {</span>
+<span class="fc" id="L444">            checksum = checksum xor (payload[i].toInt() and 0xFF)</span>
+        }
+<span class="fc" id="L446">        return payload + byteArrayOf((checksum and 0xFF).toByte())</span>
+    }
+
+    override fun isDeviceReady(data: EUCData): Boolean {
+<span class="nc bnc" id="L450" title="All 4 branches missed.">        return data.voltage &gt; MIN_READY_VOLTAGE_V &amp;&amp; data.batteryLevel &gt;= MIN_READY_BATTERY_LEVEL</span>
+    }
+
+    override fun close() {
+<span class="fc" id="L454">        wheelLogBuffer.clear()</span>
+<span class="fc" id="L455">        serialBuffer.clear()</span>
+<span class="fc" id="L456">        _channel.close()</span>
+<span class="fc" id="L457">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

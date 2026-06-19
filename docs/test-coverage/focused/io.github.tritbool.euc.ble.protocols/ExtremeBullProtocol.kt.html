@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExtremeBullProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">ExtremeBullProtocol.kt</span></div><h1>ExtremeBullProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.models.EUCDevice
+
+<span class="nc" id="L6">class ExtremeBullProtocol : GotwayProtocol() {</span>
+
+<span class="nc" id="L8">    override val manufacturer: String = &quot;ExtremeBull&quot;</span>
+<span class="nc" id="L9">    override val supportedModels: List&lt;String&gt; = listOf(</span>
+<span class="nc" id="L10">        &quot;Commander&quot;, &quot;Griffin&quot;, &quot;commander mini&quot;, &quot;Commander pro&quot;, &quot;commander max&quot;, &quot;rocket&quot;</span>
+    )
+
+    override fun canHandle(device: EUCDevice): Boolean {
+<span class="nc" id="L14">        val name = device.name</span>
+<span class="nc bnc" id="L15" title="All 2 branches missed.">        return device.manufacturerId == BLEConstants.MANUFACTURER_EXTREMEBULL ||</span>
+<span class="nc bnc" id="L16" title="All 6 branches missed.">                supportedModels.map{model -&gt; model.contains(name, ignoreCase = true)}.reduce { a,b -&gt; a || b  }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

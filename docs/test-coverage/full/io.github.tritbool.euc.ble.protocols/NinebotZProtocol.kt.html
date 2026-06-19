@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NinebotZProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">NinebotZProtocol.kt</span></div><h1>NinebotZProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import kotlinx.coroutines.flow.Flow
+import java.util.UUID
+
+/**
+ * Dedicated Ninebot Z-series protocol split with stateful handshake/polling queries.
+ * Decoding is delegated to NinebotProtocol while command/query orchestration is Z-specific.
+ */
+<span class="pc" id="L13">class NinebotZProtocol : EUCProtocol {</span>
+
+    companion object {
+        private const val FRAME_HEADER = BLEConstants.NINEBOT_FRAME_FIRST_BYTE
+        private const val FRAME_ACTION = 0x21
+        private const val FRAME_QUERY = 0x22
+        private const val MIN_READY_VOLTAGE_V = BLEConstants.MIN_READY_VOLTAGE_V
+        private const val MIN_READY_BATTERY_LEVEL = 1
+        private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
+        private const val WHEELLOG_SERIAL_TYPE = 0x10
+        private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
+
+<span class="fc" id="L25">        private val WHEELLOG_HEADER: ByteArray = BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER</span>
+
+        private val QUERY_BLE_VERSION =
+<span class="fc" id="L28">            WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x1C)</span>
+<span class="fc" id="L29">        private val QUERY_AUTH_KEY = WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x1D)</span>
+        private val QUERY_PARAMS_PAGE_1 =
+<span class="fc" id="L31">            WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x20)</span>
+        private val QUERY_PARAMS_PAGE_2 =
+<span class="fc" id="L33">            WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x21)</span>
+<span class="fc" id="L34">        private val QUERY_BMS_1 = WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x24)</span>
+<span class="fc" id="L35">        private val QUERY_BMS_2 = WHEELLOG_HEADER + byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x25)</span>
+    }
+
+<span class="fc" id="L38">    private val delegate = NinebotProtocol()</span>
+
+<span class="fc" id="L40">    override val manufacturer: String = &quot;Ninebot&quot;</span>
+<span class="fc" id="L41">    override val supportedModels: List&lt;String&gt; =</span>
+<span class="fc" id="L42">        listOf(&quot;Z6&quot;, &quot;Z8&quot;, &quot;Z10&quot;, &quot;Ninebot Z-series&quot;, &quot;Ninebot Z&quot;)</span>
+<span class="fc" id="L43">    override val dataFlow: Flow&lt;EUCData&gt; = delegate.dataFlow</span>
+<span class="pc" id="L44">    override val rawFrameFlow: Flow&lt;ByteArray&gt; = delegate.rawFrameFlow</span>
+<span class="pc" id="L45">    override val supportedCommandTypes: Set&lt;CommandType&gt; = setOf(</span>
+<span class="fc" id="L46">        CommandType.LIGHT_ON,</span>
+<span class="fc" id="L47">        CommandType.LIGHT_OFF,</span>
+<span class="fc" id="L48">        CommandType.BEEP,</span>
+<span class="fc" id="L49">        CommandType.LOCK,</span>
+<span class="fc" id="L50">        CommandType.UNLOCK,</span>
+<span class="fc" id="L51">        CommandType.SET_SPEED_LIMIT,</span>
+<span class="fc" id="L52">        CommandType.SET_ALARM_SPEED,</span>
+<span class="fc" id="L53">        CommandType.CALIBRATE,</span>
+<span class="fc" id="L54">        CommandType.REQUEST_SERIAL,</span>
+<span class="fc" id="L55">        CommandType.REQUEST_FIRMWARE,</span>
+<span class="fc" id="L56">        CommandType.REQUEST_BATTERY_INFO,</span>
+<span class="fc" id="L57">        CommandType.CUSTOM</span>
+    )
+
+<span class="nc" id="L60">    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_SERVICE_UUID)</span>
+    override fun getDataCharacteristicUUID(): UUID =
+<span class="nc" id="L62">        UUID.fromString(BLEConstants.NINEBOT_Z_READ_CHARACTERISTIC)</span>
+
+    override fun getWriteCharacteristicUUID(): UUID =
+<span class="nc" id="L65">        UUID.fromString(BLEConstants.NINEBOT_Z_WRITE_CHARACTERISTIC)</span>
+
+    override fun canHandle(device: EUCDevice): Boolean {
+<span class="fc" id="L68">        val name = device.name</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &amp;&amp;</span>
+<span class="fc" id="L70">                supportedModels.map { model -&gt;</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                    model.contains(</span>
+<span class="fc" id="L72">                        name,</span>
+<span class="fc" id="L73">                        ignoreCase = true</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                    ) || name.contains(model, ignoreCase = true)</span>
+<span class="pc bpc" id="L75" title="1 of 6 branches missed.">                }.reduce { a, b -&gt; a || b }</span>
+    }
+
+<span class="fc" id="L78">    override fun decode(data: ByteArray): EUCData? = delegate.decode(data)</span>
+
+<span class="fc" id="L80">    override fun looksLikeMyFrames(chunk: ByteArray): Boolean = delegate.looksLikeMyFrames(chunk)</span>
+
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+<span class="pc bpc" id="L83" title="10 of 13 branches missed.">        return when (commandType) {</span>
+<span class="fc" id="L84">            CommandType.LIGHT_ON -&gt; buildActionCommand(0x50, 0x01)</span>
+<span class="nc" id="L85">            CommandType.LIGHT_OFF -&gt; buildActionCommand(0x50, 0x00)</span>
+<span class="nc" id="L86">            CommandType.BEEP -&gt; buildActionCommand(0x18, 0x01)</span>
+<span class="fc" id="L87">            CommandType.LOCK -&gt; buildActionCommand(0x31, 0x01)</span>
+<span class="nc" id="L88">            CommandType.UNLOCK -&gt; buildActionCommand(0x31, 0x00)</span>
+            CommandType.SET_SPEED_LIMIT -&gt; {
+<span class="nc bnc" id="L90" title="All 4 branches missed.">                val speedKmh = (value as? Int)?.coerceIn(5, 60) ?: return byteArrayOf()</span>
+<span class="nc" id="L91">                buildActionCommand(0x70, speedKmh)</span>
+            }
+
+            CommandType.SET_ALARM_SPEED -&gt; {
+<span class="nc bnc" id="L95" title="All 4 branches missed.">                val speedKmh = (value as? Int)?.coerceIn(5, 60) ?: return byteArrayOf()</span>
+<span class="nc" id="L96">                buildActionCommand(0x71, speedKmh)</span>
+            }
+
+<span class="nc" id="L99">            CommandType.CALIBRATE -&gt; buildActionCommand(0x7A, 0x01)</span>
+<span class="nc" id="L100">            CommandType.REQUEST_SERIAL -&gt; buildQueryCommand(0x10)</span>
+<span class="fc" id="L101">            CommandType.REQUEST_FIRMWARE -&gt; buildQueryCommand(0x1A)</span>
+<span class="nc" id="L102">            CommandType.REQUEST_BATTERY_INFO -&gt; QUERY_BMS_1.clone()</span>
+<span class="nc bnc" id="L103" title="All 6 branches missed.">            CommandType.CUSTOM -&gt; (value as? ByteArray)?.clone() ?: byteArrayOf()</span>
+            else -&gt; byteArrayOf()
+        }
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+<span class="fc" id="L109">        return ProtocolPollingPlan(</span>
+<span class="fc" id="L110">            enabled = true,</span>
+<span class="fc" id="L111">            startupQueries = listOf(</span>
+<span class="fc" id="L112">                ProtocolQuerySpec(</span>
+<span class="fc" id="L113">                    &quot;ninebot-z.ble-version&quot;,</span>
+<span class="fc" id="L114">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L115">                    QUERY_BLE_VERSION,</span>
+<span class="fc" id="L116">                    maxRetries = 2</span>
+                ),
+<span class="fc" id="L118">                ProtocolQuerySpec(</span>
+<span class="fc" id="L119">                    &quot;ninebot-z.auth-key&quot;,</span>
+<span class="fc" id="L120">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L121">                    QUERY_AUTH_KEY,</span>
+<span class="fc" id="L122">                    maxRetries = 3</span>
+                ),
+<span class="fc" id="L124">                ProtocolQuerySpec(&quot;ninebot-z.serial&quot;, CommandType.REQUEST_SERIAL, maxRetries = 3),</span>
+<span class="fc" id="L125">                ProtocolQuerySpec(</span>
+<span class="fc" id="L126">                    &quot;ninebot-z.firmware&quot;,</span>
+<span class="fc" id="L127">                    CommandType.REQUEST_FIRMWARE,</span>
+<span class="fc" id="L128">                    maxRetries = 3</span>
+                ),
+<span class="fc" id="L130">                ProtocolQuerySpec(</span>
+<span class="fc" id="L131">                    &quot;ninebot-z.params-1&quot;,</span>
+<span class="fc" id="L132">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L133">                    QUERY_PARAMS_PAGE_1,</span>
+<span class="fc" id="L134">                    maxRetries = 2</span>
+                ),
+<span class="fc" id="L136">                ProtocolQuerySpec(</span>
+<span class="fc" id="L137">                    &quot;ninebot-z.params-2&quot;,</span>
+<span class="fc" id="L138">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L139">                    QUERY_PARAMS_PAGE_2,</span>
+<span class="fc" id="L140">                    maxRetries = 2</span>
+                ),
+<span class="fc" id="L142">                ProtocolQuerySpec(</span>
+<span class="fc" id="L143">                    &quot;ninebot-z.bms1&quot;,</span>
+<span class="fc" id="L144">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L145">                    QUERY_BMS_1,</span>
+<span class="fc" id="L146">                    maxRetries = 2</span>
+                ),
+<span class="fc" id="L148">                ProtocolQuerySpec(&quot;ninebot-z.bms2&quot;, CommandType.CUSTOM, QUERY_BMS_2, maxRetries = 2)</span>
+            ),
+<span class="fc" id="L150">            periodicQueries = listOf(</span>
+<span class="fc" id="L151">                ProtocolQuerySpec(</span>
+<span class="fc" id="L152">                    &quot;ninebot-z.realtime&quot;,</span>
+<span class="fc" id="L153">                    CommandType.REQUEST_BATTERY_INFO,</span>
+<span class="fc" id="L154">                    intervalMs = 1000L,</span>
+<span class="fc" id="L155">                    maxRetries = 1</span>
+                ),
+<span class="fc" id="L157">                ProtocolQuerySpec(</span>
+<span class="fc" id="L158">                    &quot;ninebot-z.keepalive&quot;,</span>
+<span class="fc" id="L159">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L160">                    QUERY_PARAMS_PAGE_1,</span>
+<span class="fc" id="L161">                    intervalMs = 5000L,</span>
+<span class="fc" id="L162">                    maxRetries = 1</span>
+                )
+            )
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+<span class="nc bnc" id="L169" title="All 4 branches missed.">        if (data.isEmpty()) return false</span>
+<span class="nc bnc" id="L170" title="All 6 branches missed.">        if (data.size &gt;= 7 &amp;&amp; data[0] == BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER[0] &amp;&amp; data[1] == BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER[1]) {</span>
+<span class="nc" id="L171">            val frameType = data[6].toInt() and 0xFF</span>
+<span class="nc bnc" id="L172" title="All 5 branches missed.">            return when (query.commandType) {</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                CommandType.REQUEST_SERIAL -&gt; frameType == WHEELLOG_SERIAL_TYPE</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                CommandType.REQUEST_FIRMWARE -&gt; frameType == WHEELLOG_FIRMWARE_TYPE</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                CommandType.REQUEST_BATTERY_INFO -&gt; frameType == WHEELLOG_TELEMETRY_TYPE</span>
+<span class="nc" id="L176">                CommandType.CUSTOM -&gt; true</span>
+<span class="nc" id="L177">                else -&gt; false</span>
+            }
+        }
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        return query.commandType == CommandType.CUSTOM</span>
+    }
+
+    private fun buildActionCommand(code: Int, value: Int): ByteArray {
+<span class="fc" id="L184">        val payload = byteArrayOf(</span>
+<span class="fc" id="L185">            FRAME_HEADER.toByte(),</span>
+<span class="fc" id="L186">            0x05,</span>
+<span class="fc" id="L187">            FRAME_ACTION.toByte(),</span>
+<span class="fc" id="L188">            code.toByte(),</span>
+<span class="fc" id="L189">            value.toByte()</span>
+        )
+<span class="fc" id="L191">        return payload + checksum(payload)</span>
+    }
+
+    private fun buildQueryCommand(code: Int): ByteArray {
+<span class="fc" id="L195">        val payload = byteArrayOf(</span>
+<span class="fc" id="L196">            FRAME_HEADER.toByte(),</span>
+<span class="fc" id="L197">            0x04,</span>
+<span class="fc" id="L198">            FRAME_QUERY.toByte(),</span>
+<span class="fc" id="L199">            code.toByte()</span>
+        )
+<span class="fc" id="L201">        return payload + checksum(payload)</span>
+    }
+
+    private fun checksum(payload: ByteArray): ByteArray {
+<span class="fc" id="L205">        var checksum = 0</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (i in 1 until payload.size) {</span>
+<span class="fc" id="L207">            checksum = checksum xor (payload[i].toInt() and 0xFF)</span>
+        }
+<span class="fc" id="L209">        return byteArrayOf((checksum and 0xFF).toByte())</span>
+    }
+
+    override fun isDeviceReady(data: EUCData): Boolean =
+<span class="nc bnc" id="L213" title="All 4 branches missed.">        data.voltage &gt; MIN_READY_VOLTAGE_V &amp;&amp; data.batteryLevel &gt;= MIN_READY_BATTERY_LEVEL</span>
+
+    override fun close() {
+<span class="fc" id="L216">        delegate.close()</span>
+<span class="fc" id="L217">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

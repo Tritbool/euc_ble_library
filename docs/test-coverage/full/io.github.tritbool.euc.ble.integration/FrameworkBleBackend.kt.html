@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FrameworkBleBackend.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.integration</a> &gt; <span class="el_source">FrameworkBleBackend.kt</span></div><h1>FrameworkBleBackend.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.integration
+
+import android.Manifest
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.core.BLEManager
+import io.github.tritbool.euc.ble.core.DataCallback
+import io.github.tritbool.euc.ble.core.ErrorCallback
+import io.github.tritbool.euc.ble.core.ListenerConnectionCallback
+import io.github.tritbool.euc.ble.exceptions.BLEException
+import io.github.tritbool.euc.ble.models.EUCDevice
+import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import java.util.UUID
+
+/**
+ * Framework-based BLE backend implementation.
+ *
+ * This backend delegates BLE operations to a [BLEManager] instance and forwards events
+ * to a registered [BleBackendListener]. It uses Kotlin coroutines for asynchronous operations.
+ *
+ * @param bleManager The BLE manager that handles actual BLE operations
+ * @param ownsScope If true, this backend owns and will cancel the coroutine scope on cleanup
+ * @param scope The coroutine scope for background operations
+ */
+<span class="nc" id="L34">internal class FrameworkBleBackend(</span>
+<span class="nc" id="L35">    private val bleManager: BLEManager,</span>
+<span class="nc" id="L36">    private val ownsScope: Boolean = true,</span>
+<span class="nc" id="L37">    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)</span>
+<span class="nc" id="L38">) : BleBackend {</span>
+
+<span class="nc" id="L40">    override val type: BleBackendType = BleBackendType.FRAMEWORK</span>
+    private var listener: BleBackendListener? = null
+    private var rawFrameJob: Job? = null
+    private var isInitialized: Boolean = false
+
+    @Synchronized
+    override fun initialize() {
+<span class="nc" id="L47">        bleManager.initialize()</span>
+<span class="nc" id="L48">        installCallbacks()</span>
+<span class="nc" id="L49">        installRawFrameForwarder()</span>
+<span class="nc" id="L50">        isInitialized = true</span>
+<span class="nc" id="L51">    }</span>
+
+    override fun registerProtocol(protocol: EUCProtocol) {
+<span class="nc" id="L54">        bleManager.registerProtocol(protocol)</span>
+<span class="nc" id="L55">    }</span>
+
+    @Synchronized
+    override fun setListener(listener: BleBackendListener?) {
+<span class="nc" id="L59">        this.listener = listener</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (isInitialized) {</span>
+<span class="nc" id="L61">            installRawFrameForwarder()</span>
+        }
+<span class="nc" id="L63">    }</span>
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    override fun startScan() {
+<span class="nc" id="L68">        bleManager.startScan()</span>
+<span class="nc" id="L69">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    override fun stopScan() {
+<span class="nc" id="L73">        bleManager.stopScan()</span>
+<span class="nc" id="L74">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun connect(device: EUCDevice) {
+<span class="nc" id="L78">        bleManager.connect(device)</span>
+<span class="nc" id="L79">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun disconnect() {
+<span class="nc" id="L83">        bleManager.disconnect()</span>
+<span class="nc" id="L84">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
+<span class="nc" id="L88">        bleManager.sendCommand(command, characteristicUuid)</span>
+<span class="nc" id="L89">    }</span>
+
+<span class="nc" id="L91">    override fun getConnectionState(): BLEConstants.ConnectionState = bleManager.getConnectionState()</span>
+
+<span class="nc" id="L93">    override fun getConnectedDevice(): EUCDevice? = bleManager.getConnectedDevice()</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun cleanup() {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        rawFrameJob?.cancel()</span>
+<span class="nc" id="L98">        rawFrameJob = null</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        if (ownsScope) {</span>
+<span class="nc" id="L100">            scope.cancel()</span>
+        }
+<span class="nc" id="L102">        bleManager.cleanup()</span>
+<span class="nc" id="L103">    }</span>
+
+    private fun installCallbacks() {
+<span class="nc" id="L106">        bleManager.setConnectionCallback(ListenerConnectionCallback(listener, bleManager) )</span>
+
+<span class="nc" id="L108">        bleManager.setDataCallback(object : DataCallback {</span>
+            override fun onDataReceived(data: io.github.tritbool.euc.ble.models.EUCData) {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                listener?.onEvent(BleBackendEvent.DataReceived(data))</span>
+<span class="nc" id="L111">            }</span>
+        })
+
+<span class="nc" id="L114">        bleManager.setErrorCallback(object : ErrorCallback {</span>
+            override fun onError(error: BLEException) {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">                listener?.onEvent(BleBackendEvent.Error(error))</span>
+<span class="nc" id="L117">            }</span>
+        })
+<span class="nc" id="L119">    }</span>
+
+    @Synchronized
+    private fun installRawFrameForwarder() {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        rawFrameJob?.cancel()</span>
+<span class="nc" id="L124">        rawFrameJob = bleManager.rawFrameFlow</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            .onEach { payload -&gt;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">                listener?.onEvent(BleBackendEvent.RawFrameReceived(payload))</span>
+<span class="nc" id="L127">            }</span>
+<span class="nc" id="L128">            .launchIn(scope)</span>
+<span class="nc" id="L129">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FixedSizeFrameParser.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.frames</a> &gt; <span class="el_source">FixedSizeFrameParser.kt</span></div><h1>FixedSizeFrameParser.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.frames
+
+/**
+ * Compatible with legacy implementation: looks for an optional header,
+ * extracts fixed-size frames and validates an optional footer.
+ *
+ * @param frameSize The fixed size of each frame in bytes
+ * @param header Optional header bytes that must precede each frame
+ * @param footer Optional footer bytes that must follow each frame
+ */
+<span class="pc" id="L11">class FixedSizeFrameParser(</span>
+<span class="fc" id="L12">    private val frameSize: Int,</span>
+<span class="fc" id="L13">    private val header: ByteArray = byteArrayOf(),</span>
+<span class="fc" id="L14">    private val footer: ByteArray = byteArrayOf()</span>
+<span class="nc" id="L15">) : FrameParser {</span>
+<span class="fc" id="L16">    private val buffer = ArrayList&lt;Byte&gt;()</span>
+
+    override fun appendAndExtract(data: ByteArray): List&lt;ByteArray&gt; {
+<span class="fc" id="L19">        val out = mutableListOf&lt;ByteArray&gt;()</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">        for (b in data) buffer.add(b)</span>
+<span class="fc" id="L21">        extractReadyFramesInto(out)</span>
+<span class="fc" id="L22">        return out</span>
+    }
+
+    override fun reset() {
+<span class="fc" id="L26">        buffer.clear()</span>
+<span class="fc" id="L27">    }</span>
+
+    private fun extractReadyFramesInto(out: MutableList&lt;ByteArray&gt;) {
+<span class="fc" id="L30">        var idx = findHeaderIndex(0)</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        while (idx &gt;= 0) {</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            if (buffer.size - idx &lt; frameSize) break</span>
+<span class="fc" id="L33">            val end = idx + frameSize</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            val candidate = ByteArray(frameSize) { i -&gt; buffer[idx + i] }</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (matchesFooter(candidate)) {</span>
+<span class="fc" id="L36">                out.add(candidate)</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                repeat(end) { buffer.removeAt(0) }</span>
+<span class="fc" id="L38">                idx = findHeaderIndex(0)</span>
+            } else {
+<span class="fc" id="L40">                buffer.removeAt(0)</span>
+<span class="fc" id="L41">                idx = findHeaderIndex(0)</span>
+            }
+        }
+
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (idx &lt; 0) {</span>
+<span class="fc" id="L46">            val keep = maxOf(0, header.size - 1)</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            while (buffer.size &gt; keep) buffer.removeAt(0)</span>
+        }
+<span class="fc" id="L49">    }</span>
+
+    private fun findHeaderIndex(from: Int): Int {
+<span class="pc bpc" id="L52" title="8 of 10 branches missed.">        if (header.isEmpty()) return 0.takeIf { buffer.size &gt;= 0 } ?: -1</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (buffer.size &lt; header.size) return -1</span>
+<span class="fc" id="L54">        var i = from</span>
+<span class="fc" id="L55">        val maxStart = buffer.size - header.size</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        while (i &lt;= maxStart) {</span>
+<span class="fc" id="L57">            var ok = true</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            for (j in header.indices) {</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                if (buffer[i + j] != header[j]) { ok = false; break }</span>
+            }
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (ok) return i</span>
+<span class="fc" id="L62">            i++</span>
+        }
+<span class="fc" id="L64">        return -1</span>
+    }
+
+    private fun matchesFooter(frame: ByteArray): Boolean {
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (footer.isEmpty()) return true</span>
+<span class="fc" id="L69">        val start = frame.size - footer.size</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (start &lt; 0) return false</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (i in footer.indices) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (frame[start + i] != footer[i]) return false</span>
+        }
+<span class="fc" id="L74">        return true</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EUCProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">EUCProtocol.kt</span></div><h1>EUCProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import java.io.Closeable
+import java.util.UUID
+
+/**
+ * Base interface for EUC manufacturer protocols
+ */
+interface EUCProtocol : Closeable {
+    /**
+     * Manufacturer name
+     */
+    val manufacturer: String
+
+    /**
+     * List of supported models
+     */
+    val supportedModels: List&lt;String&gt;
+
+    val dataFlow: Flow&lt;EUCData&gt;
+
+    /**
+     * Flow that emits every raw BLE characteristic notification received by this protocol,
+     * as a defensive copy of the original byte array. Collectors can use this to write raw
+     * logs or perform any custom processing on the unmodified BLE data.
+     *
+     * The default implementation emits nothing; concrete protocols override this to provide
+     * a live stream of incoming bytes.
+     */
+<span class="nc" id="L34">    val rawFrameFlow: Flow&lt;ByteArray&gt; get() = emptyFlow()</span>
+
+    /**
+     * Flow of commands or raw bytes that the protocol needs to write to the device automatically.
+     */
+<span class="pc" id="L39">    val writeFlow: Flow&lt;ByteArray&gt; get() = emptyFlow()</span>
+
+
+    /**
+     * Check if this protocol can handle the given device
+     */
+    fun canHandle(device: EUCDevice): Boolean
+
+    /**
+     * Decode raw BLE data into EUCData
+     */
+    fun decode(data: ByteArray): EUCData?
+
+    /**
+     * Optional fast header check: returns true if [chunk] appears to contain frames belonging
+     * to this protocol, based on magic-byte patterns alone.  The default returns false (opt-out).
+     * Protocols override this to enable frame-header-based routing without full decoding.
+     *
+     * Note: header-based routing is a hint only.  [canHandle] (device-name / manufacturer-ID)
+     * remains the authoritative gate for protocol selection at connection time.
+     */
+<span class="nc" id="L60">    fun looksLikeMyFrames(chunk: ByteArray): Boolean = false</span>
+
+    /**
+     * Get the UUID for the data characteristic
+     */
+    fun getDataCharacteristicUUID(): UUID
+
+    /**
+     * Get the UUID for the service
+     */
+    fun getServiceUUID(): UUID
+
+    /**
+     * Create a command for the EUC
+     */
+    fun createCommand(commandType: CommandType, value: Any): ByteArray
+
+    /**
+     * Explicit command support matrix for this protocol.
+     * Commands outside this set are considered unsupported by design.
+     */
+    val supportedCommandTypes: Set&lt;CommandType&gt;
+<span class="nc" id="L82">        get() = emptySet()</span>
+
+    /**
+     * API-level command support check (used by framework and clients).
+     */
+<span class="nc" id="L87">    fun getCommandSupport(commandType: CommandType): CommandSupport {</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        return if (supportedCommandTypes.contains(commandType)) {</span>
+<span class="nc" id="L89">            CommandSupport.SUPPORTED</span>
+        } else {
+<span class="nc" id="L91">            CommandSupport.UNSUPPORTED</span>
+        }
+<span class="nc" id="L93">    }</span>
+
+    /**
+     * Optional polling/query plan consumed by BLEManager orchestration.
+     */
+<span class="pc" id="L98">    fun getPollingPlan(): ProtocolPollingPlan = ProtocolPollingPlan.disabled()</span>
+
+    /**
+     * Optional query/response matcher used by BLEManager observability and retry loop.
+     */
+<span class="nc" id="L103">    fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean = false</span>
+
+    /**
+     * Get the UUID for the write characteristic (if different from data characteristic)
+     */
+<span class="nc" id="L108">    fun getWriteCharacteristicUUID(): UUID = getDataCharacteristicUUID()</span>
+
+    /**
+     * Check if the device is ready for operation
+     */
+    fun isDeviceReady(data: EUCData): Boolean
+}
+
+/**
+ * Standard command types for EUCs
+ */
+enum class CommandType {
+<span class="fc" id="L120">    LIGHT_ON,</span>
+<span class="fc" id="L121">    LIGHT_OFF,</span>
+<span class="fc" id="L122">    SET_LIGHT_MODE,</span>
+<span class="fc" id="L123">    LIGHT_BRIGHTNESS,</span>
+<span class="fc" id="L124">    SPEAKER_VOLUME,</span>
+<span class="fc" id="L125">    BEEP,</span>
+<span class="fc" id="L126">    POWER_OFF,</span>
+<span class="fc" id="L127">    LOCK,</span>
+<span class="fc" id="L128">    UNLOCK,</span>
+<span class="fc" id="L129">    SET_PEDALS_MODE,</span>
+<span class="fc" id="L130">    SET_LED_MODE,</span>
+<span class="fc" id="L131">    SET_SPEED_LIMIT,</span>
+<span class="fc" id="L132">    SET_ALARM_SPEED,</span>
+<span class="fc" id="L133">    CALIBRATE,</span>
+<span class="fc" id="L134">    REQUEST_SERIAL,</span>
+<span class="fc" id="L135">    REQUEST_FIRMWARE,</span>
+<span class="fc" id="L136">    REQUEST_BATTERY_INFO,</span>
+<span class="fc" id="L137">    RESET_TRIP,</span>
+<span class="fc" id="L138">    CUSTOM</span>
+}
+
+enum class CommandSupport {
+<span class="nc" id="L142">    SUPPORTED,</span>
+<span class="nc" id="L143">    UNSUPPORTED</span>
+}
+
+<span class="fc" id="L146">data class ProtocolQuerySpec(</span>
+<span class="pc" id="L147">    val id: String,</span>
+<span class="fc" id="L148">    val commandType: CommandType,</span>
+<span class="pc" id="L149">    val value: Any = Unit,</span>
+<span class="fc" id="L150">    val initialDelayMs: Long = 0L,</span>
+<span class="pc" id="L151">    val intervalMs: Long = 0L,</span>
+<span class="pc" id="L152">    val responseTimeoutMs: Long = 1500L,</span>
+<span class="pc" id="L153">    val maxRetries: Int = 2,</span>
+<span class="pc" id="L154">    val retryBackoffMs: Long = 500L</span>
+<span class="fc" id="L155">)</span>
+
+<span class="fc" id="L157">data class ProtocolPollingPlan(</span>
+<span class="fc" id="L158">    val enabled: Boolean,</span>
+<span class="fc" id="L159">    val startupQueries: List&lt;ProtocolQuerySpec&gt; = emptyList(),</span>
+<span class="fc" id="L160">    val periodicQueries: List&lt;ProtocolQuerySpec&gt; = emptyList()</span>
+<span class="fc" id="L161">) {</span>
+    companion object {
+<span class="fc" id="L163">        fun disabled() = ProtocolPollingPlan(enabled = false)</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

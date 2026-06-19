@@ -1,0 +1,816 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KingsongProtocol.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.protocols</a> &gt; <span class="el_source">KingsongProtocol.kt</span></div><h1>KingsongProtocol.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
+import io.github.tritbool.euc.ble.frames.FrameReassembler
+import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+/**
+ * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
+ * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
+ *
+ * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/temp2), 0xBB (name/model/version),
+ * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
+ * 0xF1/0xF2 (Smart BMS data).
+ */
+<span class="pc" id="L31">class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :</span>
+    EUCProtocol {
+
+<span class="fc" id="L34">    private val header1 = BLEConstants.KINGSONG_FRAME_HEADER_1</span>
+<span class="fc" id="L35">    private val header2 = BLEConstants.KINGSONG_FRAME_HEADER_2</span>
+<span class="fc" id="L36">    private val MIN_LENGTH = 20</span>
+    // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
+<span class="fc" id="L38">    private val unpackBuffer = ArrayList&lt;Byte&gt;()</span>
+
+    // Unpacker: accumulates bytes and returns 0..N complete frames.
+    // Heuristic rule: detects headers (AA 55 or 55 AA) and extracts the slice until the next header.
+<span class="fc" id="L42">    private val unpacker: (Byte) -&gt; List&lt;ByteArray&gt; = { b: Byte -&gt;</span>
+<span class="fc" id="L43">        val out = mutableListOf&lt;ByteArray&gt;()</span>
+<span class="fc" id="L44">        unpackBuffer.add(b)</span>
+
+<span class="nc" id="L46">        fun findHeaderIndex(from: Int = 0): Int {</span>
+<span class="fc" id="L47">            val bufSize = unpackBuffer.size</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (bufSize &lt; 2) return -1</span>
+<span class="fc" id="L49">            var i = maxOf(from, 0)</span>
+<span class="fc" id="L50">            val maxStart = bufSize - 2</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            while (i &lt;= maxStart) {</span>
+<span class="fc" id="L52">                val a = unpackBuffer[i]</span>
+<span class="fc" id="L53">                val c = unpackBuffer[i + 1]</span>
+<span class="fc bfc" id="L54" title="All 8 branches covered.">                if ((a == header1[0] &amp;&amp; c == header1[1]) || (a == header2[0] &amp;&amp; c == header2[1])) return i</span>
+<span class="fc" id="L55">                i++</span>
+            }
+<span class="fc" id="L57">            return -1</span>
+        }
+
+<span class="fc" id="L60">        var headerIdx = findHeaderIndex(0)</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        while (headerIdx &gt;= 0) {</span>
+            // look for the next header
+<span class="fc" id="L63">            val nextHeader = findHeaderIndex(headerIdx + 2)</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (nextHeader &gt;= 0) {</span>
+                // extract frame [headerIdx, nextHeader)
+<span class="fc" id="L66">                val len = nextHeader - headerIdx</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                val frame = ByteArray(len) { i -&gt; unpackBuffer[headerIdx + i] }</span>
+<span class="fc" id="L68">                out.add(frame)</span>
+                // remove emitted bytes
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                repeat(nextHeader) { unpackBuffer.removeAt(0) }</span>
+<span class="fc" id="L71">                headerIdx = findHeaderIndex(0)</span>
+<span class="fc" id="L72">                continue</span>
+            }
+
+            // no next header
+            // if we have at least MIN_LENGTH bytes after the header, emit at least that (floating heuristic)
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (unpackBuffer.size &gt;= headerIdx + MIN_LENGTH) {</span>
+                // emit all remaining as a frame instead of waiting indefinitely
+<span class="fc" id="L79">                val len = unpackBuffer.size - headerIdx</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                val frame = ByteArray(len) { i -&gt; unpackBuffer[headerIdx + i] }</span>
+<span class="fc" id="L81">                out.add(frame)</span>
+                // remove emitted bytes
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                repeat(headerIdx + len) { unpackBuffer.removeAt(0) }</span>
+            } else {
+                // not enough data to complete a frame, wait for more
+<span class="fc" id="L86">                break</span>
+            }
+<span class="fc" id="L88">            headerIdx = findHeaderIndex(0)</span>
+        }
+
+        // if no header, keep at most 1 byte (preserve possibility of fractured header)
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (findHeaderIndex(0) &lt; 0) {</span>
+<span class="fc" id="L93">            val keep = 1</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            while (unpackBuffer.size &gt; keep) unpackBuffer.removeAt(0)</span>
+        }
+
+<span class="fc" id="L97">        out</span>
+    }
+
+<span class="fc" id="L100">    override val manufacturer: String = &quot;KingSong&quot;</span>
+<span class="fc" id="L101">    override val supportedModels: List&lt;String&gt; = listOf(</span>
+<span class="fc" id="L102">        &quot;KS-14D&quot;, &quot;KS-16&quot;, &quot;KS-16S&quot;, &quot;KS-16X&quot;, &quot;KS-18L&quot;, &quot;KS-18XL&quot;,</span>
+<span class="fc" id="L103">        &quot;KS-19&quot;, &quot;KS-S18&quot;, &quot;KS-S19&quot;, &quot;KS-S20&quot;, &quot;KS-S22&quot;, &quot;KS-F22&quot;</span>
+    )
+<span class="pc" id="L105">    override val supportedCommandTypes: Set&lt;CommandType&gt; = setOf(</span>
+<span class="fc" id="L106">        CommandType.LIGHT_ON,</span>
+<span class="fc" id="L107">        CommandType.LIGHT_OFF,</span>
+<span class="fc" id="L108">        CommandType.SET_LIGHT_MODE,</span>
+<span class="fc" id="L109">        CommandType.LIGHT_BRIGHTNESS,</span>
+<span class="fc" id="L110">        CommandType.BEEP,</span>
+<span class="fc" id="L111">        CommandType.POWER_OFF,</span>
+<span class="fc" id="L112">        CommandType.SET_PEDALS_MODE,</span>
+<span class="fc" id="L113">        CommandType.SET_LED_MODE,</span>
+<span class="fc" id="L114">        CommandType.SET_SPEED_LIMIT,</span>
+<span class="fc" id="L115">        CommandType.SET_ALARM_SPEED,</span>
+<span class="fc" id="L116">        CommandType.CALIBRATE,</span>
+<span class="fc" id="L117">        CommandType.REQUEST_SERIAL,</span>
+<span class="fc" id="L118">        CommandType.REQUEST_FIRMWARE</span>
+    )
+
+<span class="nc" id="L121">    override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)</span>
+    override fun getDataCharacteristicUUID(): UUID =
+<span class="nc" id="L123">        UUID.fromString(BLEConstants.KINGSONG_READ_CHARACTERISTIC)</span>
+
+    override fun canHandle(device: EUCDevice): Boolean {
+<span class="fc" id="L126">        val name = device.name</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        return device.manufacturerId == BLEConstants.MANUFACTURER_KINGSONG ||</span>
+<span class="fc" id="L128">                supportedModels.map { model -&gt; model.contains(name, ignoreCase = true) }</span>
+<span class="pc bpc" id="L129" title="3 of 6 branches missed.">                    .reduce { a, b -&gt; a || b }</span>
+    }
+
+    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (chunk.size &lt; 2) return false</span>
+<span class="fc" id="L134">        val a = chunk[0].toInt() and 0xFF</span>
+<span class="fc" id="L135">        val b = chunk[1].toInt() and 0xFF</span>
+<span class="pc bpc" id="L136" title="1 of 8 branches missed.">        return (a == 0xAA &amp;&amp; b == 0x55) || (a == 0x55 &amp;&amp; b == 0xAA)</span>
+    }
+
+    private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">        return offset &gt;= 0 &amp;&amp; data.size &gt;= offset + length</span>
+    }
+
+    // Internal buffer used by the unpacker
+
+<span class="fc" id="L145">    private val byteParser = ByteByByteFrameParser(unpacker, resetUnpacker = {</span>
+<span class="nc" id="L146">        unpackBuffer.clear()</span>
+<span class="nc" id="L147">    })</span>
+<span class="fc" id="L148">    private val frameReassembler = FrameReassembler(byteParser)</span>
+
+<span class="fc" id="L150">    private val _channel = Channel&lt;EUCData&gt;(capacity = Channel.UNLIMITED)</span>
+<span class="fc" id="L151">    override val dataFlow: Flow&lt;EUCData&gt; = _channel.receiveAsFlow()</span>
+
+<span class="fc" id="L153">    private val _rawFrameFlow = MutableSharedFlow&lt;ByteArray&gt;(</span>
+<span class="fc" id="L154">        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,</span>
+<span class="fc" id="L155">        onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+<span class="pc" id="L157">    override val rawFrameFlow: Flow&lt;ByteArray&gt; = _rawFrameFlow.asSharedFlow()</span>
+
+<span class="fc" id="L159">    private val _writeFlow = MutableSharedFlow&lt;ByteArray&gt;(</span>
+<span class="fc" id="L160">        extraBufferCapacity = 16,</span>
+<span class="fc" id="L161">        onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+<span class="fc" id="L163">    override val writeFlow: Flow&lt;ByteArray&gt; = _writeFlow.asSharedFlow()</span>
+
+    //private val scope = CoroutineScope(Dispatchers.IO)
+    private var sessionStartTimestampMs: Long? = null
+    private var lastKnownPwm: Double? = null
+
+    // Stateful fields accumulated from non-A9 frames
+    private var lastKnownModel: String? = null
+    private var lastKnownFirmwareVersion: String? = null
+    private var lastKnownSerialNumber: String? = null
+    private var lastKnownTopSpeed: Double? = null
+    private var lastKnownFanStatus: Int? = null
+    private var lastKnownChargingStatus: Int? = null
+    private var lastKnownTemperature2: Double? = null
+    private var lastKnownCpuLoad: Int? = null
+    private var lastKnownSpeedLimit: Double? = null
+    private var lastKnownAlarm1Speed: Int? = null
+    private var lastKnownAlarm2Speed: Int? = null
+    private var lastKnownAlarm3Speed: Int? = null
+    private var lastKnownWheelMaxSpeed: Int? = null
+    private var lastKnownWheelDistance: Double? = null
+    private var lastKnownTotalDistance: Double? = null
+
+    // BMS cell data: bmsIndex (1 or 2) -&gt; array of cell voltages
+<span class="fc" id="L187">    private val bmsCellPages: MutableMap&lt;Int, DoubleArray&gt; = mutableMapOf()</span>
+
+    // BMS summary data from page 0x00: bmsIndex -&gt; [voltage, current, remainingCapacity, factoryCapacity, cycles]
+<span class="fc" id="L190">    private val bmsSummary: MutableMap&lt;Int, BMSSummary&gt; = mutableMapOf()</span>
+
+    // BMS temperature data from page 0x01: bmsIndex -&gt; list of temperature values in °C
+<span class="fc" id="L193">    private val bmsTemperatures: MutableMap&lt;Int, List&lt;Double&gt;&gt; = mutableMapOf()</span>
+
+<span class="fc" id="L195">    private data class BMSSummary(</span>
+<span class="pc" id="L196">        val voltage: Double,       // volts</span>
+<span class="pc" id="L197">        val current: Double,       // amps</span>
+<span class="pc" id="L198">        val remainingCapacity: Int, // mAh</span>
+<span class="pc" id="L199">        val factoryCapacity: Int,  // mAh</span>
+<span class="pc" id="L200">        val cycles: Int            // charge cycles</span>
+    )
+
+    companion object {
+        private const val MAX_BMS_CELLS = 30
+
+        // Frame types
+        private const val FRAME_TYPE_A9 = 0xA9
+        private const val FRAME_TYPE_B9 = 0xB9
+        private const val FRAME_TYPE_BB = 0xBB
+        private const val FRAME_TYPE_B3 = 0xB3
+        private const val FRAME_TYPE_F5 = 0xF5
+        private const val FRAME_TYPE_F6 = 0xF6
+        private const val FRAME_TYPE_A4 = 0xA4
+        private const val FRAME_TYPE_B5 = 0xB5
+        private const val FRAME_TYPE_F1 = 0xF1
+        private const val FRAME_TYPE_F2 = 0xF2
+
+        // BMS page types
+        private const val BMS_PAGE_SUMMARY = 0x00
+        private const val BMS_PAGE_TEMPERATURES = 0x01
+        private const val BMS_PAGE_CELL_VOLTAGES_START = 0x02
+
+        // Special byte values
+        private const val PEDALS_MODE_MARKER = 0xE0
+        private const val BMS_FRAME_OFFSET = 0xF0
+
+        // Serial number length
+        private const val SERIAL_NUMBER_LENGTH = 17
+
+        // Frame byte offsets
+        private const val OFFSET_VOLTAGE = 2
+        private const val OFFSET_SPEED = 4
+        private const val OFFSET_MESSAGE_TYPE = 16
+        private const val OFFSET_PAGE_NUM = 17
+    }
+
+<span class="fc" id="L237">    init {</span>
+        // Start observing frames asynchronously and process them
+<span class="fc" id="L239">        scope.launch {</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">            frameReassembler.observeFrames().collectLatest { frame -&gt;</span>
+<span class="fc" id="L241">                processFrame(frame)</span>
+<span class="fc" id="L242">            }</span>
+<span class="nc" id="L243">        }</span>
+<span class="fc" id="L244">    }</span>
+
+    private fun parseFrame(data: ByteArray): EUCData? {
+<span class="pc bpc" id="L247" title="2 of 4 branches missed.">        if (data.isEmpty()) return null</span>
+
+<span class="fc" id="L249">        val headerIdx = run {</span>
+<span class="pc bpc" id="L250" title="3 of 4 branches missed.">            for (i in 0..(data.size - 2)) {</span>
+<span class="pc bpc" id="L251" title="1 of 4 branches missed.">                if (data[i] == header1[0] &amp;&amp; data[i + 1] == header1[1]) return@run i</span>
+<span class="pc bpc" id="L252" title="2 of 4 branches missed.">                if (data[i] == header2[0] &amp;&amp; data[i + 1] == header2[1]) return@run i</span>
+            }
+<span class="nc" id="L254">            -1</span>
+        }
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (headerIdx &lt; 0) return null</span>
+
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (data.size - headerIdx &lt; MIN_LENGTH) {</span>
+<span class="fc" id="L259">            return null</span>
+        }
+
+<span class="fc" id="L262">        val messageType = ByteUtils.getUnsignedByte(data, headerIdx + OFFSET_MESSAGE_TYPE)</span>
+<span class="pc bpc" id="L263" title="2 of 9 branches missed.">        return when (messageType) {</span>
+<span class="fc" id="L264">            FRAME_TYPE_A9 -&gt; parseTypeA9(data, headerIdx)</span>
+            FRAME_TYPE_B9 -&gt; {
+<span class="fc" id="L266">                parseTypeB9(data, headerIdx)</span>
+<span class="fc" id="L267">                null</span>
+            }
+
+            FRAME_TYPE_BB -&gt; {
+<span class="fc" id="L271">                parseTypeBB(data, headerIdx)</span>
+<span class="fc" id="L272">                null</span>
+            }
+
+            FRAME_TYPE_B3 -&gt; {
+<span class="nc" id="L276">                parseTypeB3(data, headerIdx)</span>
+<span class="nc" id="L277">                null</span>
+            }
+
+            FRAME_TYPE_F5 -&gt; {
+<span class="fc" id="L281">                parseTypeF5(data, headerIdx)</span>
+<span class="fc" id="L282">                null</span>
+            }
+
+            FRAME_TYPE_F6 -&gt; {
+<span class="fc" id="L286">                parseTypeF6(data, headerIdx)</span>
+<span class="fc" id="L287">                null</span>
+            }
+
+            FRAME_TYPE_A4, FRAME_TYPE_B5 -&gt; {
+<span class="nc" id="L291">                parseTypeA4B5(data, headerIdx)</span>
+<span class="nc" id="L292">                null</span>
+            }
+
+            FRAME_TYPE_F1, FRAME_TYPE_F2 -&gt; {
+<span class="fc" id="L296">                parseTypeBMS(data, headerIdx, messageType)</span>
+<span class="fc" id="L297">                null</span>
+            }
+
+<span class="fc" id="L300">            else -&gt; null</span>
+        }
+    }
+
+    private fun parseTypeA9(data: ByteArray, base: Int): EUCData? {
+<span class="fc" id="L305">        try {</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">            val voltage = if (ensureRange(data, base + OFFSET_VOLTAGE, 2))</span>
+<span class="pc" id="L307">                ByteUtils.getUnsignedShortLE(data, base + OFFSET_VOLTAGE) / 100.0 else 0.0</span>
+
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">            val speed = if (ensureRange(data, base + OFFSET_SPEED, 2))</span>
+<span class="pc" id="L310">                ByteUtils.getUnsignedShortLE(data, base + OFFSET_SPEED) / 100.0 else 0.0</span>
+
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">            val totalDistRaw = if (ensureRange(data, base + 6, 4))</span>
+<span class="pc" id="L313">                ByteUtils.getUnsignedIntLE(data, base + 6).toDouble() else 0.0</span>
+
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">            val current = if (ensureRange(data, base + 10, 2))</span>
+<span class="pc" id="L316">                ByteUtils.getSignedShortLE(data, base + 10) / 100.0 else 0.0</span>
+
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            val temperature = if (ensureRange(data, base + 12, 2))</span>
+<span class="pc" id="L319">                ByteUtils.getSignedShortLE(data, base + 12) / 100.0 else 0.0</span>
+
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">            val statusByte = if (ensureRange(data, base + 14, 1))</span>
+<span class="pc" id="L322">                ByteUtils.getUnsignedByte(data, base + 14) else 0</span>
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">            val batteryLevel = if (ensureRange(data, base + 15, 1)) {</span>
+<span class="fc" id="L324">                ByteUtils.getUnsignedByte(data, base + 15).coerceIn(0, 100)</span>
+            } else {
+<span class="nc" id="L326">                estimateBatteryPercent(voltage)</span>
+            }
+
+            // === Sanity filters ===
+<span class="pc bpc" id="L330" title="3 of 6 branches missed.">            if (voltage !in 40.0..180.0) return null</span>
+<span class="pc bpc" id="L331" title="3 of 6 branches missed.">            if (speed !in 0.0..80.0) return null</span>
+<span class="pc bpc" id="L332" title="3 of 6 branches missed.">            if (temperature !in -40.0..100.0) return null</span>
+<span class="pc bpc" id="L333" title="3 of 6 branches missed.">            if (current !in -200.0..200.0) return null</span>
+
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">            val isCharging = (statusByte and 0x01) != 0</span>
+
+            // Mode detection (legacy: byte 15 == PEDALS_MODE_MARKER means mode is in byte 14)
+<span class="pc bpc" id="L338" title="2 of 4 branches missed.">            if (ensureRange(data, base + 15, 1) &amp;&amp; ByteUtils.getUnsignedByte(</span>
+<span class="fc" id="L339">                    data,</span>
+<span class="fc" id="L340">                    base + 15</span>
+<span class="fc" id="L341">                ) == PEDALS_MODE_MARKER</span>
+            ) {
+                // pedals mode is in byte 14 — but only when byte 15 is the mode marker
+                // This conflicts with battery %; in legacy KS the battery is sent separately.
+                // We don't alter battery here, but note it for reference.
+            }
+
+<span class="fc" id="L348">            lastKnownTotalDistance = totalDistRaw</span>
+
+<span class="fc" id="L350">            val power = voltage * current</span>
+<span class="fc" id="L351">            val now = System.currentTimeMillis()</span>
+<span class="fc" id="L352">            val rideTimeSeconds = deriveRideTimeSeconds(now)</span>
+
+<span class="fc" id="L354">            return EUCData(</span>
+<span class="fc" id="L355">                speed = speed,</span>
+<span class="fc" id="L356">                voltage = voltage,</span>
+<span class="fc" id="L357">                current = current,</span>
+<span class="fc" id="L358">                temperature = temperature,</span>
+<span class="fc" id="L359">                batteryLevel = batteryLevel,</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">                distance = lastKnownWheelDistance ?: totalDistRaw,</span>
+<span class="fc" id="L361">                power = power,</span>
+<span class="fc" id="L362">                pwm = lastKnownPwm,</span>
+<span class="fc" id="L363">                timestamp = now,</span>
+<span class="fc" id="L364">                rawData = data,</span>
+<span class="fc" id="L365">                manufacturer = manufacturer,</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">                model = lastKnownModel ?: &quot;KingSong&quot;,</span>
+<span class="fc" id="L367">                serialNumber = lastKnownSerialNumber,</span>
+<span class="fc" id="L368">                firmwareVersion = lastKnownFirmwareVersion,</span>
+<span class="fc" id="L369">                isCharging = isCharging,</span>
+<span class="fc" id="L370">                rideTime = rideTimeSeconds,</span>
+<span class="fc" id="L371">                cellVoltages = getCombinedCellVoltages(),</span>
+<span class="fc" id="L372">                motorTemperature = null,</span>
+<span class="fc" id="L373">                totalDistance = lastKnownTotalDistance,</span>
+<span class="fc" id="L374">                topSpeed = lastKnownTopSpeed,</span>
+<span class="fc" id="L375">                fanStatus = lastKnownFanStatus,</span>
+<span class="fc" id="L376">                chargingStatus = lastKnownChargingStatus,</span>
+<span class="fc" id="L377">                temperature2 = lastKnownTemperature2,</span>
+<span class="fc" id="L378">                cpuLoad = lastKnownCpuLoad,</span>
+<span class="fc" id="L379">                speedLimit = lastKnownSpeedLimit,</span>
+<span class="fc" id="L380">                alarm1Speed = lastKnownAlarm1Speed,</span>
+<span class="fc" id="L381">                alarm2Speed = lastKnownAlarm2Speed,</span>
+<span class="fc" id="L382">                alarm3Speed = lastKnownAlarm3Speed,</span>
+<span class="fc" id="L383">                wheelMaxSpeed = lastKnownWheelMaxSpeed,</span>
+<span class="fc" id="L384">                wheelDistance = lastKnownWheelDistance</span>
+            )
+<span class="nc" id="L386">        } catch (_: Exception) {</span>
+<span class="nc" id="L387">            return null</span>
+        }
+    }
+
+    /**
+     * Frame 0xB9: Distance/Time/Fan/ChargingStatus/Temperature2
+     * Legacy: wheelDistance(uint32 LE @2), topSpeed(uint16 LE @8), fanStatus(@12),
+     *         chargingStatus(@13), temperature2(uint16 LE @14)
+     */
+    private fun parseTypeB9(data: ByteArray, base: Int) {
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">        if (ensureRange(data, base + 2, 4)) {</span>
+<span class="fc" id="L398">            lastKnownWheelDistance = ByteUtils.getUnsignedIntLE(data, base + 2).toDouble()</span>
+        }
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">        if (ensureRange(data, base + 8, 2)) {</span>
+<span class="fc" id="L401">            lastKnownTopSpeed = ByteUtils.getUnsignedShortLE(data, base + 8) / 100.0</span>
+        }
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">        if (ensureRange(data, base + 12, 1)) {</span>
+<span class="fc" id="L404">            lastKnownFanStatus = ByteUtils.getUnsignedByte(data, base + 12)</span>
+        }
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">        if (ensureRange(data, base + 13, 1)) {</span>
+<span class="fc" id="L407">            lastKnownChargingStatus = ByteUtils.getUnsignedByte(data, base + 13)</span>
+        }
+<span class="pc bpc" id="L409" title="1 of 2 branches missed.">        if (ensureRange(data, base + 14, 2)) {</span>
+<span class="fc" id="L410">            lastKnownTemperature2 = ByteUtils.getUnsignedShortLE(data, base + 14) / 100.0</span>
+        }
+<span class="fc" id="L412">    }</span>
+
+    /**
+     * Frame 0xBB: Name/Model/Version
+     * Bytes 2..15: null-terminated ASCII name string (e.g. &quot;KS-16X-1234&quot;)
+     * Model is derived from name parts; version from last segment.
+     */
+    private fun parseTypeBB(data: ByteArray, base: Int) {
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">        if (!ensureRange(data, base + 2, 14)) return</span>
+<span class="fc" id="L421">        var end = 0</span>
+<span class="pc bpc" id="L422" title="1 of 2 branches missed.">        for (i in 0 until 14) {</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            if (data[base + 2 + i] == 0.toByte()) break</span>
+<span class="fc" id="L424">            end++</span>
+        }
+<span class="pc bpc" id="L426" title="1 of 2 branches missed.">        if (end == 0) return</span>
+<span class="fc" id="L427">        val name = String(data, base + 2, end).trim()</span>
+<span class="fc" id="L428">        val parts = name.split(&quot;-&quot;)</span>
+<span class="pc bpc" id="L429" title="1 of 2 branches missed.">        if (parts.size &gt;= 2) {</span>
+<span class="fc" id="L430">            lastKnownModel = parts.dropLast(1).joinToString(&quot;-&quot;)</span>
+<span class="fc" id="L431">            try {</span>
+<span class="fc" id="L432">                val versionInt = parts.last().toInt()</span>
+<span class="fc" id="L433">                lastKnownFirmwareVersion = &quot;%.2f&quot;.format(versionInt / 100.0)</span>
+<span class="nc" id="L434">            } catch (_: NumberFormatException) {</span>
+                // version part not numeric, keep model as full name
+<span class="nc" id="L436">                lastKnownModel = name</span>
+            }
+        } else {
+<span class="nc" id="L439">            lastKnownModel = name</span>
+        }
+<span class="fc" id="L441">    }</span>
+
+    /**
+     * Frame 0xB3: Serial Number
+     * Bytes 2..15 (14 bytes) + bytes 17..19 (3 bytes) = 17-char serial
+     */
+    private fun parseTypeB3(data: ByteArray, base: Int) {
+<span class="nc bnc" id="L448" title="All 2 branches missed.">        if (!ensureRange(data, base + 2, 14)) return</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (!ensureRange(data, base + 17, 3)) return</span>
+<span class="nc" id="L450">        val snBytes = ByteArray(SERIAL_NUMBER_LENGTH)</span>
+<span class="nc" id="L451">        System.arraycopy(data, base + 2, snBytes, 0, 14)</span>
+<span class="nc" id="L452">        System.arraycopy(data, base + 17, snBytes, 14, 3)</span>
+<span class="nc" id="L453">        lastKnownSerialNumber = String(snBytes).trimEnd('\u0000').trim()</span>
+<span class="nc" id="L454">    }</span>
+
+    private fun parseTypeF5(data: ByteArray, base: Int) {
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">        if (ensureRange(data, base + 14, 1)) {</span>
+<span class="fc" id="L458">            lastKnownCpuLoad = ByteUtils.getUnsignedByte(data, base + 14)</span>
+        }
+<span class="pc bpc" id="L460" title="1 of 2 branches missed.">        if (!ensureRange(data, base + 15, 1)) return</span>
+<span class="fc" id="L461">        val outputByte = ByteUtils.getUnsignedByte(data, base + 15)</span>
+<span class="fc" id="L462">        lastKnownPwm = outputByte / 100.0</span>
+<span class="fc" id="L463">    }</span>
+
+    /**
+     * Frame 0xF6: Speed limit
+     * uint16 LE @2, in 0.01 km/h units
+     */
+    private fun parseTypeF6(data: ByteArray, base: Int) {
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">        if (!ensureRange(data, base + 2, 2)) return</span>
+<span class="fc" id="L471">        lastKnownSpeedLimit = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0</span>
+<span class="fc" id="L472">    }</span>
+
+    /**
+     * Frame 0xA4 / 0xB5: Alarm speeds and max speed
+     * alarm1 @4, alarm2 @6, alarm3 @8, maxSpeed @10 (all single bytes)
+     */
+    private fun parseTypeA4B5(data: ByteArray, base: Int) {
+<span class="nc bnc" id="L479" title="All 2 branches missed.">        if (ensureRange(data, base + 4, 1)) {</span>
+<span class="nc" id="L480">            lastKnownAlarm1Speed = ByteUtils.getUnsignedByte(data, base + 4)</span>
+        }
+<span class="nc bnc" id="L482" title="All 2 branches missed.">        if (ensureRange(data, base + 6, 1)) {</span>
+<span class="nc" id="L483">            lastKnownAlarm2Speed = ByteUtils.getUnsignedByte(data, base + 6)</span>
+        }
+<span class="nc bnc" id="L485" title="All 2 branches missed.">        if (ensureRange(data, base + 8, 1)) {</span>
+<span class="nc" id="L486">            lastKnownAlarm3Speed = ByteUtils.getUnsignedByte(data, base + 8)</span>
+        }
+<span class="nc bnc" id="L488" title="All 2 branches missed.">        if (ensureRange(data, base + 10, 1)) {</span>
+<span class="nc" id="L489">            lastKnownWheelMaxSpeed = ByteUtils.getUnsignedByte(data, base + 10)</span>
+        }
+<span class="nc" id="L491">    }</span>
+
+    /**
+     * Frame 0xF1/0xF2: Smart BMS data
+     * BMS number = messageType - BMS_FRAME_OFFSET (1 or 2)
+     * Page number @17 determines what data is in the payload:
+     *   BMS_PAGE_SUMMARY: voltage, current, remaining/factory cap, cycles
+     *   BMS_PAGE_TEMPERATURES: temperatures (6 probes + MOS temp)
+     *   BMS_PAGE_CELL_VOLTAGES_START..0x06: cell voltages (7 cells per page)
+     */
+    private fun parseTypeBMS(data: ByteArray, base: Int, messageType: Int) {
+<span class="fc" id="L502">        val bmsIndex = messageType - BMS_FRAME_OFFSET</span>
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">        if (!ensureRange(data, base + OFFSET_PAGE_NUM, 1)) return</span>
+<span class="fc" id="L504">        val pageNum = ByteUtils.getUnsignedByte(data, base + OFFSET_PAGE_NUM)</span>
+
+<span class="fc bfc" id="L506" title="All 4 branches covered.">        when (pageNum) {</span>
+            0x00 -&gt; {
+                // Page 0x00: BMS voltage, current, remaining capacity, factory capacity, cycles
+<span class="pc bpc" id="L509" title="1 of 2 branches missed.">                if (!ensureRange(data, base + 2, 10)) return</span>
+<span class="fc" id="L510">                val bmsVoltage = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0</span>
+<span class="fc" id="L511">                val bmsCurrent = ByteUtils.getSignedShortLE(data, base + 4) / 100.0</span>
+<span class="fc" id="L512">                val remainingCapacity = ByteUtils.getUnsignedShortLE(data, base + 6)</span>
+<span class="fc" id="L513">                val factoryCapacity = ByteUtils.getUnsignedShortLE(data, base + 8)</span>
+<span class="fc" id="L514">                val cycles = ByteUtils.getUnsignedShortLE(data, base + 10)</span>
+<span class="fc" id="L515">                bmsSummary[bmsIndex] = BMSSummary(</span>
+<span class="fc" id="L516">                    voltage = bmsVoltage,</span>
+<span class="fc" id="L517">                    current = bmsCurrent,</span>
+<span class="fc" id="L518">                    remainingCapacity = remainingCapacity,</span>
+<span class="fc" id="L519">                    factoryCapacity = factoryCapacity,</span>
+<span class="fc" id="L520">                    cycles = cycles</span>
+                )
+            }
+
+            0x01 -&gt; {
+                // Page 0x01: BMS temperatures (6 probes + MOS temp)
+<span class="fc" id="L526">                val temps = mutableListOf&lt;Double&gt;()</span>
+<span class="fc bfc" id="L527" title="All 2 branches covered.">                for (i in 0 until 7) {</span>
+<span class="fc" id="L528">                    val offset = base + 2 + i * 2</span>
+<span class="pc bpc" id="L529" title="1 of 2 branches missed.">                    if (ensureRange(data, offset, 2)) {</span>
+<span class="fc" id="L530">                        val raw = ByteUtils.getSignedShortLE(data, offset)</span>
+                        // Temperature is in 0.1°C units
+<span class="fc" id="L532">                        temps.add(raw / 10.0)</span>
+                    }
+                }
+<span class="pc bpc" id="L535" title="2 of 4 branches missed.">                if (temps.isNotEmpty()) {</span>
+<span class="fc" id="L536">                    bmsTemperatures[bmsIndex] = temps</span>
+                }
+            }
+
+            0x02, 0x03, 0x04, 0x05, 0x06 -&gt; {
+<span class="fc" id="L541">                val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELLS) }</span>
+<span class="fc" id="L542">                val startCell = (pageNum - 0x02) * 7</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">                for (i in 0 until 7) {</span>
+<span class="fc" id="L544">                    val offset = base + 2 + i * 2</span>
+<span class="pc bpc" id="L545" title="1 of 2 branches missed.">                    if (ensureRange(data, offset, 2)) {</span>
+<span class="fc" id="L546">                        val cellIndex = startCell + i</span>
+<span class="fc bfc" id="L547" title="All 2 branches covered.">                        if (cellIndex &lt; MAX_BMS_CELLS) {</span>
+<span class="fc" id="L548">                            cells[cellIndex] = ByteUtils.getUnsignedShortLE(data, offset) / 1000.0</span>
+                        }
+                    }
+                }
+            }
+        }
+<span class="fc" id="L554">    }</span>
+
+    private fun getCombinedCellVoltages(): List&lt;Double&gt;? {
+<span class="fc bfc" id="L557" title="All 2 branches covered.">        if (bmsCellPages.isEmpty()) return null</span>
+<span class="fc" id="L558">        val combined = bmsCellPages.values</span>
+<span class="fc" id="L559">            .flatMap { it.asList() }</span>
+<span class="fc bfc" id="L560" title="All 2 branches covered.">            .filter { it &gt; 0.0 }</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">        return combined.ifEmpty { null }</span>
+    }
+
+    /**
+     * Returns the current BMS data snapshots for all detected battery packs.
+     * Each entry represents one BMS unit (typically 1 or 2 for dual-battery wheels).
+     * Data is accumulated from frame types 0xF1/0xF2 pages 0x00 (summary), 0x01 (temperatures),
+     * and 0x02-0x06 (cell voltages).
+     */
+    fun getBMSData(): List&lt;BMSData&gt; {
+<span class="nc" id="L571">        val allIndices =</span>
+<span class="nc" id="L572">            (bmsSummary.keys + bmsTemperatures.keys + bmsCellPages.keys).distinct().sorted()</span>
+<span class="nc" id="L573">        return allIndices.map { index -&gt;</span>
+<span class="nc" id="L574">            val summary = bmsSummary[index]</span>
+<span class="nc" id="L575">            val temps = bmsTemperatures[index]</span>
+<span class="nc bnc" id="L576" title="All 8 branches missed.">            val cells = bmsCellPages[index]?.asList()?.filter { it &gt; 0.0 }?.ifEmpty { null }</span>
+<span class="nc" id="L577">            BMSData(</span>
+<span class="nc" id="L578">                bmsIndex = index,</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">                voltage = summary?.voltage,</span>
+<span class="nc bnc" id="L580" title="All 2 branches missed.">                current = summary?.current,</span>
+<span class="nc bnc" id="L581" title="All 2 branches missed.">                remainingCapacity = summary?.remainingCapacity,</span>
+<span class="nc bnc" id="L582" title="All 2 branches missed.">                factoryCapacity = summary?.factoryCapacity,</span>
+<span class="nc bnc" id="L583" title="All 2 branches missed.">                cycles = summary?.cycles,</span>
+<span class="nc" id="L584">                temperatures = temps,</span>
+<span class="nc" id="L585">                cellVoltages = cells</span>
+<span class="nc" id="L586">            )</span>
+        }
+    }
+
+    private fun deriveRideTimeSeconds(nowMs: Long): Long {
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        val start = sessionStartTimestampMs ?: nowMs.also { sessionStartTimestampMs = it }</span>
+<span class="fc" id="L592">        return ((nowMs - start) / 1000L).coerceAtLeast(0L)</span>
+    }
+
+    private fun estimateBatteryPercent(voltage: Double): Int {
+<span class="nc" id="L596">        return (((voltage - 50.0) / (100.0 - 50.0)) * 100.0).toInt().coerceIn(0, 100)</span>
+    }
+
+    private fun processFrame(frame: ByteArray) {
+<span class="fc" id="L600">        val parsed = parseFrame(frame)</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        parsed?.let { _channel.trySend(it) }</span>
+
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (frame.size &gt;= MIN_LENGTH) {</span>
+<span class="fc" id="L604">            val headerIdx = run {</span>
+<span class="pc bpc" id="L605" title="3 of 4 branches missed.">                for (i in 0..(frame.size - 2)) {</span>
+<span class="pc bpc" id="L606" title="1 of 4 branches missed.">                    if (frame[i] == header1[0] &amp;&amp; frame[i + 1] == header1[1]) return@run i</span>
+<span class="pc bpc" id="L607" title="2 of 4 branches missed.">                    if (frame[i] == header2[0] &amp;&amp; frame[i + 1] == header2[1]) return@run i</span>
+                }
+<span class="nc" id="L609">                -1</span>
+            }
+<span class="pc bpc" id="L611" title="2 of 4 branches missed.">            if (headerIdx &gt;= 0 &amp;&amp; frame.size - headerIdx &gt;= MIN_LENGTH) {</span>
+<span class="fc" id="L612">                val messageType = ByteUtils.getUnsignedByte(frame, headerIdx + OFFSET_MESSAGE_TYPE)</span>
+<span class="pc bpc" id="L613" title="1 of 2 branches missed.">                if (messageType == FRAME_TYPE_A4) {</span>
+<span class="nc" id="L614">                    val reply = frame.copyOfRange(headerIdx, headerIdx + MIN_LENGTH)</span>
+<span class="nc" id="L615">                    reply[16] = 0x98.toByte()</span>
+<span class="nc" id="L616">                    reply[2] = 0x01.toByte()</span>
+<span class="nc" id="L617">                    _writeFlow.tryEmit(reply)</span>
+                }
+            }
+        }
+<span class="fc" id="L621">    }</span>
+
+    override fun close() {
+<span class="fc" id="L624">        scope.cancel()</span>
+<span class="fc" id="L625">        lastKnownPwm = null</span>
+<span class="fc" id="L626">        _channel.close()</span>
+<span class="fc" id="L627">    }</span>
+
+    override fun decode(data: ByteArray): EUCData? {
+<span class="pc bpc" id="L630" title="2 of 4 branches missed.">        if (data.isEmpty()) return null</span>
+<span class="fc" id="L631">        _rawFrameFlow.tryEmit(data.clone())</span>
+
+        // Let the reassembler handle the incoming bytes asynchronously
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">        scope.launch {</span>
+<span class="fc" id="L635">            frameReassembler.processIncomingBytes(data)</span>
+<span class="fc" id="L636">        }</span>
+        // Return null because data is emitted asynchronously via the dataFlow
+<span class="fc" id="L638">        return null</span>
+    }
+
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+<span class="nc bnc" id="L642" title="All 14 branches missed.">        return when (commandType) {</span>
+<span class="nc" id="L643">            CommandType.LIGHT_ON -&gt; buildLegacyCommand(</span>
+<span class="nc" id="L644">                command = 0x73,</span>
+<span class="nc" id="L645">                payload2 = 0x13,</span>
+<span class="nc" id="L646">                payload3 = 0x01</span>
+            )
+
+<span class="nc" id="L649">            CommandType.LIGHT_OFF -&gt; buildLegacyCommand(</span>
+<span class="nc" id="L650">                command = 0x73,</span>
+<span class="nc" id="L651">                payload2 = 0x12,</span>
+<span class="nc" id="L652">                payload3 = 0x01</span>
+            )
+
+            CommandType.SET_LIGHT_MODE -&gt; {
+<span class="nc bnc" id="L656" title="All 4 branches missed.">                val mode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()</span>
+<span class="nc" id="L657">                buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)</span>
+            }
+
+<span class="nc" id="L660">            CommandType.BEEP -&gt; buildLegacyCommand(command = 0x88)</span>
+<span class="nc" id="L661">            CommandType.POWER_OFF -&gt; buildLegacyCommand(command = 0x40)</span>
+            CommandType.SET_PEDALS_MODE -&gt; {
+<span class="nc bnc" id="L663" title="All 4 branches missed.">                val pedalsMode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()</span>
+<span class="nc" id="L664">                buildLegacyCommand(</span>
+<span class="nc" id="L665">                    command = 0x87,</span>
+<span class="nc" id="L666">                    payload2 = pedalsMode,</span>
+<span class="nc" id="L667">                    payload3 = 0xE0,</span>
+<span class="nc" id="L668">                    payload17 = 0x15</span>
+                )
+            }
+
+            CommandType.SET_LED_MODE -&gt; {
+<span class="nc bnc" id="L673" title="All 4 branches missed.">                val ledMode = (value as? Int)?.coerceIn(0, 0xFF) ?: return byteArrayOf()</span>
+<span class="nc" id="L674">                buildLegacyCommand(command = 0x6C, payload2 = ledMode)</span>
+            }
+
+            CommandType.LIGHT_BRIGHTNESS -&gt; {
+<span class="nc bnc" id="L678" title="All 4 branches missed.">                val intVal = (value as? Int) ?: return byteArrayOf()</span>
+<span class="nc" id="L679">                val mode = when {</span>
+<span class="nc bnc" id="L680" title="All 2 branches missed.">                    intVal &lt;= 0 -&gt; 0</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">                    intVal &gt;= 100 -&gt; 2</span>
+<span class="nc" id="L682">                    else -&gt; 1</span>
+                }
+<span class="nc" id="L684">                buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)</span>
+            }
+
+            CommandType.SET_SPEED_LIMIT -&gt; {
+                // KingSong uses a combined command (0x85) that sets alarms + max speed together.
+                // SET_SPEED_LIMIT updates the max speed while preserving current alarm values.
+<span class="nc bnc" id="L690" title="All 4 branches missed.">                val maxSpeed = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()</span>
+<span class="nc" id="L691">                buildAlarmSpeedCommand(</span>
+<span class="nc bnc" id="L692" title="All 2 branches missed.">                    alarm1 = lastKnownAlarm1Speed ?: 0,</span>
+<span class="nc bnc" id="L693" title="All 2 branches missed.">                    alarm2 = lastKnownAlarm2Speed ?: 0,</span>
+<span class="nc bnc" id="L694" title="All 2 branches missed.">                    alarm3 = lastKnownAlarm3Speed ?: 0,</span>
+<span class="nc" id="L695">                    maxSpeed = maxSpeed</span>
+                )
+            }
+
+            CommandType.SET_ALARM_SPEED -&gt; {
+                // value is expected to be a Map or IntArray [alarm1, alarm2, alarm3]
+<span class="nc" id="L701">                val speeds = when (value) {</span>
+<span class="nc bnc" id="L702" title="All 2 branches missed.">                    is IntArray -&gt; value</span>
+<span class="nc bnc" id="L703" title="All 2 branches missed.">                    is List&lt;*&gt; -&gt; (value.filterIsInstance&lt;Int&gt;()).toIntArray()</span>
+<span class="nc" id="L704">                    else -&gt; return byteArrayOf()</span>
+                }
+<span class="nc bnc" id="L706" title="All 2 branches missed.">                if (speeds.size &lt; 3) return byteArrayOf()</span>
+<span class="nc" id="L707">                buildAlarmSpeedCommand(</span>
+<span class="nc" id="L708">                    alarm1 = speeds[0].coerceIn(0, 100),</span>
+<span class="nc" id="L709">                    alarm2 = speeds[1].coerceIn(0, 100),</span>
+<span class="nc" id="L710">                    alarm3 = speeds[2].coerceIn(0, 100),</span>
+<span class="nc bnc" id="L711" title="All 2 branches missed.">                    maxSpeed = lastKnownWheelMaxSpeed ?: 0</span>
+                )
+            }
+
+<span class="nc" id="L715">            CommandType.CALIBRATE -&gt; buildLegacyCommand(command = 0x89)</span>
+<span class="nc" id="L716">            CommandType.REQUEST_SERIAL -&gt; buildLegacyCommand(command = 0x63)</span>
+<span class="nc" id="L717">            CommandType.REQUEST_FIRMWARE -&gt; buildLegacyCommand(command = 0x9B)</span>
+
+            else -&gt; byteArrayOf()
+        }
+    }
+
+    private fun buildAlarmSpeedCommand(
+        alarm1: Int,
+        alarm2: Int,
+        alarm3: Int,
+        maxSpeed: Int
+    ): ByteArray {
+<span class="nc" id="L729">        val data = byteArrayOf(</span>
+<span class="nc" id="L730">            0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,</span>
+<span class="nc" id="L731">            0x00, 0x00, 0x00, 0x00,</span>
+<span class="nc" id="L732">            0x00, 0x00, 0x00, 0x00,</span>
+<span class="nc" id="L733">            0x00, 0x00, 0x00, 0x00,</span>
+<span class="nc" id="L734">            0x85.toByte(), 0x14, 0x5A, 0x5A</span>
+        )
+<span class="nc" id="L736">        data[2] = alarm1.toByte()</span>
+<span class="nc" id="L737">        data[4] = alarm2.toByte()</span>
+<span class="nc" id="L738">        data[6] = alarm3.toByte()</span>
+<span class="nc" id="L739">        data[8] = maxSpeed.toByte()</span>
+<span class="nc" id="L740">        return data</span>
+    }
+
+<span class="fc" id="L743">    private fun buildLegacyCommand(</span>
+        command: Int,
+<span class="fc" id="L745">        payload2: Int = 0x00,</span>
+<span class="fc" id="L746">        payload3: Int = 0x00,</span>
+<span class="fc" id="L747">        payload17: Int = 0x14</span>
+    ): ByteArray {
+<span class="fc" id="L749">        val data = byteArrayOf(</span>
+<span class="fc" id="L750">            0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,</span>
+<span class="fc" id="L751">            0x00, 0x00, 0x00, 0x00,</span>
+<span class="fc" id="L752">            0x00, 0x00, 0x00, 0x00,</span>
+<span class="fc" id="L753">            0x00, 0x00, 0x00, 0x00,</span>
+<span class="fc" id="L754">            0x00, 0x14, 0x5A, 0x5A</span>
+        )
+<span class="fc" id="L756">        data[2] = payload2.toByte()</span>
+<span class="fc" id="L757">        data[3] = payload3.toByte()</span>
+<span class="fc" id="L758">        data[16] = command.toByte()</span>
+<span class="fc" id="L759">        data[17] = payload17.toByte()</span>
+<span class="fc" id="L760">        return data</span>
+    }
+
+    override fun getPollingPlan(): ProtocolPollingPlan {
+<span class="fc" id="L764">        return ProtocolPollingPlan(</span>
+<span class="fc" id="L765">            enabled = true,</span>
+<span class="fc" id="L766">            startupQueries = listOf(</span>
+<span class="fc" id="L767">                ProtocolQuerySpec(</span>
+<span class="fc" id="L768">                    &quot;ks.request-name-version&quot;,</span>
+<span class="fc" id="L769">                    CommandType.REQUEST_FIRMWARE,</span>
+<span class="fc" id="L770">                    maxRetries = 3</span>
+                ),
+<span class="fc" id="L772">                ProtocolQuerySpec(</span>
+<span class="fc" id="L773">                    &quot;ks.request-serial&quot;,</span>
+<span class="fc" id="L774">                    CommandType.REQUEST_SERIAL,</span>
+<span class="fc" id="L775">                    initialDelayMs = 200L,</span>
+<span class="fc" id="L776">                    maxRetries = 3</span>
+                ),
+<span class="fc" id="L778">                ProtocolQuerySpec(</span>
+<span class="fc" id="L779">                    &quot;ks.request-alarms&quot;,</span>
+<span class="fc" id="L780">                    CommandType.CUSTOM,</span>
+<span class="fc" id="L781">                    buildLegacyCommand(command = 0x98),</span>
+<span class="fc" id="L782">                    initialDelayMs = 400L,</span>
+<span class="fc" id="L783">                    maxRetries = 2</span>
+                )
+            ),
+<span class="fc" id="L786">            periodicQueries = emptyList()</span>
+        )
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+<span class="nc bnc" id="L791" title="All 2 branches missed.">        if (data.size &lt; MIN_LENGTH) return false</span>
+<span class="nc" id="L792">        val headerIdx = run {</span>
+<span class="nc bnc" id="L793" title="All 4 branches missed.">            for (i in 0..(data.size - 2)) {</span>
+<span class="nc bnc" id="L794" title="All 4 branches missed.">                if (data[i] == header1[0] &amp;&amp; data[i + 1] == header1[1]) return@run i</span>
+<span class="nc bnc" id="L795" title="All 4 branches missed.">                if (data[i] == header2[0] &amp;&amp; data[i + 1] == header2[1]) return@run i</span>
+            }
+<span class="nc" id="L797">            -1</span>
+        }
+<span class="nc bnc" id="L799" title="All 4 branches missed.">        if (headerIdx &lt; 0 || data.size - headerIdx &lt; MIN_LENGTH) return false</span>
+<span class="nc" id="L800">        val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)</span>
+<span class="nc bnc" id="L801" title="All 4 branches missed.">        return when (query.commandType) {</span>
+<span class="nc bnc" id="L802" title="All 2 branches missed.">            CommandType.REQUEST_FIRMWARE -&gt; messageType == FRAME_TYPE_BB</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">            CommandType.REQUEST_SERIAL -&gt; messageType == FRAME_TYPE_B3</span>
+<span class="nc bnc" id="L804" title="All 4 branches missed.">            CommandType.CUSTOM -&gt; messageType == FRAME_TYPE_A4 || messageType == FRAME_TYPE_B5</span>
+<span class="nc" id="L805">            else -&gt; false</span>
+        }
+    }
+
+    override fun isDeviceReady(data: EUCData): Boolean {
+<span class="nc bnc" id="L810" title="All 2 branches missed.">        val tempOk = data.temperature &lt; 75.0</span>
+<span class="nc bnc" id="L811" title="All 2 branches missed.">        val voltageOk = data.voltage &gt; 40.0</span>
+<span class="nc bnc" id="L812" title="All 2 branches missed.">        val batteryOk = data.batteryLevel &gt;= 5</span>
+<span class="nc bnc" id="L813" title="All 6 branches missed.">        return voltageOk &amp;&amp; tempOk &amp;&amp; batteryOk</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

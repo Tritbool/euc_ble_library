@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLEException.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.exceptions</a> &gt; <span class="el_source">BLEException.kt</span></div><h1>BLEException.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.exceptions
+
+/**
+ * Custom exception for BLE operations.
+ *
+ * Provides detailed error information including error types for specific
+ * BLE failure scenarios encountered during EUC communication.
+ */
+class BLEException : Exception {
+<span class="nc" id="L10">    constructor(message: String) : super(message)</span>
+<span class="nc" id="L11">    constructor(message: String, cause: Throwable) : super(message, cause)</span>
+<span class="nc" id="L12">    constructor(cause: Throwable) : super(cause)</span>
+    
+    /**
+     * Error types for categorizing BLE exceptions.
+     */
+    enum class ErrorType {
+<span class="nc" id="L18">        BLUETOOTH_DISABLED,</span>
+<span class="nc" id="L19">        BLUETOOTH_NOT_SUPPORTED,</span>
+<span class="nc" id="L20">        SCAN_FAILED,</span>
+<span class="nc" id="L21">        CONNECTION_FAILED,</span>
+<span class="nc" id="L22">        CONNECTION_TIMEOUT,</span>
+<span class="nc" id="L23">        SERVICE_DISCOVERY_FAILED,</span>
+<span class="nc" id="L24">        CHARACTERISTIC_NOT_FOUND,</span>
+<span class="nc" id="L25">        DATA_DECODING_FAILED,</span>
+<span class="nc" id="L26">        COMMAND_FAILED,</span>
+<span class="nc" id="L27">        MTU_NEGOTIATION_FAILED,</span>
+<span class="nc" id="L28">        DEVICE_NOT_SUPPORTED,</span>
+<span class="nc" id="L29">        UNKNOWN</span>
+    }
+
+<span class="nc" id="L32">    private var errorType: ErrorType=ErrorType.UNKNOWN</span>
+    
+<span class="nc" id="L34">    constructor(message: String, errorType: ErrorType) : super(message) {</span>
+<span class="nc" id="L35">        this.errorType = errorType</span>
+<span class="nc" id="L36">    }</span>
+    
+<span class="nc" id="L38">    constructor(message: String, cause: Throwable, errorType: ErrorType) : super(message, cause) {</span>
+<span class="nc" id="L39">        this.errorType = errorType</span>
+<span class="nc" id="L40">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

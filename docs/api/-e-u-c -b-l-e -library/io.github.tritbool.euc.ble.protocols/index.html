@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html class="no-js" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>io.github.tritbool.euc.ble.protocols</title>
+    <link href="../../images/logo-icon.svg" rel="icon" type="image/svg">
+        <script>var pathToRoot = "../../";</script>
+    <script>document.documentElement.classList.replace("no-js", "js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+      if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      } else {
+        const savedDarkMode = JSON.parse(storage)
+        if (savedDarkMode === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      }
+    </script>
+<script type="text/javascript" src="../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../styles/style.css" rel="Stylesheet">
+<link href="../../styles/main.css" rel="Stylesheet">
+<link href="../../styles/prism.css" rel="Stylesheet">
+<link href="../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../scripts/safe-local-storage_blocking.js"></script>
+<script type="text/javascript" src="../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../ui-kit/ui-kit.min.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <header class="navigation theme-dark" id="navigation-wrapper" role="banner">
+            <a class="library-name--link" href="../../index.html" tabindex="1">
+                    EUC BLE Library
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true"
+                        data-filter=":euc-ble-core/release">release</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
+                    <div class="dropdown--header"><span>Target filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close target filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":euc-ble-core/release"
+                                       data-filter=":euc-ble-core/release"/>
+                                <span class="checkbox--icon"></span>
+                                release
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </ul>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </header>
+    <div id="container">
+        <nav id="leftColumn" class="sidebar" data-item-type="SECTION" data-item-config='{"defaultSize": 280, "minSize": 200, "maxSize": 400}'>
+            <a class="toc--skip-link" href="#main">Skip to content</a>
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox" aria-label="Table of contents">
+                    <div class="dropdown--header">
+                            <span>
+                                    EUC BLE Library
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </nav>
+        <div id="resizer" class="resizer" data-item-type="BAR"></div>
+        <div id="main" data-item-type="SECTION" role="main">
+<div class="main-content" data-page-type="package" id="content" pageIds="EUC BLE Library::io.github.tritbool.euc.ble.protocols////PointingToDeclaration//1134321133">
+  <div class="breadcrumbs"><a href="../../index.html">EUC BLE Library</a><span class="delimiter">/</span><span class="current">io.github.tritbool.euc.ble.protocols</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span><span>Package-level</span></span> <span><span>declarations</span></span></h1>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="TYPE">Types</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="TYPE">
+        <h2 class="tableheader">Types</h2>
+        <div class="table"><a data-name="1202828051%2FClasslikes%2F1134321133" anchor-label="CommandSupport" id="1202828051%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-command-support/index.html"><span>Command</span><wbr></wbr><span><span>Support</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1202828051%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-command-support/index.html">CommandSupport</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-command-support/index.html">CommandSupport</a><span class="token operator">&gt; </span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-125702138%2FClasslikes%2F1134321133" anchor-label="CommandType" id="-125702138%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-command-type/index.html"><span>Command</span><wbr></wbr><span><span>Type</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-125702138%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-command-type/index.html">CommandType</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-command-type/index.html">CommandType</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">Standard command types for EUCs</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-833299840%2FClasslikes%2F1134321133" anchor-label="EUCProtocol" id="-833299840%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-e-u-c-protocol/index.html"><span><span>EUCProtocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-833299840%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-e-u-c-protocol/index.html">EUCProtocol</a> : <a href="https://developer.android.com/reference/kotlin/java/io/Closeable.html">Closeable</a></div><div class="brief "><p class="paragraph">Base interface for EUC manufacturer protocols</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="330457044%2FClasslikes%2F1134321133" anchor-label="ExtremeBullProtocol" id="330457044%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-extreme-bull-protocol/index.html"><span>Extreme</span><wbr></wbr><span>Bull</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="330457044%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-extreme-bull-protocol/index.html">ExtremeBullProtocol</a> : <a href="-gotway-protocol/index.html">GotwayProtocol</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="545454684%2FClasslikes%2F1134321133" anchor-label="GotwayProtocol" id="545454684%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-gotway-protocol/index.html"><span>Gotway</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="545454684%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">class </span><a href="-gotway-protocol/index.html">GotwayProtocol</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">scope<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines/CoroutineScope///PointingToDeclaration/">CoroutineScope</span><span class="token operator"> = </span>CoroutineScope(Dispatchers.IO)</span></span><span class="token punctuation">)</span> : <a href="-e-u-c-protocol/index.html">EUCProtocol</a></div><div class="brief "><p class="paragraph">Gotway/Begode reverse-engineered protocol (updated)</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1895368316%2FClasslikes%2F1134321133" anchor-label="InMotionProtocol" id="-1895368316%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-in-motion-protocol/index.html"><span>In</span><wbr></wbr><span>Motion</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1895368316%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-in-motion-protocol/index.html">InMotionProtocol</a> : <a href="-e-u-c-protocol/index.html">EUCProtocol</a></div><div class="brief "><p class="paragraph">Single InMotion protocol entrypoint with auto-detected internal dialects (legacy V1 and V2).</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1717106611%2FClasslikes%2F1134321133" anchor-label="KingsongProtocol" id="1717106611%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-kingsong-protocol/index.html"><span>Kingsong</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1717106611%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-kingsong-protocol/index.html">KingsongProtocol</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">scope<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines/CoroutineScope///PointingToDeclaration/">CoroutineScope</span><span class="token operator"> = </span>CoroutineScope(Dispatchers.IO)</span></span><span class="token punctuation">)</span> : <a href="-e-u-c-protocol/index.html">EUCProtocol</a></div><div class="brief "><p class="paragraph">Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-519457543%2FClasslikes%2F1134321133" anchor-label="LeaperkimProtocol" id="-519457543%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-leaperkim-protocol/index.html"><span>Leaperkim</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-519457543%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">class </span><a href="-leaperkim-protocol/index.html">LeaperkimProtocol</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">scope<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines/CoroutineScope///PointingToDeclaration/">CoroutineScope</span><span class="token operator"> = </span>CoroutineScope(Dispatchers.IO)</span></span><span class="token punctuation">)</span> : <a href="-e-u-c-protocol/index.html">EUCProtocol</a></div><div class="brief "><p class="paragraph">Leaperkim/Veteran protocol implementation based on WheelLog raw frame behavior.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1224302690%2FClasslikes%2F1134321133" anchor-label="NinebotProtocol" id="-1224302690%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-ninebot-protocol/index.html"><span>Ninebot</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1224302690%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-ninebot-protocol/index.html">NinebotProtocol</a> : <a href="-e-u-c-protocol/index.html">EUCProtocol</a></div><div class="brief "><p class="paragraph">Ninebot protocol MVP parser for common WheelLog-style telemetry payloads.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1239858394%2FClasslikes%2F1134321133" anchor-label="NinebotZProtocol" id="1239858394%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-ninebot-z-protocol/index.html"><span>Ninebot</span><wbr></wbr><span><span>ZProtocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1239858394%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-ninebot-z-protocol/index.html">NinebotZProtocol</a> : <a href="-e-u-c-protocol/index.html">EUCProtocol</a></div><div class="brief "><p class="paragraph">Dedicated Ninebot Z-series protocol split with stateful handshake/polling queries. Decoding is delegated to NinebotProtocol while command/query orchestration is Z-specific.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1030968764%2FClasslikes%2F1134321133" anchor-label="NosfetProtocol" id="1030968764%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-nosfet-protocol/index.html"><span>Nosfet</span><wbr></wbr><span><span>Protocol</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1030968764%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-nosfet-protocol/index.html">NosfetProtocol</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">scope<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines/CoroutineScope///PointingToDeclaration/">CoroutineScope</span><span class="token operator"> = </span>CoroutineScope(Dispatchers.IO)</span></span><span class="token punctuation">)</span> : <a href="-leaperkim-protocol/index.html">LeaperkimProtocol</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="940403255%2FClasslikes%2F1134321133" anchor-label="ProtocolPollingPlan" id="940403255%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-protocol-polling-plan/index.html"><span>Protocol</span><wbr></wbr><span>Polling</span><wbr></wbr><span><span>Plan</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="940403255%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-protocol-polling-plan/index.html">ProtocolPollingPlan</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>enabled<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>startupQueries<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="-protocol-query-spec/index.html">ProtocolQuerySpec</a><span class="token operator">&gt;</span><span class="token operator"> = </span>emptyList()<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>periodicQueries<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="-protocol-query-spec/index.html">ProtocolQuerySpec</a><span class="token operator">&gt;</span><span class="token operator"> = </span>emptyList()</span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-155150464%2FClasslikes%2F1134321133" anchor-label="ProtocolQuerySpec" id="-155150464%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-protocol-query-spec/index.html"><span>Protocol</span><wbr></wbr><span>Query</span><wbr></wbr><span><span>Spec</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-155150464%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-protocol-query-spec/index.html">ProtocolQuerySpec</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>id<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>commandType<span class="token operator">: </span><a href="-command-type/index.html">CommandType</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>value<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator"> = </span>Unit<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>initialDelayMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator"> = </span><span class="token constant">0</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>intervalMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator"> = </span><span class="token constant">0</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>responseTimeoutMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator"> = </span><span class="token constant">1500</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>maxRetries<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span><span class="token constant">2</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>retryBackoffMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator"> = </span><span class="token constant">500</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2026 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

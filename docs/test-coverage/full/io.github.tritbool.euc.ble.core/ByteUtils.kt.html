@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ByteUtils.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.core</a> &gt; <span class="el_source">ByteUtils.kt</span></div><h1>ByteUtils.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.core
+
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.experimental.xor
+
+/**
+ * Utility class for byte operations commonly used in BLE protocols
+ */
+object ByteUtils {
+    
+    /**
+     * Convert bytes to hex string
+     */
+<span class="fc" id="L15">    fun bytesToHex(bytes: ByteArray, separator: String = &quot; &quot;): String {</span>
+<span class="fc" id="L16">        return bytes.joinToString(separator) { &quot;%02X&quot;.format(it) }</span>
+    }
+    
+    /**
+     * Convert hex string to byte array
+     */
+    fun hexToBytes(hexString: String): ByteArray {
+<span class="fc" id="L23">        val cleanHexString=hexString.filterNot { it.isWhitespace() }</span>
+<span class="fc" id="L24">        val length = cleanHexString.length</span>
+<span class="fc" id="L25">        val byteArray = ByteArray(length / 2)</span>
+        
+<span class="pc bpc" id="L27" title="4 of 10 branches missed.">        for (i in 0 until length step 2) {</span>
+<span class="fc" id="L28">            val byteString = cleanHexString.substring(i, i + 2)</span>
+<span class="fc" id="L29">            byteArray[i / 2] = byteString.toInt(16).toByte()</span>
+        }
+        
+<span class="fc" id="L32">        return byteArray</span>
+    }
+    
+    /**
+     * Get unsigned byte value (0-255)
+     */
+    fun getUnsignedByte(data: ByteArray, offset: Int): Int {
+<span class="fc" id="L39">        return data[offset].toInt() and 0xFF</span>
+    }
+    
+    /**
+     * Get unsigned short (2 bytes) in little-endian format
+     */
+    fun getUnsignedShortLE(data: ByteArray, offset: Int): Int {
+<span class="fc" id="L46">        return (getUnsignedByte(data, offset) or (getUnsignedByte(data, offset + 1) shl 8))</span>
+    }
+    
+    /**
+     * Get unsigned short (2 bytes) in big-endian format
+     */
+    fun getUnsignedShortBE(data: ByteArray, offset: Int): Int {
+<span class="fc" id="L53">        return (getUnsignedByte(data, offset) shl 8) or getUnsignedByte(data, offset + 1)</span>
+    }
+    
+    /**
+     * Get signed short (2 bytes) in little-endian format
+     */
+    fun getSignedShortLE(data: ByteArray, offset: Int): Short {
+<span class="fc" id="L60">        return ByteBuffer.wrap(data, offset, 2).order(ByteOrder.LITTLE_ENDIAN).short</span>
+    }
+    
+    /**
+     * Get signed short (2 bytes) in big-endian format
+     */
+    fun getSignedShortBE(data: ByteArray, offset: Int): Short {
+<span class="fc" id="L67">        return ByteBuffer.wrap(data, offset, 2).order(ByteOrder.BIG_ENDIAN).short</span>
+    }
+    
+    /**
+     * Get unsigned int (4 bytes) in little-endian format
+     */
+    fun getUnsignedIntLE(data: ByteArray, offset: Int): Long {
+<span class="fc" id="L74">        return (getUnsignedShortLE(data, offset).toLong() or </span>
+<span class="fc" id="L75">                (getUnsignedShortLE(data, offset + 2).toLong() shl 16))</span>
+    }
+    
+    /**
+     * Get unsigned int (4 bytes) in big-endian format
+     */
+    fun getUnsignedIntBE(data: ByteArray, offset: Int): Long {
+<span class="fc" id="L82">        return (getUnsignedShortBE(data, offset).toLong() shl 16) or </span>
+<span class="fc" id="L83">                getUnsignedShortBE(data, offset + 2).toLong()</span>
+    }
+    
+    /**
+     * Get signed int (4 bytes) in little-endian format
+     */
+    fun getSignedIntLE(data: ByteArray, offset: Int): Int {
+<span class="fc" id="L90">        return ByteBuffer.wrap(data, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int</span>
+    }
+    
+    /**
+     * Get signed int (4 bytes) in big-endian format
+     */
+    fun getSignedIntBE(data: ByteArray, offset: Int): Int {
+<span class="fc" id="L97">        return ByteBuffer.wrap(data, offset, 4).order(ByteOrder.BIG_ENDIAN).int</span>
+    }
+    
+    /**
+     * Convert short to byte array in little-endian format
+     */
+    fun shortToBytesLE(value: Short): ByteArray {
+<span class="fc" id="L104">        return ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(value).array()</span>
+    }
+    
+    /**
+     * Convert short to byte array in big-endian format
+     */
+    fun shortToBytesBE(value: Short): ByteArray {
+<span class="fc" id="L111">        return ByteBuffer.allocate(2).order(ByteOrder.BIG_ENDIAN).putShort(value).array()</span>
+    }
+    
+    /**
+     * Convert int to byte array in little-endian format
+     */
+    fun intToBytesLE(value: Int): ByteArray {
+<span class="fc" id="L118">        return ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()</span>
+    }
+    
+    /**
+     * Convert int to byte array in big-endian format
+     */
+    fun intToBytesBE(value: Int): ByteArray {
+<span class="fc" id="L125">        return ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(value).array()</span>
+    }
+    
+    /**
+     * Calculate checksum for byte array
+     */
+    fun calculateChecksum(data: ByteArray, offset: Int, length: Int): Byte {
+<span class="fc" id="L132">        var checksum: Byte = 0</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (i in offset until offset + length) {</span>
+<span class="fc" id="L134">            checksum = (checksum + data[i]).toByte()</span>
+        }
+<span class="fc" id="L136">        return checksum</span>
+    }
+    
+    /**
+     * Calculate XOR checksum for byte array
+     */
+    fun calculateXorChecksum(data: ByteArray, offset: Int, length: Int): Byte {
+<span class="fc" id="L143">        var checksum: Byte = 0</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        for (i in offset until offset + length) {</span>
+<span class="fc" id="L145">            checksum = (checksum xor data[i]).toByte()</span>
+        }
+<span class="fc" id="L147">        return checksum</span>
+    }
+    
+    /**
+     * Check if byte array starts with specific pattern
+     */
+    fun startsWith(data: ByteArray, pattern: ByteArray): Boolean {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (data.size &lt; pattern.size) return false</span>
+        
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (i in pattern.indices) {</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (data[i] != pattern[i]) return false</span>
+        }
+        
+<span class="fc" id="L160">        return true</span>
+    }
+    
+    /**
+     * Find the index of a pattern in byte array
+     */
+    fun findPattern(data: ByteArray, pattern: ByteArray): Int {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (data.size &lt; pattern.size) return -1</span>
+        
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        for (i in 0..data.size - pattern.size) {</span>
+<span class="fc" id="L170">            var match = true</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            for (j in pattern.indices) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                if (data[i + j] != pattern[j]) {</span>
+<span class="fc" id="L173">                    match = false</span>
+<span class="fc" id="L174">                    break</span>
+                }
+            }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            if (match) return i</span>
+        }
+        
+<span class="fc" id="L180">        return -1</span>
+    }
+
+    // -- Safe access methods (return null if out of bounds) --
+    fun tryGetUnsignedByte(data: ByteArray, offset: Int): Int? =
+<span class="pc bpc" id="L185" title="1 of 6 branches missed.">        if (offset in 0 until data.size) data[offset].toInt() and 0xFF else null</span>
+
+    fun tryGetSignedByte(data: ByteArray, offset: Int): Int? =
+<span class="fc bfc" id="L188" title="All 4 branches covered.">        tryGetUnsignedByte(data, offset)?.let { raw -&gt; if (raw &gt;= 0x80) raw - 0x100 else raw }</span>
+
+    fun tryGetUnsignedShortLE(data: ByteArray, offset: Int): Int? =
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (offset + 1 &lt; data.size) getUnsignedShortLE(data, offset) else null</span>
+
+    fun tryGetUnsignedShortBE(data: ByteArray, offset: Int): Int? =
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (offset + 1 &lt; data.size) getUnsignedShortBE(data, offset) else null</span>
+
+    fun tryGetSignedShortLE(data: ByteArray, offset: Int): Short? =
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (offset + 1 &lt; data.size) getSignedShortLE(data, offset) else null</span>
+
+    fun tryGetSignedShortBE(data: ByteArray, offset: Int): Short? =
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        if (offset + 1 &lt; data.size) getSignedShortBE(data, offset) else null</span>
+
+    fun tryGetUnsignedIntLE(data: ByteArray, offset: Int): Long? =
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (offset + 3 &lt; data.size) getUnsignedIntLE(data, offset) else null</span>
+
+    fun tryGetUnsignedIntBE(data: ByteArray, offset: Int): Long? =
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (offset + 3 &lt; data.size) getUnsignedIntBE(data, offset) else null</span>
+
+    fun tryGetSignedIntLE(data: ByteArray, offset: Int): Int? =
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        if (offset + 3 &lt; data.size) getSignedIntLE(data, offset) else null</span>
+
+    fun tryGetSignedIntBE(data: ByteArray, offset: Int): Int? =
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (offset + 3 &lt; data.size) getSignedIntBE(data, offset) else null</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

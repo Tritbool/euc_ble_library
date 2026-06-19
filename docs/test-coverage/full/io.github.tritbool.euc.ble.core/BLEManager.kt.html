@@ -1,0 +1,1164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLEManager.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.core</a> &gt; <span class="el_source">BLEManager.kt</span></div><h1>BLEManager.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.core
+
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.ScanCallback as AndroidScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
+import androidx.annotation.VisibleForTesting
+import androidx.annotation.VisibleForTesting.Companion.PRIVATE
+import io.github.tritbool.euc.ble.exceptions.BLEException
+import io.github.tritbool.euc.ble.integration.BleBackendEvent
+import io.github.tritbool.euc.ble.integration.BleBackendListener
+import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.EUCDevice
+import io.github.tritbool.euc.ble.protocols.CommandSupport
+import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
+
+/**
+ * Main BLE manager for Electric Unicycles.
+ *
+ * This class is responsible for BLE scanning, connection lifecycle management,
+ * protocol selection, command transmission, and decoded data delivery.
+ *
+ * Threading model:
+ * - Internal asynchronous work is executed on a background coroutine scope based on
+ *   `Dispatchers.IO + SupervisorJob()`.
+ * - Public callbacks exposed by this manager (`ConnectionCallback`, `DataCallback`,
+ *   and `ErrorCallback`) are not guaranteed to be invoked on the Android main thread.
+ * - Callers must explicitly switch to `Dispatchers.Main`, `runOnUiThread`, or an
+ *   equivalent UI mechanism before touching Android views.
+ *
+ * Rationale:
+ * - BLE operations, retries, polling, and response timeouts are background work and
+ *   should not run on the main thread.
+ * - Keeping callback dispatching explicit avoids hiding threading behavior from the
+ *   library consumer and keeps the manager usable from non-UI contexts as well.
+ */
+<span class="pc" id="L65">class BLEManager internal constructor(</span>
+<span class="pc" id="L66">    private val context: Context, private val logger: Logger = AndroidLogger(),</span>
+<span class="pc" id="L67">    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())</span>
+<span class="pc" id="L68">) : BluetoothGattCallback() {</span>
+    companion object {
+        private const val MIN_QUERY_ATTEMPTS = 1
+        private const val MIN_QUERY_TIMEOUT_MS = 200L
+    }
+
+    // Configuration
+<span class="fc" id="L75">    private var scanTimeout: Long = BLEConstants.DEFAULT_SCAN_TIMEOUT_MS</span>
+<span class="fc" id="L76">    private var connectionTimeout: Long = BLEConstants.DEFAULT_CONNECTION_TIMEOUT_MS</span>
+<span class="fc" id="L77">    private var autoReconnect: Boolean = true</span>
+<span class="fc" id="L78">    private var maxRetries: Int = 3</span>
+
+    // State management
+    private var connectionState: BLEConstants.ConnectionState =
+<span class="fc" id="L82">        BLEConstants.ConnectionState.DISCONNECTED</span>
+    private var currentDevice: EUCDevice? = null
+    private var bluetoothGatt: BluetoothGatt? = null
+    private var bluetoothAdapter: BluetoothAdapter? = null
+
+    // Reconnection state fields
+    private var reconnectRetryCount: Int = 0
+    private var reconnectJob: Job? = null
+    private var manualDisconnect: Boolean = false
+<span class="fc" id="L91">    private val reconnectBaseDelayMs: Long = BLEConstants.RECONNECT_BASE_DELAY_MS</span>
+<span class="fc" id="L92">    private val maxReconnectDelayMs: Long = BLEConstants.MAX_RECONNECT_DELAY_MS</span>
+
+    // Protocol management
+<span class="fc" id="L95">    @VisibleForTesting(otherwise = PRIVATE)</span>
+<span class="fc" id="L96">    internal val protocols: MutableList&lt;EUCProtocol&gt; = mutableListOf()</span>
+
+<span class="pc" id="L98">    @VisibleForTesting(otherwise = PRIVATE)</span>
+<span class="nc" id="L99">    internal var currentProtocol: EUCProtocol? = null</span>
+<span class="fc" id="L100">    private var metadataMatchedProtocols: List&lt;EUCProtocol&gt; = emptyList()</span>
+<span class="fc" id="L101">    private var frameCandidateProtocols: List&lt;EUCProtocol&gt; = emptyList()</span>
+    private var queryOrchestrationJob: Job? = null
+    private var dataFlowCollectorJob: Job? = null
+    private var writeFlowCollectorJob: Job? = null
+<span class="fc" id="L105">    private val pendingQueries: MutableMap&lt;String, PendingQueryState&gt; = ConcurrentHashMap()</span>
+
+    // Callbacks
+    private var platformScanCallback: AndroidScanCallback? = null
+    private var connectionCallback: ConnectionCallback? = null
+    private var dataCallback: DataCallback? = null
+    private var errorCallback: ErrorCallback? = null
+
+    // Raw frame capture: every raw BLE characteristic notification is emitted here
+<span class="fc" id="L114">    private val _rawFrameFlow = MutableSharedFlow&lt;ByteArray&gt;(</span>
+<span class="fc" id="L115">        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+
+    /**
+     * Flow emitting every raw BLE characteristic notification received from the
+     * connected device as a defensive copy of the original byte array.
+     *
+     * This flow can be collected to implement raw frame logging, packet inspection,
+     * or custom decoding pipelines independent from the built-in protocol decoder.
+     *
+     * Threading notes:
+     * - Emissions originate from BLE callback handling and therefore must be treated
+     *   as background events.
+     * - Collectors are responsible for choosing the appropriate collection context.
+     *
+     * Example:
+     * ```kotlin
+     * bleManager.rawFrameFlow.collect { bytes -&gt;
+     *     outputStream.write(bytes)
+     * }
+     * ```
+     */
+<span class="fc" id="L137">    val rawFrameFlow: SharedFlow&lt;ByteArray&gt; = _rawFrameFlow.asSharedFlow()</span>
+
+<span class="fc" id="L139">    private val _queryTraceFlow = MutableSharedFlow&lt;QueryTraceEvent&gt;(</span>
+<span class="fc" id="L140">        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST</span>
+    )
+<span class="fc" id="L142">    val queryTraceFlow: SharedFlow&lt;QueryTraceEvent&gt; = _queryTraceFlow.asSharedFlow()</span>
+
+    // Coroutine management
+    private var scanJob: Job? = null
+    private var connectionJob: Job? = null
+    private var scanTimeoutJob: Job? = null
+    private var connectionTimeoutJob: Job? = null
+
+<span class="nc" id="L150">    private data class PendingQueryState(</span>
+<span class="nc" id="L151">        val protocolName: String, val query: ProtocolQuerySpec, val attempt: Int, val sentAtMs: Long</span>
+    )
+
+    // Device cache
+<span class="fc" id="L155">    private val discoveredDevices = ConcurrentHashMap&lt;String, EUCDevice&gt;()</span>
+
+    /**
+     * Initialize the BLE Manager
+     */
+    fun initialize() {
+<span class="nc" id="L161">        logger.info(&quot;BLEManager&quot;, &quot;Initializing BLE Manager&quot;)</span>
+<span class="nc" id="L162">        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (bluetoothAdapter == null) {</span>
+<span class="nc" id="L164">            logger.error(&quot;BLEManager&quot;, &quot;Bluetooth not supported on this device&quot;)</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Bluetooth not supported on this device&quot;))</span>
+        } else {
+<span class="nc" id="L167">            logger.info(&quot;BLEManager&quot;, &quot;Bluetooth adapter initialized successfully&quot;)</span>
+        }
+<span class="nc" id="L169">    }</span>
+
+    /**
+     * Register a protocol for device detection and data processing
+     */
+    fun registerProtocol(protocol: EUCProtocol) {
+<span class="fc" id="L175">        protocols.add(protocol)</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Start scanning for EUC devices
+     */
+    @RequiresApi(Build.VERSION_CODES.M)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    fun startScan() {
+<span class="nc" id="L184">        logger.info(&quot;BLEManager&quot;, &quot;Starting BLE scan&quot;)</span>
+
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {</span>
+<span class="nc" id="L187">            logger.warn(&quot;BLEManager&quot;, &quot;Cannot scan while connected&quot;)</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Cannot scan while connected&quot;))</span>
+<span class="nc" id="L189">            return</span>
+        }
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (!isBluetoothEnabled()) {</span>
+<span class="nc" id="L193">            logger.error(&quot;BLEManager&quot;, &quot;Bluetooth is disabled&quot;)</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Bluetooth is disabled&quot;))</span>
+<span class="nc" id="L195">            return</span>
+        }
+
+<span class="nc" id="L198">        discoveredDevices.clear()</span>
+<span class="nc" id="L199">        connectionState = BLEConstants.ConnectionState.DISCONNECTED</span>
+
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        scanJob = coroutineScope.launch {</span>
+<span class="nc" id="L202">            startBleScan()</span>
+<span class="nc" id="L203">        }</span>
+
+<span class="nc" id="L205">        scanTimeoutJob = coroutineScope.launch {</span>
+<span class="nc" id="L206">            delay(scanTimeout.milliseconds)</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (connectionState == BLEConstants.ConnectionState.DISCONNECTED</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                &amp;&amp; platformScanCallback != null</span>
+            ) {
+<span class="nc" id="L210">                logger.info(&quot;BLEManager&quot;, &quot;Scan timeout reached&quot;)</span>
+<span class="nc" id="L211">                stopScan()</span>
+            }
+<span class="nc" id="L213">        }</span>
+<span class="nc" id="L214">    }</span>
+
+    /**
+     * Stop scanning for devices
+     */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    fun stopScan() {
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        scanTimeoutJob?.cancel()</span>
+<span class="nc" id="L222">        scanTimeoutJob = null</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        scanJob?.cancel()</span>
+<span class="nc bnc" id="L224" title="All 4 branches missed.">        bluetoothAdapter?.bluetoothLeScanner?.stopScan(platformScanCallback)</span>
+<span class="nc" id="L225">        platformScanCallback = null</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        connectionCallback?.onScanCompleted(discoveredDevices.values.toList())</span>
+<span class="nc" id="L227">    }</span>
+
+    /**
+     * Connect to a specific device
+     */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun connect(device: EUCDevice) {
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Already connecting or connected&quot;))</span>
+<span class="nc" id="L236">            return</span>
+        }
+
+<span class="nc" id="L239">        manualDisconnect = false</span>
+<span class="nc" id="L240">        reconnectRetryCount = 0</span>
+
+<span class="nc" id="L242">        currentDevice = device</span>
+<span class="nc" id="L243">        connectionState = BLEConstants.ConnectionState.CONNECTING</span>
+
+        // Main connection job
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        connectionJob = coroutineScope.launch {</span>
+<span class="nc" id="L247">            connectToDevice(device.bluetoothDevice!!)</span>
+<span class="nc" id="L248">        }</span>
+
+<span class="nc" id="L250">        connectionTimeoutJob = coroutineScope.launch {</span>
+<span class="nc" id="L251">            delay(connectionTimeout.milliseconds)</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">            if (connectionState == BLEConstants.ConnectionState.CONNECTING) {</span>
+<span class="nc" id="L253">                disconnect()</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                errorCallback?.onError(BLEException(&quot;Connection timeout&quot;))</span>
+            }
+<span class="nc" id="L256">        }</span>
+<span class="nc" id="L257">    }</span>
+
+    /**
+     * Disconnect from current device
+     */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun disconnect() {
+<span class="nc" id="L264">        manualDisconnect = true</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        reconnectJob?.cancel()</span>
+<span class="nc" id="L266">        reconnectJob = null</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        connectionTimeoutJob?.cancel()</span>
+<span class="nc" id="L268">        connectionTimeoutJob = null</span>
+<span class="nc" id="L269">        reconnectRetryCount = 0</span>
+<span class="nc" id="L270">        cancelPollingOrchestration()</span>
+<span class="nc" id="L271">        cancelDataFlowCollection()</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        connectionJob?.cancel()</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        bluetoothGatt?.disconnect()</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        bluetoothGatt?.close()</span>
+<span class="nc" id="L276">        bluetoothGatt = null</span>
+<span class="nc" id="L277">        currentDevice = null</span>
+<span class="nc" id="L278">        currentProtocol = null</span>
+<span class="nc" id="L279">        metadataMatchedProtocols = emptyList()</span>
+<span class="nc" id="L280">        frameCandidateProtocols = emptyList()</span>
+<span class="nc" id="L281">        connectionState = BLEConstants.ConnectionState.DISCONNECTED</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">        connectionCallback?.onDisconnected()</span>
+<span class="nc" id="L283">    }</span>
+
+    /**
+     * Send a command to the connected device
+     */
+    fun getCommandSupport(commandType: CommandType): CommandSupport {
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        val protocol = currentProtocol ?: return CommandSupport.UNSUPPORTED</span>
+<span class="nc" id="L290">        return protocol.getCommandSupport(commandType)</span>
+    }
+
+<span class="nc" id="L293">    fun createCommand(commandType: CommandType, value: Any = Unit): ByteArray {</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        val protocol = currentProtocol ?: run {</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;No protocol selected; cannot create command&quot;))</span>
+<span class="nc" id="L296">            return byteArrayOf()</span>
+        }
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        if (protocol.getCommandSupport(commandType) == CommandSupport.UNSUPPORTED) {</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">            errorCallback?.onError(</span>
+<span class="nc" id="L300">                BLEException(&quot;Unsupported command '$commandType' for protocol ${protocol.manufacturer}&quot;)</span>
+            )
+<span class="nc" id="L302">            return byteArrayOf()</span>
+        }
+<span class="nc" id="L304">        val payload = protocol.createCommand(commandType, value)</span>
+<span class="nc bnc" id="L305" title="All 4 branches missed.">        if (payload.isEmpty()) {</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            errorCallback?.onError(</span>
+<span class="nc" id="L307">                BLEException(&quot;Protocol ${protocol.manufacturer} returned empty payload for '$commandType'&quot;)</span>
+            )
+        }
+<span class="nc" id="L310">        return payload</span>
+    }
+
+<span class="nc" id="L313">    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)</span>
+<span class="nc" id="L314">    fun sendCommand(commandType: CommandType, value: Any = Unit) {</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        val protocol = currentProtocol ?: run {</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;No protocol selected; cannot send command&quot;))</span>
+<span class="nc" id="L317">            return</span>
+        }
+<span class="nc" id="L319">        val payload = createCommand(commandType, value)</span>
+<span class="nc bnc" id="L320" title="All 4 branches missed.">        if (payload.isEmpty()) return</span>
+<span class="nc" id="L321">        sendCommand(payload, protocol.getWriteCharacteristicUUID())</span>
+<span class="nc" id="L322">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
+<span class="nc bnc" id="L326" title="All 2 branches missed.">        if (connectionState != BLEConstants.ConnectionState.CONNECTED) {</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Not connected to a device&quot;))</span>
+<span class="nc" id="L328">            return</span>
+        }
+<span class="nc bnc" id="L330" title="All 4 branches missed.">        if (command.isEmpty()) {</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Cannot send empty command payload&quot;))</span>
+<span class="nc" id="L332">            return</span>
+        }
+
+<span class="nc" id="L335">        val characteristic = getCharacteristic(characteristicUuid)</span>
+<span class="nc" id="L336">        val payload = command.clone() // defensive copy</span>
+
+<span class="nc bnc" id="L338" title="All 4 branches missed.">        characteristic?.let { char -&gt;</span>
+            // ensure consistent write type (default)
+<span class="nc" id="L340">            char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT</span>
+
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.TIRAMISU) {</span>
+                // new API 33+ overload
+<span class="nc bnc" id="L344" title="All 2 branches missed.">                bluetoothGatt?.writeCharacteristic(char, payload, char.writeType)</span>
+            } else {
+                // fallback for older APIs
+<span class="nc" id="L347">                @Suppress(&quot;DEPRECATION&quot;) run {</span>
+<span class="nc" id="L348">                    char.setValue(payload)</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">                    bluetoothGatt?.writeCharacteristic(char)</span>
+                }
+<span class="nc" id="L351">            }</span>
+<span class="nc" id="L352">        } ?: run {</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Characteristic not found: $characteristicUuid&quot;))</span>
+        }
+<span class="nc" id="L355">    }</span>
+
+    /**
+     * Get current connection state
+     */
+<span class="nc" id="L360">    fun getConnectionState(): BLEConstants.ConnectionState = connectionState</span>
+
+    /**
+     * Get currently connected device
+     */
+<span class="nc" id="L365">    fun getConnectedDevice(): EUCDevice? = currentDevice</span>
+
+    /**
+     * Check if Bluetooth is enabled
+     */
+    fun isBluetoothEnabled(): Boolean {
+<span class="nc bnc" id="L371" title="All 4 branches missed.">        return bluetoothAdapter?.isEnabled == true</span>
+    }
+
+    // Setters for configuration
+    fun setScanTimeout(timeout: Long) {
+<span class="nc" id="L376">        this.scanTimeout = timeout</span>
+<span class="nc" id="L377">    }</span>
+
+    fun setConnectionTimeout(timeout: Long) {
+<span class="nc" id="L380">        this.connectionTimeout = timeout</span>
+<span class="nc" id="L381">    }</span>
+
+    fun setAutoReconnect(enabled: Boolean) {
+<span class="nc" id="L384">        this.autoReconnect = enabled</span>
+<span class="nc" id="L385">    }</span>
+
+    fun setMaxRetries(retries: Int) {
+<span class="nc" id="L388">        this.maxRetries = retries</span>
+<span class="nc" id="L389">    }</span>
+
+    /**
+     * Callback registration methods.
+     *
+     * Threading contract:
+     * - Registered callbacks are invoked from background execution contexts.
+     * - No callback registered through these setters is guaranteed to run on the
+     *   Android main thread.
+     * - UI updates must be marshalled explicitly by the caller.
+     */
+    // Callback setters
+    fun setConnectionCallback(callback: ConnectionCallback) {
+<span class="nc" id="L402">        this.connectionCallback = callback</span>
+<span class="nc" id="L403">    }</span>
+
+    fun setDataCallback(callback: DataCallback) {
+<span class="fc" id="L406">        this.dataCallback = callback</span>
+<span class="fc" id="L407">    }</span>
+
+    fun setErrorCallback(callback: ErrorCallback) {
+<span class="nc" id="L410">        this.errorCallback = callback</span>
+<span class="nc" id="L411">    }</span>
+
+    // Private implementation methods
+    @RequiresApi(Build.VERSION_CODES.M)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    //@RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+
+    private fun startBleScan() {
+<span class="nc bnc" id="L419" title="All 4 branches missed.">        val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return</span>
+
+<span class="nc" id="L421">        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)</span>
+<span class="nc" id="L422">            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)</span>
+<span class="nc" id="L423">            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)</span>
+<span class="nc" id="L424">            .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT).build()</span>
+
+<span class="nc" id="L426">        platformScanCallback = object : AndroidScanCallback() {</span>
+            @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+<span class="nc" id="L429">                processScanResult(result)</span>
+<span class="nc" id="L430">            }</span>
+
+            override fun onScanFailed(errorCode: Int) {
+<span class="nc bnc" id="L433" title="All 2 branches missed.">                errorCallback?.onError(BLEException(&quot;Scan failed with error: $errorCode&quot;))</span>
+<span class="nc" id="L434">            }</span>
+        }
+
+<span class="nc" id="L437">        scanner.startScan(null, settings, platformScanCallback)</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">        connectionCallback?.onScanStarted()</span>
+<span class="nc" id="L439">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun processScanResult(result: ScanResult) {
+<span class="nc" id="L443">        data class WheelManufacturerData(</span>
+<span class="nc" id="L444">            val manufacturerId: Int, val data: ByteArray?</span>
+        )
+
+<span class="nc" id="L447">        val device = result.device</span>
+<span class="nc" id="L448">        val scanRecord = result.scanRecord</span>
+<span class="nc" id="L449">        val foundManufacturerData: WheelManufacturerData? = sequenceOf(</span>
+<span class="nc" id="L450">            BLEConstants.MANUFACTURER_KINGSONG,</span>
+<span class="nc" id="L451">            BLEConstants.MANUFACTURER_GOTWAY,</span>
+<span class="nc" id="L452">            BLEConstants.MANUFACTURER_INMOTION,</span>
+<span class="nc" id="L453">            BLEConstants.MANUFACTURER_NINEBOT,</span>
+<span class="nc" id="L454">            BLEConstants.MANUFACTURER_VETERAN,</span>
+<span class="nc" id="L455">            BLEConstants.MANUFACTURER_LEAPERKIM,</span>
+<span class="nc bnc" id="L456" title="All 4 branches missed.">        ).firstNotNullOfOrNull { id -&gt;</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">            scanRecord?.getManufacturerSpecificData(id)</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">                ?.let { bytes -&gt; WheelManufacturerData(id, bytes) }</span>
+        }
+
+<span class="nc" id="L461">        val eucDevice = EUCDevice(</span>
+<span class="nc" id="L462">            bluetoothDevice = device,</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">            name = device.name ?: &quot;Unknown EUC&quot;,</span>
+<span class="nc" id="L464">            address = device.address,</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">            manufacturerId = foundManufacturerData?.manufacturerId ?: 0,</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">            manufacturerData = foundManufacturerData?.data,</span>
+<span class="nc" id="L467">            rssi = result.rssi</span>
+        )
+
+        // Check if this device is supported by any protocol
+<span class="nc bnc" id="L471" title="All 4 branches missed.">        val supportingProtocol = protocols.find { it.canHandle(eucDevice) }</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">        if (supportingProtocol != null) {</span>
+<span class="nc" id="L473">            discoveredDevices[eucDevice.address] = eucDevice</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            connectionCallback?.onDeviceDiscovered(eucDevice)</span>
+        }
+<span class="nc" id="L476">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun connectToDevice(device: BluetoothDevice) {
+<span class="nc" id="L480">        try {</span>
+<span class="nc" id="L481">            bluetoothGatt = device.connectGatt(context, false, this)</span>
+<span class="nc" id="L482">        } catch (e: Exception) {</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Failed to connect to device: ${e.message}&quot;))</span>
+<span class="nc" id="L484">            disconnect()</span>
+        }
+<span class="nc" id="L486">    }</span>
+
+    private fun getCharacteristic(uuid: UUID): BluetoothGattCharacteristic? {
+<span class="nc bnc" id="L489" title="All 4 branches missed.">        return bluetoothGatt?.services?.flatMap { service -&gt;</span>
+<span class="nc" id="L490">            service.characteristics</span>
+<span class="nc bnc" id="L491" title="All 4 branches missed.">        }?.find { characteristic -&gt;</span>
+<span class="nc" id="L492">            characteristic.uuid == uuid</span>
+        }
+    }
+
+    // BluetoothGattCallback implementations
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+<span class="nc" id="L499">        super.onConnectionStateChange(gatt, status, newState)</span>
+
+<span class="nc bnc" id="L501" title="All 5 branches missed.">        when (newState) {</span>
+            BluetoothProfile.STATE_CONNECTED -&gt; {
+                // reset des compteurs de reconnexion
+<span class="nc" id="L504">                reconnectRetryCount = 0</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">                reconnectJob?.cancel()</span>
+<span class="nc" id="L506">                reconnectJob = null</span>
+<span class="nc" id="L507">                connectionState = BLEConstants.ConnectionState.CONNECTED</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">                connectionTimeoutJob?.cancel()</span>
+<span class="nc" id="L509">                connectionTimeoutJob = null</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">                connectionCallback?.onConnected()</span>
+                // Discover services
+<span class="nc" id="L512">                gatt.discoverServices()</span>
+            }
+
+            BluetoothProfile.STATE_DISCONNECTED -&gt; {
+<span class="nc" id="L516">                cancelPollingOrchestration()</span>
+<span class="nc" id="L517">                connectionState = BLEConstants.ConnectionState.DISCONNECTED</span>
+<span class="nc bnc" id="L518" title="All 2 branches missed.">                connectionCallback?.onDisconnected()</span>
+
+<span class="nc bnc" id="L520" title="All 6 branches missed.">                if (!manualDisconnect &amp;&amp; autoReconnect &amp;&amp; currentDevice != null) {</span>
+<span class="nc" id="L521">                    scheduleReconnect()</span>
+                } else {
+                    // if we don't want to reconnect, reset the counter
+<span class="nc" id="L524">                    reconnectRetryCount = 0</span>
+                }
+            }
+
+            BluetoothProfile.STATE_CONNECTING -&gt; {
+<span class="nc" id="L529">                connectionState = BLEConstants.ConnectionState.CONNECTING</span>
+            }
+
+            BluetoothProfile.STATE_DISCONNECTING -&gt; {
+<span class="nc" id="L533">                connectionState = BLEConstants.ConnectionState.DISCONNECTING</span>
+            }
+        }
+<span class="nc" id="L536">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun scheduleReconnect() {
+        // If already in progress or max retries reached, do not reschedule
+<span class="nc bnc" id="L541" title="All 2 branches missed.">        if (reconnectJob != null) return</span>
+<span class="nc bnc" id="L542" title="All 2 branches missed.">        if (reconnectRetryCount &gt;= maxRetries) {</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">            connectionCallback?.onConnectionFailed(BLEException(&quot;Reconnection failed after $reconnectRetryCount attempts&quot;))</span>
+<span class="nc" id="L544">            reconnectRetryCount = 0</span>
+<span class="nc" id="L545">            return</span>
+        }
+
+        // calculate delay with backoff and jitter
+<span class="nc" id="L549">        val multiplier = 1L shl reconnectRetryCount.coerceAtMost(30) // prevent overflow</span>
+<span class="nc" id="L550">        val baseDelay = (reconnectBaseDelayMs * multiplier).coerceAtMost(maxReconnectDelayMs)</span>
+<span class="nc" id="L551">        val jitter = kotlin.random.Random.nextLong(0, BLEConstants.RECONNECT_JITTER_MAX_MS)</span>
+<span class="nc" id="L552">        val delayMs = (baseDelay + jitter).coerceAtMost(maxReconnectDelayMs)</span>
+
+<span class="nc bnc" id="L554" title="All 3 branches missed.">        reconnectJob = coroutineScope.launch {</span>
+
+<span class="nc bnc" id="L556" title="All 2 branches missed.">            kotlinx.coroutines.delay(delayMs)</span>
+            // double-check conditions avant tentative
+<span class="nc bnc" id="L558" title="All 2 branches missed.">            if (manualDisconnect) {</span>
+<span class="nc" id="L559">                reconnectJob = null</span>
+<span class="nc" id="L560">                return@launch</span>
+            }
+<span class="nc bnc" id="L562" title="All 2 branches missed.">            if (connectionState == BLEConstants.ConnectionState.CONNECTED) {</span>
+<span class="nc" id="L563">                reconnectJob = null</span>
+<span class="nc" id="L564">                reconnectRetryCount = 0</span>
+<span class="nc" id="L565">                return@launch</span>
+            }
+<span class="nc" id="L567">            reconnectRetryCount++</span>
+<span class="nc" id="L568">            connectionState = BLEConstants.ConnectionState.CONNECTING</span>
+<span class="nc" id="L569">            try {</span>
+<span class="nc bnc" id="L570" title="All 4 branches missed.">                currentDevice?.bluetoothDevice?.let { device -&gt;</span>
+<span class="nc" id="L571">                    connectToDevice(device)</span>
+<span class="nc" id="L572">                } ?: run {</span>
+<span class="nc bnc" id="L573" title="All 2 branches missed.">                    connectionCallback?.onConnectionFailed(BLEException(&quot;No device to reconnect&quot;))</span>
+<span class="nc" id="L574">                    reconnectJob = null</span>
+<span class="nc" id="L575">                }</span>
+<span class="nc" id="L576">            } catch (e: Exception) {</span>
+                // in case of immediate failure, let the next onConnectionStateChange trigger a new attempt
+<span class="nc" id="L578">                reconnectJob = null</span>
+            }
+
+<span class="nc" id="L581">        }</span>
+<span class="nc" id="L582">    }</span>
+
+    // Optional: helper to explicitly cancel reconnection (used by cleanup if needed)
+    private fun cancelReconnectAttempts() {
+<span class="nc bnc" id="L586" title="All 2 branches missed.">        reconnectJob?.cancel()</span>
+<span class="nc" id="L587">        reconnectJob = null</span>
+<span class="nc" id="L588">        reconnectRetryCount = 0</span>
+<span class="nc" id="L589">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+<span class="nc" id="L593">        super.onServicesDiscovered(gatt, status)</span>
+
+<span class="nc bnc" id="L595" title="All 2 branches missed.">        if (status == BluetoothGatt.GATT_SUCCESS) {</span>
+<span class="nc" id="L596">            val device = currentDevice</span>
+<span class="nc bnc" id="L597" title="All 2 branches missed.">            if (device == null) {</span>
+<span class="nc bnc" id="L598" title="All 2 branches missed.">                errorCallback?.onError(BLEException(&quot;No connected device available for protocol selection&quot;))</span>
+<span class="nc" id="L599">                disconnect()</span>
+<span class="nc" id="L600">                return</span>
+            }
+
+<span class="nc" id="L603">            prepareProtocolCandidates(device)</span>
+
+<span class="nc bnc" id="L605" title="All 2 branches missed.">            if (frameCandidateProtocols.isEmpty()) {</span>
+<span class="nc bnc" id="L606" title="All 2 branches missed.">                errorCallback?.onError(BLEException(&quot;No protocol found for this device&quot;))</span>
+<span class="nc" id="L607">                disconnect()</span>
+<span class="nc" id="L608">                return</span>
+            }
+
+<span class="nc" id="L611">            frameCandidateProtocols.map { it.getDataCharacteristicUUID() }.distinct()</span>
+<span class="nc" id="L612">                .forEach { characteristicUuid -&gt;</span>
+<span class="nc" id="L613">                    enableNotifications(characteristicUuid)</span>
+<span class="nc" id="L614">                }</span>
+<span class="nc bnc" id="L615" title="All 2 branches missed.">            connectionCallback?.onServicesDiscovered(gatt.services)</span>
+
+<span class="nc" id="L617">            when {</span>
+<span class="nc bnc" id="L618" title="All 2 branches missed.">                metadataMatchedProtocols.size == 1 -&gt; setActiveProtocol(</span>
+<span class="nc" id="L619">                    metadataMatchedProtocols.single(), &quot;metadata&quot;</span>
+                )
+
+<span class="nc bnc" id="L622" title="All 2 branches missed.">                frameCandidateProtocols.size == 1 -&gt; setActiveProtocol(</span>
+<span class="nc" id="L623">                    frameCandidateProtocols.single(), &quot;single candidate&quot;</span>
+                )
+            }
+        } else {
+<span class="nc bnc" id="L627" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Service discovery failed: $status&quot;))</span>
+<span class="nc" id="L628">            disconnect()</span>
+        }
+<span class="nc" id="L630">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onCharacteristicChanged(
+        gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
+    ) {
+<span class="nc" id="L637">        super.onCharacteristicChanged(gatt, characteristic, value)</span>
+<span class="nc" id="L638">        val data = value.clone()</span>
+<span class="nc" id="L639">        handleIncomingBytes(data)</span>
+<span class="nc" id="L640">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @Suppress(&quot;DEPRECATION&quot;)
+    override fun onCharacteristicChanged(
+        gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic
+    ) {
+<span class="nc" id="L647">        super.onCharacteristicChanged(gatt, characteristic)</span>
+<span class="nc bnc" id="L648" title="All 2 branches missed.">        val raw = characteristic.value ?: return</span>
+<span class="nc" id="L649">        val data = raw.clone()</span>
+<span class="nc" id="L650">        handleIncomingBytes(data)</span>
+<span class="nc" id="L651">    }</span>
+
+    @VisibleForTesting(otherwise = PRIVATE)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    internal fun handleIncomingBytes(data: ByteArray) {
+<span class="fc" id="L656">        _rawFrameFlow.tryEmit(data.clone())</span>
+<span class="fc bfc" id="L657" title="All 2 branches covered.">        if (currentProtocol == null) {</span>
+<span class="fc" id="L658">            maybeSelectProtocolFromFrame(data)</span>
+        }
+<span class="fc bfc" id="L660" title="All 2 branches covered.">        currentProtocol?.let { protocol -&gt;</span>
+<span class="fc" id="L661">            try {</span>
+<span class="fc" id="L662">                matchPendingQueries(protocol, data)</span>
+<span class="fc" id="L663">                protocol.decode(data)</span>
+<span class="nc" id="L664">            } catch (e: Exception) {</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">                errorCallback?.onError(BLEException(&quot;Data decoding failed: ${e.message}&quot;))</span>
+<span class="fc" id="L666">            }</span>
+        }
+<span class="fc" id="L668">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun maybeSelectProtocolFromFrame(data: ByteArray) {
+<span class="pc bpc" id="L672" title="1 of 2 branches missed.">        if (currentProtocol != null) return</span>
+<span class="fc" id="L673">        val candidates =</span>
+<span class="pc bpc" id="L674" title="2 of 4 branches missed.">            if (frameCandidateProtocols.isNotEmpty()) frameCandidateProtocols else protocols</span>
+<span class="pc bpc" id="L675" title="1 of 2 branches missed.">        if (candidates.isEmpty()) return</span>
+
+<span class="fc" id="L677">        val frameMatches = candidates.filter { candidate -&gt;</span>
+<span class="pc bpc" id="L678" title="1 of 2 branches missed.">            runCatching { candidate.looksLikeMyFrames(data) }.getOrDefault(false)</span>
+        }
+
+<span class="fc" id="L681">        when {</span>
+<span class="fc bfc" id="L682" title="All 2 branches covered.">            frameMatches.size == 1 -&gt; setActiveProtocol(frameMatches.single(), &quot;frame signature&quot;)</span>
+
+<span class="fc bfc" id="L684" title="All 2 branches covered.">            metadataMatchedProtocols.size == 1 -&gt; setActiveProtocol(</span>
+<span class="fc" id="L685">                metadataMatchedProtocols.single(), &quot;metadata fallback&quot;</span>
+            )
+
+<span class="pc bpc" id="L688" title="1 of 2 branches missed.">            candidates.size == 1 -&gt; setActiveProtocol(</span>
+<span class="nc" id="L689">                candidates.single(), &quot;single registered protocol&quot;</span>
+            )
+
+<span class="fc bfc" id="L692" title="All 2 branches covered.">            frameMatches.size == 2 -&gt; {</span>
+<span class="fc" id="L693">                val manuf1 = frameMatches[0].manufacturer</span>
+<span class="fc" id="L694">                val manuf2 = frameMatches[1].manufacturer</span>
+
+                // CANNOT DECIDE BETWEEN LK AND NOSFET
+<span class="pc bpc" id="L697" title="3 of 4 branches missed.">                if (manuf1.equals(&quot;Leaperkim&quot;, ignoreCase = true) &amp;&amp; manuf2.equals(</span>
+<span class="nc" id="L698">                        &quot;Nosfet&quot;, ignoreCase = true</span>
+<span class="pc bpc" id="L699" title="1 of 4 branches missed.">                    ) || manuf2.equals(&quot;Leaperkim&quot;, ignoreCase = true) &amp;&amp; manuf1.equals(</span>
+<span class="fc" id="L700">                        &quot;Nosfet&quot;, ignoreCase = true</span>
+                    )
+                ) {
+<span class="pc bpc" id="L703" title="1 of 4 branches missed.">                    setActiveProtocol(protocols.find {</span>
+<span class="fc" id="L704">                        it.manufacturer.equals(</span>
+<span class="fc" id="L705">                            &quot;Leaperkim&quot;, ignoreCase = true</span>
+<span class="fc" id="L706">                        )</span>
+<span class="fc" id="L707">                    }!!, &quot;frame signature tie-break LK/Nosfet&quot;)</span>
+                }
+
+                // CANNOT DECIDE BETWEEN GW AND EB
+<span class="pc bpc" id="L711" title="3 of 4 branches missed.">                if (manuf1.equals(&quot;ExtremeBull&quot;, ignoreCase = true) &amp;&amp; manuf2.equals(</span>
+<span class="nc" id="L712">                        &quot;GOTWAY&quot;, ignoreCase = true</span>
+<span class="pc bpc" id="L713" title="3 of 4 branches missed.">                    ) || manuf2.equals(&quot;Gotway&quot;, ignoreCase = true) &amp;&amp; manuf1.equals(</span>
+<span class="nc" id="L714">                        &quot;ExtremeBull&quot;, ignoreCase = true</span>
+                    )
+                ) {
+<span class="nc bnc" id="L717" title="All 4 branches missed.">                    setActiveProtocol(protocols.find {</span>
+<span class="nc" id="L718">                        it.manufacturer.equals(</span>
+<span class="nc" id="L719">                            &quot;Gotway&quot;, ignoreCase = true</span>
+<span class="nc" id="L720">                        )</span>
+<span class="nc" id="L721">                    }!!, &quot;frame signature tie-break EB/GW&quot;)</span>
+                }
+
+                // CANNOT DECIDE BETWEEN NINEBOT AND NINEBOTZ
+<span class="pc bpc" id="L725" title="1 of 4 branches missed.">                if (manuf1.equals(&quot;ninebot&quot;, ignoreCase = true) &amp;&amp; manuf2.equals(</span>
+<span class="fc" id="L726">                        &quot;ninebot&quot;, ignoreCase = true</span>
+<span class="pc bpc" id="L727" title="3 of 4 branches missed.">                    ) || manuf2.equals(&quot;ninebot&quot;, ignoreCase = true) &amp;&amp; manuf1.equals(</span>
+<span class="nc" id="L728">                        &quot;ninebot&quot;, ignoreCase = true</span>
+                    )
+                ) {
+<span class="pc bpc" id="L731" title="1 of 4 branches missed.">                    setActiveProtocol(protocols.find {</span>
+<span class="fc" id="L732">                        it.supportedModels.contains(</span>
+<span class="fc" id="L733">                            &quot;Z10&quot;</span>
+<span class="fc" id="L734">                        )</span>
+<span class="fc" id="L735">                    }!!, &quot;frame signature tie-break Ninebot/NinebotZ&quot;)</span>
+                }
+
+            }
+        }
+<span class="fc" id="L740">    }</span>
+
+    override fun onCharacteristicWrite(
+        gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
+    ) {
+<span class="nc" id="L745">        super.onCharacteristicWrite(gatt, characteristic, status)</span>
+
+<span class="nc bnc" id="L747" title="All 2 branches missed.">        if (status != BluetoothGatt.GATT_SUCCESS) {</span>
+<span class="nc bnc" id="L748" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;Characteristic write failed: $status&quot;))</span>
+        }
+<span class="nc" id="L750">    }</span>
+
+    override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+<span class="nc" id="L753">        super.onMtuChanged(gatt, mtu, status)</span>
+
+<span class="nc bnc" id="L755" title="All 2 branches missed.">        if (status == BluetoothGatt.GATT_SUCCESS) {</span>
+<span class="nc bnc" id="L756" title="All 2 branches missed.">            connectionCallback?.onMtuChanged(mtu)</span>
+        } else {
+<span class="nc bnc" id="L758" title="All 2 branches missed.">            errorCallback?.onError(BLEException(&quot;MTU change failed: $status&quot;))</span>
+        }
+<span class="nc" id="L760">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun enableNotifications(characteristicUuid: UUID) {
+<span class="nc" id="L764">        val characteristic = getCharacteristic(characteristicUuid)</span>
+<span class="nc bnc" id="L765" title="All 2 branches missed.">        characteristic?.let { char -&gt;</span>
+<span class="nc" id="L766">            val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)</span>
+<span class="nc bnc" id="L767" title="All 2 branches missed.">            val descriptor = char.getDescriptor(cccdUuid) ?: return@let</span>
+<span class="nc" id="L768">            val enableValue =</span>
+<span class="nc" id="L769">                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // defensive copy</span>
+
+<span class="nc bnc" id="L771" title="All 2 branches missed.">            if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.TIRAMISU) {</span>
+                // Use new API 33+ overload
+<span class="nc bnc" id="L773" title="All 2 branches missed.">                bluetoothGatt?.writeDescriptor(descriptor, enableValue)</span>
+            } else {
+                // Fallback for older APIs (setValue + writeDescriptor)
+<span class="nc" id="L776">                @Suppress(&quot;DEPRECATION&quot;) run {</span>
+<span class="nc" id="L777">                    descriptor.value = enableValue</span>
+<span class="nc bnc" id="L778" title="All 2 branches missed.">                    bluetoothGatt?.writeDescriptor(descriptor)</span>
+                }
+            }
+
+            // Enable notifications locally
+<span class="nc bnc" id="L783" title="All 2 branches missed.">            bluetoothGatt?.setCharacteristicNotification(char, true)</span>
+<span class="nc" id="L784">        }</span>
+<span class="nc" id="L785">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun startPollingOrchestration(protocol: EUCProtocol) {
+<span class="fc" id="L789">        cancelPollingOrchestration()</span>
+<span class="fc" id="L790">        val plan = protocol.getPollingPlan()</span>
+<span class="fc bfc" id="L791" title="All 2 branches covered.">        if (!plan.enabled) return</span>
+
+<span class="pc bpc" id="L793" title="2 of 3 branches missed.">        queryOrchestrationJob = coroutineScope.launch {</span>
+<span class="fc bfc" id="L794" title="All 2 branches covered.">            for (query in plan.startupQueries) {</span>
+<span class="pc bpc" id="L795" title="1 of 2 branches missed.">                executeQueryWithRetry(protocol, query)</span>
+            }
+
+<span class="fc" id="L798">            plan.periodicQueries.forEach { query -&gt;</span>
+<span class="fc" id="L799">                launch {</span>
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">                    if (query.initialDelayMs &gt; 0L) delay(query.initialDelayMs.milliseconds)</span>
+<span class="pc bpc" id="L801" title="1 of 2 branches missed.">                    while (connectionState == BLEConstants.ConnectionState.CONNECTED) {</span>
+<span class="nc" id="L802">                        executeQueryWithRetry(protocol, query)</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">                        if (query.intervalMs &lt;= 0L) break</span>
+<span class="nc" id="L804">                        delay(query.intervalMs.milliseconds)</span>
+                    }
+<span class="fc" id="L806">                }</span>
+<span class="fc" id="L807">            }</span>
+<span class="fc" id="L808">        }</span>
+<span class="fc" id="L809">    }</span>
+
+    private fun cancelPollingOrchestration() {
+<span class="pc bpc" id="L812" title="1 of 2 branches missed.">        queryOrchestrationJob?.cancel()</span>
+<span class="fc" id="L813">        queryOrchestrationJob = null</span>
+<span class="fc" id="L814">        pendingQueries.clear()</span>
+<span class="fc" id="L815">    }</span>
+
+    @VisibleForTesting(otherwise = PRIVATE)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    internal fun startDataFlowCollection(protocol: EUCProtocol) {
+<span class="fc" id="L820">        cancelDataFlowCollection()</span>
+<span class="fc" id="L821">        dataFlowCollectorJob = coroutineScope.launch {</span>
+<span class="fc" id="L822">            protocol.dataFlow.collect { d -&gt;</span>
+<span class="pc bpc" id="L823" title="1 of 2 branches missed.">                dataCallback?.onDataReceived(d)</span>
+<span class="fc" id="L824">            }</span>
+<span class="nc" id="L825">        }</span>
+
+<span class="fc" id="L827">        writeFlowCollectorJob = coroutineScope.launch {</span>
+<span class="fc" id="L828">            protocol.writeFlow.collect { payload -&gt;</span>
+<span class="nc bnc" id="L829" title="All 6 branches missed.">                if (payload.isNotEmpty()) {</span>
+<span class="nc" id="L830">                    sendCommand(payload, protocol.getWriteCharacteristicUUID())</span>
+                }
+<span class="nc" id="L832">            }</span>
+<span class="fc" id="L833">        }</span>
+<span class="fc" id="L834">    }</span>
+
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun cancelDataFlowCollection() {
+<span class="fc bfc" id="L838" title="All 2 branches covered.">        dataFlowCollectorJob?.cancel()</span>
+<span class="fc" id="L839">        dataFlowCollectorJob = null</span>
+<span class="fc bfc" id="L840" title="All 2 branches covered.">        writeFlowCollectorJob?.cancel()</span>
+<span class="fc" id="L841">        writeFlowCollectorJob = null</span>
+<span class="fc" id="L842">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun setActiveProtocol(protocol: EUCProtocol, reason: String) {
+<span class="pc bpc" id="L846" title="1 of 2 branches missed.">        if (currentProtocol === protocol) return</span>
+<span class="fc" id="L847">        currentProtocol = protocol</span>
+<span class="fc" id="L848">        logger.info(&quot;BLEManager&quot;, &quot;Selected protocol ${protocol.javaClass.simpleName} via $reason&quot;)</span>
+<span class="fc" id="L849">        startPollingOrchestration(protocol)</span>
+<span class="fc" id="L850">        startDataFlowCollection(protocol)</span>
+<span class="fc" id="L851">    }</span>
+
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun prepareProtocolCandidates(device: EUCDevice) {
+<span class="fc" id="L855">        metadataMatchedProtocols = protocols.filter { protocol -&gt;</span>
+<span class="fc" id="L856">            protocol.canHandle(device)</span>
+        }
+<span class="fc bfc" id="L858" title="All 2 branches covered.">        frameCandidateProtocols = metadataMatchedProtocols.ifEmpty { protocols.toList() }</span>
+<span class="fc" id="L859">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private suspend fun executeQueryWithRetry(protocol: EUCProtocol, query: ProtocolQuerySpec) {
+<span class="fc" id="L863">        val retryCount = query.maxRetries.coerceAtLeast(0)</span>
+<span class="fc" id="L864">        val totalAttempts = retryCount + MIN_QUERY_ATTEMPTS</span>
+<span class="pc bpc" id="L865" title="3 of 4 branches missed.">        for (attempt in 1..totalAttempts) {</span>
+<span class="pc bpc" id="L866" title="1 of 2 branches missed.">            if (connectionState != BLEConstants.ConnectionState.CONNECTED) return</span>
+<span class="nc" id="L867">            val sent = sendProtocolQuery(protocol, query, attempt)</span>
+<span class="nc bnc" id="L868" title="All 2 branches missed.">            if (!sent) return</span>
+
+<span class="nc" id="L870">            val timeoutMs = query.responseTimeoutMs.coerceAtLeast(MIN_QUERY_TIMEOUT_MS)</span>
+<span class="nc" id="L871">            delay(timeoutMs.milliseconds)</span>
+
+<span class="nc bnc" id="L873" title="All 2 branches missed.">            if (!pendingQueries.containsKey(query.id)) {</span>
+<span class="nc" id="L874">                return</span>
+            }
+
+<span class="nc" id="L877">            pendingQueries.remove(query.id)</span>
+<span class="nc" id="L878">            emitQueryTrace(</span>
+<span class="nc" id="L879">                QueryTraceEvent(</span>
+<span class="nc" id="L880">                    timestampMs = System.currentTimeMillis(),</span>
+<span class="nc" id="L881">                    protocol = protocol.manufacturer,</span>
+<span class="nc" id="L882">                    queryId = query.id,</span>
+<span class="nc" id="L883">                    commandType = query.commandType,</span>
+<span class="nc" id="L884">                    phase = QueryTracePhase.TIMEOUT,</span>
+<span class="nc" id="L885">                    attempt = attempt,</span>
+<span class="nc" id="L886">                    message = &quot;No matching response after ${timeoutMs}ms&quot;</span>
+                )
+            )
+
+<span class="nc bnc" id="L890" title="All 2 branches missed.">            if (attempt &lt; totalAttempts) {</span>
+<span class="nc" id="L891">                emitQueryTrace(</span>
+<span class="nc" id="L892">                    QueryTraceEvent(</span>
+<span class="nc" id="L893">                        timestampMs = System.currentTimeMillis(),</span>
+<span class="nc" id="L894">                        protocol = protocol.manufacturer,</span>
+<span class="nc" id="L895">                        queryId = query.id,</span>
+<span class="nc" id="L896">                        commandType = query.commandType,</span>
+<span class="nc" id="L897">                        phase = QueryTracePhase.RETRY_SCHEDULED,</span>
+<span class="nc" id="L898">                        attempt = attempt + 1,</span>
+<span class="nc" id="L899">                        message = &quot;Retry scheduled in ${query.retryBackoffMs}ms&quot;</span>
+                    )
+                )
+<span class="nc bnc" id="L902" title="All 2 branches missed.">                if (query.retryBackoffMs &gt; 0L) delay(query.retryBackoffMs.milliseconds)</span>
+            } else {
+<span class="nc" id="L904">                emitQueryTrace(</span>
+<span class="nc" id="L905">                    QueryTraceEvent(</span>
+<span class="nc" id="L906">                        timestampMs = System.currentTimeMillis(),</span>
+<span class="nc" id="L907">                        protocol = protocol.manufacturer,</span>
+<span class="nc" id="L908">                        queryId = query.id,</span>
+<span class="nc" id="L909">                        commandType = query.commandType,</span>
+<span class="nc" id="L910">                        phase = QueryTracePhase.FAILED,</span>
+<span class="nc" id="L911">                        attempt = attempt,</span>
+<span class="nc" id="L912">                        message = &quot;Query exhausted retries&quot;</span>
+                    )
+                )
+            }
+        }
+<span class="nc" id="L917">    }</span>
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun sendProtocolQuery(
+        protocol: EUCProtocol, query: ProtocolQuerySpec, attempt: Int
+    ): Boolean {
+<span class="nc bnc" id="L923" title="All 2 branches missed.">        if (protocol.getCommandSupport(query.commandType) == CommandSupport.UNSUPPORTED) {</span>
+<span class="nc" id="L924">            emitQueryTrace(</span>
+<span class="nc" id="L925">                QueryTraceEvent(</span>
+<span class="nc" id="L926">                    timestampMs = System.currentTimeMillis(),</span>
+<span class="nc" id="L927">                    protocol = protocol.manufacturer,</span>
+<span class="nc" id="L928">                    queryId = query.id,</span>
+<span class="nc" id="L929">                    commandType = query.commandType,</span>
+<span class="nc" id="L930">                    phase = QueryTracePhase.UNSUPPORTED,</span>
+<span class="nc" id="L931">                    attempt = attempt,</span>
+<span class="nc" id="L932">                    message = &quot;Command is unsupported by protocol support matrix&quot;</span>
+                )
+            )
+<span class="nc" id="L935">            return false</span>
+        }
+
+<span class="nc" id="L938">        val payload = protocol.createCommand(query.commandType, query.value)</span>
+<span class="nc bnc" id="L939" title="All 4 branches missed.">        if (payload.isEmpty()) {</span>
+<span class="nc" id="L940">            emitQueryTrace(</span>
+<span class="nc" id="L941">                QueryTraceEvent(</span>
+<span class="nc" id="L942">                    timestampMs = System.currentTimeMillis(),</span>
+<span class="nc" id="L943">                    protocol = protocol.manufacturer,</span>
+<span class="nc" id="L944">                    queryId = query.id,</span>
+<span class="nc" id="L945">                    commandType = query.commandType,</span>
+<span class="nc" id="L946">                    phase = QueryTracePhase.UNSUPPORTED,</span>
+<span class="nc" id="L947">                    attempt = attempt,</span>
+<span class="nc" id="L948">                    message = &quot;Command payload is empty&quot;</span>
+                )
+            )
+<span class="nc" id="L951">            return false</span>
+        }
+
+<span class="nc" id="L954">        sendCommand(payload, protocol.getWriteCharacteristicUUID())</span>
+<span class="nc" id="L955">        pendingQueries[query.id] = PendingQueryState(</span>
+<span class="nc" id="L956">            protocolName = protocol.manufacturer,</span>
+<span class="nc" id="L957">            query = query,</span>
+<span class="nc" id="L958">            attempt = attempt,</span>
+<span class="nc" id="L959">            sentAtMs = System.currentTimeMillis()</span>
+        )
+
+<span class="nc" id="L962">        emitQueryTrace(</span>
+<span class="nc" id="L963">            QueryTraceEvent(</span>
+<span class="nc" id="L964">                timestampMs = System.currentTimeMillis(),</span>
+<span class="nc" id="L965">                protocol = protocol.manufacturer,</span>
+<span class="nc" id="L966">                queryId = query.id,</span>
+<span class="nc" id="L967">                commandType = query.commandType,</span>
+<span class="nc" id="L968">                phase = QueryTracePhase.SENT,</span>
+<span class="nc" id="L969">                attempt = attempt</span>
+            )
+        )
+<span class="nc" id="L972">        return true</span>
+    }
+
+    private fun matchPendingQueries(protocol: EUCProtocol, data: ByteArray) {
+<span class="pc bpc" id="L976" title="1 of 2 branches missed.">        if (pendingQueries.isEmpty()) return</span>
+<span class="nc" id="L977">        val now = System.currentTimeMillis()</span>
+<span class="nc" id="L978">        val matchedIds = mutableListOf&lt;String&gt;()</span>
+
+<span class="nc bnc" id="L980" title="All 2 branches missed.">        for ((id, state) in pendingQueries) {</span>
+<span class="nc bnc" id="L981" title="All 2 branches missed.">            if (state.protocolName != protocol.manufacturer) continue</span>
+<span class="nc bnc" id="L982" title="All 2 branches missed.">            if (!protocol.matchesQueryResponse(state.query, data)) continue</span>
+<span class="nc" id="L983">            matchedIds.add(id)</span>
+<span class="nc" id="L984">            val rawLatency = now - state.sentAtMs</span>
+<span class="nc bnc" id="L985" title="All 2 branches missed.">            if (rawLatency &lt; 0L) {</span>
+<span class="nc" id="L986">                logger.warn(</span>
+<span class="nc" id="L987">                    &quot;BLEQueryTrace&quot;,</span>
+<span class="nc" id="L988">                    &quot;Negative latency detected for query=${state.query.id} protocol=${state.protocolName}; sentAt=${state.sentAtMs} now=$now&quot;</span>
+                )
+            }
+<span class="nc" id="L991">            emitQueryTrace(</span>
+<span class="nc" id="L992">                QueryTraceEvent(</span>
+<span class="nc" id="L993">                    timestampMs = now,</span>
+<span class="nc" id="L994">                    protocol = state.protocolName,</span>
+<span class="nc" id="L995">                    queryId = id,</span>
+<span class="nc" id="L996">                    commandType = state.query.commandType,</span>
+<span class="nc" id="L997">                    phase = QueryTracePhase.RESPONSE_MATCHED,</span>
+<span class="nc" id="L998">                    attempt = state.attempt,</span>
+<span class="nc bnc" id="L999" title="All 2 branches missed.">                    latencyMs = if (rawLatency &lt; 0L) 0L else rawLatency</span>
+                )
+            )
+        }
+
+<span class="nc" id="L1004">        matchedIds.forEach { pendingQueries.remove(it) }</span>
+<span class="nc" id="L1005">    }</span>
+
+    private fun emitQueryTrace(event: QueryTraceEvent) {
+<span class="nc" id="L1008">        _queryTraceFlow.tryEmit(event)</span>
+<span class="nc" id="L1009">        logger.info(</span>
+<span class="nc" id="L1010">            &quot;BLEQueryTrace&quot;,</span>
+<span class="nc bnc" id="L1011" title="All 4 branches missed.">            &quot;phase=${event.phase} protocol=${event.protocol} query=${event.queryId} command=${event.commandType} attempt=${event.attempt} latencyMs=${event.latencyMs ?: -1} message=${event.message ?: &quot;&quot;}&quot;</span>
+        )
+<span class="nc" id="L1013">    }</span>
+
+    // Cleanup
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun cleanup() {
+<span class="nc" id="L1018">        cancelReconnectAttempts()</span>
+<span class="nc bnc" id="L1019" title="All 2 branches missed.">        scanTimeoutJob?.cancel()</span>
+<span class="nc bnc" id="L1020" title="All 2 branches missed.">        connectionTimeoutJob?.cancel()</span>
+<span class="nc" id="L1021">        disconnect()</span>
+<span class="nc bnc" id="L1022" title="All 2 branches missed.">        scanJob?.cancel()</span>
+<span class="nc bnc" id="L1023" title="All 2 branches missed.">        connectionJob?.cancel()</span>
+<span class="nc" id="L1024">        coroutineScope.cancel()</span>
+<span class="nc" id="L1025">    }</span>
+}
+
+/**
+ * Scan-related callbacks exposed by [BLEManager].
+ *
+ * Threading contract:
+ * - These callbacks are invoked from background execution contexts.
+ * - They are not guaranteed to run on the Android main thread.
+ *
+ * Implications for callers:
+ * - Do not update Android views directly from these methods unless you explicitly
+ *   switch to the main thread first.
+ * - Prefer forwarding these events to a `Flow`, `StateFlow`, `LiveData`, or another
+ *   application-level state container consumed by the UI layer.
+ */
+// Callback interfaces
+sealed interface ScanCallback {
+<span class="nc" id="L1043">    fun onScanStarted() {}</span>
+<span class="nc" id="L1044">    fun onDeviceDiscovered(device: EUCDevice) {}</span>
+<span class="nc" id="L1045">    fun onScanCompleted(devices: List&lt;EUCDevice&gt;) {}</span>
+}
+
+/**
+ * Connection- and GATT-related callbacks exposed by [BLEManager].
+ *
+ * This callback extends [ScanCallback], so it also receives scan lifecycle events.
+ *
+ * Threading contract:
+ * - Methods may be invoked either from Android BLE callback paths or from the
+ *   manager's background coroutine scope.
+ * - No method in this callback is guaranteed to run on the Android main thread.
+ *
+ * Recommended usage:
+ * - Perform non-UI work directly here if needed.
+ * - For UI updates, switch explicitly to `Dispatchers.Main`, `runOnUiThread`, or
+ *   publish the event into a UI-observed state holder.
+ */
+<span class="nc" id="L1063">sealed class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback {</span>
+<span class="nc" id="L1064">    open fun onConnected() {}</span>
+<span class="nc" id="L1065">    open fun onDisconnected() {}</span>
+<span class="nc" id="L1066">    open fun onConnectionFailed(error: BLEException) {}</span>
+<span class="nc" id="L1067">    open fun onServicesDiscovered(services: List&lt;BluetoothGattService&gt;) {}</span>
+<span class="nc" id="L1068">    open fun onMtuChanged(mtu: Int) {}</span>
+}
+
+/**
+ * Default adapter that forwards [ConnectionCallback] events to a [BleBackendListener].
+ *
+ * Threading contract:
+ * - Forwarded events keep the original threading behavior of [BLEManager].
+ * - Listener methods are therefore not guaranteed to run on the Android main thread.
+ *
+ * Consumers of [BleBackendListener] must explicitly switch to the main thread before
+ * performing UI work.
+ */
+<span class="nc" id="L1081">class ListenerConnectionCallback(</span>
+<span class="nc" id="L1082">    private val listener: BleBackendListener?, private val bleManager: BLEManager</span>
+<span class="nc" id="L1083">) : ConnectionCallback() {</span>
+
+    override fun onScanStarted() {
+<span class="nc bnc" id="L1086" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.ScanStarted)</span>
+<span class="nc" id="L1087">    }</span>
+
+    override fun onDeviceDiscovered(device: EUCDevice) {
+<span class="nc bnc" id="L1090" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.DeviceDiscovered(device))</span>
+<span class="nc" id="L1091">    }</span>
+
+    override fun onScanCompleted(devices: List&lt;EUCDevice&gt;) {
+<span class="nc bnc" id="L1094" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.ScanCompleted(devices))</span>
+<span class="nc" id="L1095">    }</span>
+
+    override fun onConnected() {
+<span class="nc bnc" id="L1098" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.Connected(bleManager.getConnectedDevice()))</span>
+<span class="nc" id="L1099">    }</span>
+
+    override fun onDisconnected() {
+<span class="nc bnc" id="L1102" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.Disconnected)</span>
+<span class="nc" id="L1103">    }</span>
+
+    override fun onConnectionFailed(error: BLEException) {
+<span class="nc bnc" id="L1106" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.Error(error))</span>
+<span class="nc" id="L1107">    }</span>
+
+    override fun onServicesDiscovered(services: List&lt;BluetoothGattService&gt;) {
+<span class="nc bnc" id="L1110" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.ServicesDiscovered(services.map { it.uuid }))</span>
+<span class="nc" id="L1111">    }</span>
+
+    override fun onMtuChanged(mtu: Int) {
+<span class="nc bnc" id="L1114" title="All 2 branches missed.">        listener?.onEvent(BleBackendEvent.MtuChanged(mtu))</span>
+<span class="nc" id="L1115">    }</span>
+}
+
+/**
+ * Callback receiving decoded [EUCData] frames.
+ *
+ * Threading contract:
+ * - Invoked from the manager's background coroutine scope.
+ * - Not guaranteed to run on the Android main thread.
+ *
+ * Recommended usage:
+ * - Perform parsing, aggregation, logging, persistence, or domain processing directly.
+ * - For UI updates, switch explicitly to the main thread or publish the value through
+ *   a UI-observed state container.
+ */
+interface DataCallback {
+    fun onDataReceived(data: EUCData)
+}
+
+/**
+ * Callback receiving errors produced by [BLEManager].
+ *
+ * Threading contract:
+ * - Invoked from background execution contexts.
+ * - Not guaranteed to run on the Android main thread.
+ *
+ * Recommended usage:
+ * - Handle logging, metrics, and state transitions directly.
+ * - Switch explicitly to the main thread before displaying Android UI such as
+ *   dialogs, snackbars, or toasts.
+ */
+interface ErrorCallback {
+    fun onError(error: BLEException)
+}
+
+enum class QueryTracePhase {
+<span class="nc" id="L1151">    SENT, RESPONSE_MATCHED, TIMEOUT, RETRY_SCHEDULED, UNSUPPORTED, FAILED</span>
+}
+
+<span class="nc" id="L1154">data class QueryTraceEvent(</span>
+<span class="nc" id="L1155">    val timestampMs: Long,</span>
+<span class="nc" id="L1156">    val protocol: String,</span>
+<span class="nc" id="L1157">    val queryId: String,</span>
+<span class="nc" id="L1158">    val commandType: CommandType,</span>
+<span class="nc" id="L1159">    val phase: QueryTracePhase,</span>
+<span class="nc" id="L1160">    val attempt: Int,</span>
+<span class="nc" id="L1161">    val latencyMs: Long? = null,</span>
+<span class="nc" id="L1162">    val message: String? = null</span>
+<span class="nc" id="L1163">)</span>
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html class="no-js" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>io.github.tritbool.euc.ble.core</title>
+    <link href="../../images/logo-icon.svg" rel="icon" type="image/svg">
+        <script>var pathToRoot = "../../";</script>
+    <script>document.documentElement.classList.replace("no-js", "js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+      if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      } else {
+        const savedDarkMode = JSON.parse(storage)
+        if (savedDarkMode === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      }
+    </script>
+<script type="text/javascript" src="../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../styles/style.css" rel="Stylesheet">
+<link href="../../styles/main.css" rel="Stylesheet">
+<link href="../../styles/prism.css" rel="Stylesheet">
+<link href="../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../scripts/safe-local-storage_blocking.js"></script>
+<script type="text/javascript" src="../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../ui-kit/ui-kit.min.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <header class="navigation theme-dark" id="navigation-wrapper" role="banner">
+            <a class="library-name--link" href="../../index.html" tabindex="1">
+                    EUC BLE Library
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true"
+                        data-filter=":euc-ble-core/release">release</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
+                    <div class="dropdown--header"><span>Target filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close target filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":euc-ble-core/release"
+                                       data-filter=":euc-ble-core/release"/>
+                                <span class="checkbox--icon"></span>
+                                release
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </ul>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </header>
+    <div id="container">
+        <nav id="leftColumn" class="sidebar" data-item-type="SECTION" data-item-config='{"defaultSize": 280, "minSize": 200, "maxSize": 400}'>
+            <a class="toc--skip-link" href="#main">Skip to content</a>
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox" aria-label="Table of contents">
+                    <div class="dropdown--header">
+                            <span>
+                                    EUC BLE Library
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </nav>
+        <div id="resizer" class="resizer" data-item-type="BAR"></div>
+        <div id="main" data-item-type="SECTION" role="main">
+<div class="main-content" data-page-type="package" id="content" pageIds="EUC BLE Library::io.github.tritbool.euc.ble.core////PointingToDeclaration//1134321133">
+  <div class="breadcrumbs"><a href="../../index.html">EUC BLE Library</a><span class="delimiter">/</span><span class="current">io.github.tritbool.euc.ble.core</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span><span>Package-level</span></span> <span><span>declarations</span></span></h1>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="TYPE">Types</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="TYPE">
+        <h2 class="tableheader">Types</h2>
+        <div class="table"><a data-name="1429771772%2FClasslikes%2F1134321133" anchor-label="AndroidLogger" id="1429771772%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-android-logger/index.html"><span>Android</span><wbr></wbr><span><span>Logger</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1429771772%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-android-logger/index.html">AndroidLogger</a> : <a href="-logger/index.html">Logger</a></div><div class="brief "><p class="paragraph">Default logger implementation using Android logging</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1708403059%2FClasslikes%2F1134321133" anchor-label="BLEConstants" id="1708403059%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-b-l-e-constants/index.html"><span><span>BLEConstants</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1708403059%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">object </span><a href="-b-l-e-constants/index.html">BLEConstants</a></div><div class="brief "><p class="paragraph">Constants and helper functions for BLE operations specific to Electric Unicycles.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1985194261%2FClasslikes%2F1134321133" anchor-label="BLEManager" id="1985194261%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-b-l-e-manager/index.html"><span><span>BLEManager</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1985194261%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-b-l-e-manager/index.html">BLEManager</a> : <a href="https://developer.android.com/reference/kotlin/android/bluetooth/BluetoothGattCallback.html">BluetoothGattCallback</a></div><div class="brief "><p class="paragraph">Main BLE manager for Electric Unicycles.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="37274258%2FClasslikes%2F1134321133" anchor-label="ByteUtils" id="37274258%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-byte-utils/index.html"><span>Byte</span><wbr></wbr><span><span>Utils</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="37274258%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">object </span><a href="-byte-utils/index.html">ByteUtils</a></div><div class="brief "><p class="paragraph">Utility class for byte operations commonly used in BLE protocols</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1500143420%2FClasslikes%2F1134321133" anchor-label="ConnectionCallback" id="-1500143420%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-connection-callback/index.html"><span>Connection</span><wbr></wbr><span><span>Callback</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1500143420%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-connection-callback/index.html">ConnectionCallback</a> : <a href="-scan-callback/index.html">ScanCallback</a></div><div class="brief "><p class="paragraph">Connection- and GATT-related callbacks exposed by <a href="-b-l-e-manager/index.html">BLEManager</a>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="269683192%2FClasslikes%2F1134321133" anchor-label="DataCallback" id="269683192%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-data-callback/index.html"><span>Data</span><wbr></wbr><span><span>Callback</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="269683192%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-data-callback/index.html">DataCallback</a></div><div class="brief "><p class="paragraph">Callback receiving decoded <a href="../io.github.tritbool.euc.ble.models/-e-u-c-data/index.html">EUCData</a> frames.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1759497262%2FClasslikes%2F1134321133" anchor-label="ErrorCallback" id="1759497262%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-error-callback/index.html"><span>Error</span><wbr></wbr><span><span>Callback</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1759497262%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-error-callback/index.html">ErrorCallback</a></div><div class="brief "><p class="paragraph">Callback receiving errors produced by <a href="-b-l-e-manager/index.html">BLEManager</a>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2064631152%2FClasslikes%2F1134321133" anchor-label="ListenerConnectionCallback" id="2064631152%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-listener-connection-callback/index.html"><span>Listener</span><wbr></wbr><span>Connection</span><wbr></wbr><span><span>Callback</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2064631152%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-listener-connection-callback/index.html">ListenerConnectionCallback</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">listener<span class="token operator">: </span><a href="../io.github.tritbool.euc.ble.integration/-ble-backend-listener/index.html">BleBackendListener</a><span class="token operator">?</span><span class="token punctuation">, </span></span><span class="parameter ">bleManager<span class="token operator">: </span><a href="-b-l-e-manager/index.html">BLEManager</a></span></span><span class="token punctuation">)</span> : <a href="-connection-callback/index.html">ConnectionCallback</a></div><div class="brief "><p class="paragraph">Default adapter that forwards <a href="-connection-callback/index.html">ConnectionCallback</a> events to a <a href="../io.github.tritbool.euc.ble.integration/-ble-backend-listener/index.html">BleBackendListener</a>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1899990505%2FClasslikes%2F1134321133" anchor-label="Logger" id="-1899990505%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-logger/index.html"><span><span>Logger</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1899990505%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-logger/index.html">Logger</a></div><div class="brief "><p class="paragraph">Simple logging interface to avoid external dependencies</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1850614581%2FClasslikes%2F1134321133" anchor-label="NoOpLogger" id="1850614581%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-no-op-logger/index.html"><span>No</span><wbr></wbr><span>Op</span><wbr></wbr><span><span>Logger</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1850614581%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-no-op-logger/index.html">NoOpLogger</a> : <a href="-logger/index.html">Logger</a></div><div class="brief "><p class="paragraph">No-op logger for testing or environments without logging</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="704391902%2FClasslikes%2F1134321133" anchor-label="QueryTraceEvent" id="704391902%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-query-trace-event/index.html"><span>Query</span><wbr></wbr><span>Trace</span><wbr></wbr><span><span>Event</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="704391902%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-query-trace-event/index.html">QueryTraceEvent</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>timestampMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>protocol<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>queryId<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>commandType<span class="token operator">: </span><a href="../io.github.tritbool.euc.ble.protocols/-command-type/index.html">CommandType</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>phase<span class="token operator">: </span><a href="-query-trace-phase/index.html">QueryTracePhase</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>attempt<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>latencyMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>message<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="782131997%2FClasslikes%2F1134321133" anchor-label="QueryTracePhase" id="782131997%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-query-trace-phase/index.html"><span>Query</span><wbr></wbr><span>Trace</span><wbr></wbr><span><span>Phase</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="782131997%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-query-trace-phase/index.html">QueryTracePhase</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-query-trace-phase/index.html">QueryTracePhase</a><span class="token operator">&gt; </span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1746036347%2FClasslikes%2F1134321133" anchor-label="ScanCallback" id="-1746036347%2FClasslikes%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-scan-callback/index.html"><span>Scan</span><wbr></wbr><span><span>Callback</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1746036347%2FClasslikes%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">interface </span><a href="-scan-callback/index.html">ScanCallback</a></div><div class="brief "><p class="paragraph">Scan-related callbacks exposed by <a href="-b-l-e-manager/index.html">BLEManager</a>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2026 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

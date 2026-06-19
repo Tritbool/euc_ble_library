@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLEConstants.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.core</a> &gt; <span class="el_source">BLEConstants.kt</span></div><h1>BLEConstants.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.core
+
+import java.util.UUID
+
+/**
+ * Constants and helper functions for BLE operations specific to Electric Unicycles.
+ *
+ * Contains:
+ * - BLE Service and Characteristic UUIDs for various EUC manufacturers
+ * - Manufacturer identifiers
+ * - Connection state enumeration
+ * - Default timeout and MTU values
+ * - Frame header and footer magic bytes for protocol detection
+ */
+object BLEConstants {
+    // BLE Service UUIDs
+    const val KINGSONG_SERVICE_UUID = &quot;0000ffe0-0000-1000-8000-00805f9b34fb&quot;
+    const val GOTWAY_SERVICE_UUID = &quot;0000ffe0-0000-1000-8000-00805f9b34fb&quot;
+    const val INMOTION_SERVICE_UUID = &quot;0000ffe0-0000-1000-8000-00805f9b34fb&quot;
+    const val INMOTION_V2_SERVICE_UUID = &quot;6e400001-b5a3-f393-e0a9-e50e24dcca9e&quot;
+    const val NINEBOT_SERVICE_UUID = &quot;0000ffe0-0000-1000-8000-00805f9b34fb&quot;
+    const val NINEBOT_Z_SERVICE_UUID = &quot;6e400001-b5a3-f393-e0a9-e50e24dcca9e&quot;
+    const val VETERAN_SERVICE_UUID = &quot;0000ffe0-0000-1000-8000-00805f9b34fb&quot;
+    const val LEAPERKIM_SERVICE_UUID = &quot;0000ffe0-0000-1000-8000-00805f9b34fb&quot;
+
+    // BLE Characteristic UUIDs
+    const val KINGSONG_READ_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val GOTWAY_READ_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val INMOTION_READ_CHARACTERISTIC = &quot;0000ffe4-0000-1000-8000-00805f9b34fb&quot;
+    const val INMOTION_WRITE_CHARACTERISTIC = &quot;0000ffe9-0000-1000-8000-00805f9b34fb&quot;
+    const val NINEBOT_READ_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val NINEBOT_WRITE_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val NINEBOT_Z_READ_CHARACTERISTIC = &quot;6e400003-b5a3-f393-e0a9-e50e24dcca9e&quot;
+    const val NINEBOT_Z_WRITE_CHARACTERISTIC = &quot;6e400002-b5a3-f393-e0a9-e50e24dcca9e&quot;
+    const val VETERAN_READ_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val VETERAN_WRITE_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val LEAPERKIM_READ_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+    const val LEAPERKIM_WRITE_CHARACTERISTIC = &quot;0000ffe1-0000-1000-8000-00805f9b34fb&quot;
+
+    const val INMOTION_V2_READ_CHARACTERISTIC = &quot;6e400003-b5a3-f393-e0a9-e50e24dcca9e&quot;
+
+    const val INMOTION_V2_WRITE_CHARACTERISTIC = &quot;6e400002-b5a3-f393-e0a9-e50e24dcca9e&quot;
+
+    // BLE Descriptor UUIDs
+    const val CCCD_DESCRIPTOR = &quot;00002902-0000-1000-8000-00805f9b34fb&quot;
+
+    // Connection states
+    enum class ConnectionState {
+<span class="fc" id="L49">        DISCONNECTED,</span>
+<span class="fc" id="L50">        CONNECTING,</span>
+<span class="fc" id="L51">        CONNECTED,</span>
+<span class="fc" id="L52">        DISCONNECTING</span>
+    }
+
+    // Scan timeout
+    const val DEFAULT_SCAN_TIMEOUT_MS = 10000L
+    const val DEFAULT_CONNECTION_TIMEOUT_MS = 5000L
+    const val DEFAULT_MTU_SIZE = 23
+    const val MAX_MTU_SIZE = 517
+
+    // Reconnection settings
+    const val RECONNECT_BASE_DELAY_MS = 1000L
+    const val MAX_RECONNECT_DELAY_MS = 30_000L
+    const val RECONNECT_JITTER_MAX_MS = 500L
+
+    // Common value ranges
+    const val MIN_PERCENTAGE = 0
+    const val MAX_PERCENTAGE = 100
+    const val MIN_BYTE_VALUE = 0
+    const val MAX_BYTE_VALUE = 255
+
+    // Frame footer patterns
+<span class="fc" id="L73">    val INMOTION_LEGACY_TAIL: ByteArray = byteArrayOf(0x55.toByte(), 0x55.toByte())</span>
+
+    // Flow buffer sizes
+    const val DEFAULT_FLOW_BUFFER_CAPACITY = 256
+
+    // Common scaling factors
+    const val VOLTAGE_CURRENT_SCALE = 100.0
+    const val VOLTAGE_SCALE_1000 = 1000.0
+
+    // Polling intervals
+    const val POLLING_INTERVAL_FAST_MS = 1000L
+    const val POLLING_INTERVAL_NORMAL_MS = 5000L
+
+    // Battery and voltage thresholds
+    const val MIN_READY_VOLTAGE_V = 30.0
+    const val MIN_BATTERY_VOLTAGE_V = 50.0
+
+    // Manufacturer identifiers
+    const val MANUFACTURER_KINGSONG = 0x004B
+    const val MANUFACTURER_EXTREMEBULL = 0x0045
+    const val MANUFACTURER_GOTWAY = 0x0047
+    const val MANUFACTURER_INMOTION = 0x0049
+    const val MANUFACTURER_NINEBOT = 0x004E
+    const val MANUFACTURER_NOSFET = 0x004F
+    const val MANUFACTURER_VETERAN = 0x0056
+
+    // Leaperkim (Veteran branding) uses the same manufacturer identifier in WheelLog captures.
+    const val MANUFACTURER_LEAPERKIM = MANUFACTURER_VETERAN
+
+    // Helper functions
+<span class="nc" id="L103">    fun String.toUUID(): UUID = UUID.fromString(this)</span>
+
+    // Frame header magic bytes for each protocol — used by looksLikeMyFrames() implementations
+    // and available as a canonical reference to avoid scattering magic bytes across protocol files.
+<span class="fc" id="L107">    val KINGSONG_FRAME_HEADER_1: ByteArray = byteArrayOf(0xAA.toByte(), 0x55.toByte())</span>
+
+    // Note: KINGSONG_FRAME_HEADER_2 and GOTWAY_FRAME_HEADER share the same byte sequence (0x55 0xAA).
+    // Header bytes alone cannot disambiguate Kingsong from Gotway; canHandle() (device name /
+    // manufacturer ID) and the presence of the Gotway 5A5A5A5A footer remain the primary gates.
+<span class="fc" id="L112">    val KINGSONG_FRAME_HEADER_2: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())</span>
+<span class="fc" id="L113">    val GOTWAY_FRAME_HEADER: ByteArray = byteArrayOf(0x55.toByte(), 0xAA.toByte())</span>
+<span class="fc" id="L114">    val GOTWAY_FRAME_FOOTER: ByteArray =</span>
+<span class="fc" id="L115">        byteArrayOf(0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte(), 0x5A.toByte())</span>
+<span class="fc" id="L116">    val INMOTION_FRAME_HEADER: ByteArray = byteArrayOf(0xAA.toByte(), 0xAA.toByte())</span>
+    const val NINEBOT_FRAME_FIRST_BYTE: Int = 0x55
+<span class="fc" id="L118">    val NINEBOT_WHEELLOG_FRAME_HEADER: ByteArray = byteArrayOf(0x5A.toByte(), 0xA5.toByte())</span>
+<span class="pc" id="L119">    val LEAPERKIM_FRAME_HEADER: ByteArray = byteArrayOf(0xDC.toByte(), 0x5A.toByte(), 0x5C.toByte())</span>
+
+    // Command frame header for Gotway (used in command generation, reverse of WheelLog header)
+<span class="fc" id="L122">    val GOTWAY_COMMAND_HEADER: ByteArray = byteArrayOf(0xA5.toByte(), 0x5A.toByte())</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

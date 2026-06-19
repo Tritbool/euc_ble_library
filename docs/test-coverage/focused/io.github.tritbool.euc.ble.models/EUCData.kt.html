@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EUCData.kt</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">euc-ble-core</a> &gt; <a href="index.source.html" class="el_package">io.github.tritbool.euc.ble.models</a> &gt; <span class="el_source">EUCData.kt</span></div><h1>EUCData.kt</h1><pre class="source lang-java linenums">package io.github.tritbool.euc.ble.models
+
+/**
+ * Represents real-time telemetry data from an Electric Unicycle.
+ *
+ * Contains all decoded data fields from BLE characteristic notifications,
+ * including speed, voltage, current, temperature, battery information, and
+ * various device-specific settings and status flags.
+ *
+ * @param frameType Internal identifier for the frame format
+ * @param speed Current speed in km/h
+ * @param voltage Battery voltage in volts
+ * @param current Current draw in amps (positive = discharge, negative = charge)
+ * @param temperature Temperature in degrees Celsius
+ * @param batteryLevel Battery level percentage (0-100)
+ * @param distance Current trip distance in kilometers
+ * @param power Current power consumption in watts
+ * @param pwm PWM duty cycle percentage (0-100), null if unavailable
+ * @param timestamp Timestamp in milliseconds
+ * @param rawData Raw byte data from the BLE characteristic
+ * @param manufacturer Manufacturer name
+ * @param model Device model name
+ * @param serialNumber Device serial number, null if unavailable
+ * @param firmwareVersion Firmware version, null if unavailable
+ * @param isCharging Current charging status
+ * @param rideTime Total ride time in seconds
+ * @param cellVoltages Individual cell voltages, null if unavailable
+ * @param motorTemperature Motor temperature in degrees Celsius, null if unavailable
+ * @param totalDistance Total distance traveled in kilometers, null if unavailable
+ * @param pedalsMode Pedals mode value (legacy-mapped, typically 0..2)
+ * @param alarmMode Encoded alarm mode value (firmware-dependent, usually 0..3)
+ * @param rollAngleMode Encoded roll-angle mode value (firmware-dependent, usually 0..3)
+ * @param usesMiles Whether the device uses miles instead of km/h
+ * @param autoPowerOffMinutes Auto power-off time in minutes, null if unavailable
+ * @param tiltBackSpeed Tilt-back speed threshold, null if unavailable
+ * @param ledMode LED mode setting, null if unavailable
+ * @param lightMode Light mode setting, null if unavailable
+ * @param alertFlags Alert flags bitmap, null if unavailable
+ * @param wheelAlarm Wheel alarm status, null if unavailable
+ * @param topSpeed Session top speed in km/h, null if unavailable
+ * @param fanStatus Fan on/off status, null if unavailable
+ * @param chargingStatus Charging status byte, null if unavailable
+ * @param temperature2 Secondary temperature (e.g., motor/board), null if unavailable
+ * @param cpuLoad CPU load percentage, null if unavailable
+ * @param speedLimit Configured speed limit in km/h, null if unavailable
+ * @param alarm1Speed Alarm 1 speed threshold, null if unavailable
+ * @param alarm2Speed Alarm 2 speed threshold, null if unavailable
+ * @param alarm3Speed Alarm 3 speed threshold, null if unavailable
+ * @param wheelMaxSpeed Maximum speed setting, null if unavailable
+ * @param wheelDistance Trip distance reported by wheel, null if unavailable
+ * @param angle Pitch/tilt angle in degrees, null if unavailable
+ */
+<span class="fc bfc" id="L53" title="All 20 branches covered.">data class EUCData(</span>
+<span class="fc" id="L54">    internal val frameType: String = &quot;BASE&quot;,</span>
+<span class="fc" id="L55">    val speed: Double,              // km/h</span>
+<span class="fc" id="L56">    val voltage: Double,            // volts</span>
+<span class="fc" id="L57">    val current: Double,            // amps</span>
+<span class="fc" id="L58">    val temperature: Double,        // degrees Celsius</span>
+<span class="fc" id="L59">    val batteryLevel: Int,         // percentage 0-100</span>
+<span class="fc" id="L60">    val distance: Double,           // kilometers</span>
+<span class="fc" id="L61">    val power: Double,              // watts</span>
+<span class="fc" id="L62">    val pwm: Double? = null,          // PWM duty cycle percentage (0-100), null if unavailable</span>
+<span class="fc" id="L63">    val timestamp: Long,            // milliseconds</span>
+<span class="fc" id="L64">    val rawData: ByteArray,         // raw byte data</span>
+<span class="fc" id="L65">    val manufacturer: String,       // manufacturer name</span>
+<span class="fc" id="L66">    val model: String,              // device model</span>
+<span class="pc" id="L67">    val serialNumber: String? = null,      // device serial</span>
+<span class="pc" id="L68">    val firmwareVersion: String? = null,   // firmware version</span>
+<span class="fc" id="L69">    val isCharging: Boolean,        // charging status</span>
+<span class="fc" id="L70">    val rideTime: Long,             // ride time in seconds</span>
+<span class="pc" id="L71">    val cellVoltages: List&lt;Double&gt;? = null, // individual cell voltages</span>
+<span class="pc" id="L72">    val motorTemperature: Double? = null,   // motor temperature in degrees Celsius (null if not available)</span>
+<span class="fc" id="L73">    val totalDistance: Double? = null,</span>
+<span class="fc" id="L74">    val pedalsMode: Int? = null,       // mode value exposed by protocol (legacy-mapped, typically 0..2)</span>
+<span class="fc" id="L75">    val alarmMode: Int? = null,        // encoded alarm mode value (firmware-dependent, usually 0..3)</span>
+<span class="fc" id="L76">    val rollAngleMode: Int? = null,    // encoded roll-angle mode value (firmware-dependent, usually 0..3)</span>
+<span class="fc" id="L77">    val usesMiles: Boolean? = null,</span>
+<span class="fc" id="L78">    val autoPowerOffMinutes: Int? = null,</span>
+<span class="fc" id="L79">    val tiltBackSpeed: Int? = null,</span>
+<span class="fc" id="L80">    val ledMode: Int? = null,</span>
+<span class="fc" id="L81">    val lightMode: Int? = null,</span>
+<span class="fc" id="L82">    val alertFlags: Int? = null,</span>
+<span class="fc" id="L83">    val wheelAlarm: Boolean? = null,</span>
+<span class="pc" id="L84">    val topSpeed: Double? = null,           // session top speed in km/h</span>
+<span class="pc" id="L85">    val fanStatus: Int? = null,             // fan on/off status</span>
+<span class="pc" id="L86">    val chargingStatus: Int? = null,        // charging status byte</span>
+<span class="pc" id="L87">    val temperature2: Double? = null,       // secondary temperature (e.g. motor/board)</span>
+<span class="pc" id="L88">    val cpuLoad: Int? = null,               // CPU load percentage</span>
+<span class="pc" id="L89">    val speedLimit: Double? = null,         // configured speed limit in km/h</span>
+<span class="fc" id="L90">    val alarm1Speed: Int? = null,           // alarm 1 speed threshold</span>
+<span class="pc" id="L91">    val alarm2Speed: Int? = null,           // alarm 2 speed threshold</span>
+<span class="pc" id="L92">    val alarm3Speed: Int? = null,           // alarm 3 speed threshold</span>
+<span class="pc" id="L93">    val wheelMaxSpeed: Int? = null,         // max speed setting</span>
+<span class="pc" id="L94">    val wheelDistance: Double? = null,       // trip distance (wheel-reported)</span>
+<span class="fc" id="L95">    val angle: Double? = null                // pitch/tilt angle in degrees (null if unavailable)</span>
+<span class="fc" id="L96">) {</span>
+    override fun equals(other: Any?): Boolean {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (this === other) return true</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">        if (javaClass != other?.javaClass) return false</span>
+
+<span class="fc" id="L101">        other as EUCData</span>
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (timestamp != other.timestamp) return false</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (manufacturer != other.manufacturer) return false</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (model != other.model) return false</span>
+
+<span class="fc" id="L107">        return true</span>
+    }
+
+    override fun hashCode(): Int {
+<span class="fc" id="L111">        var result = timestamp.hashCode()</span>
+<span class="fc" id="L112">        result = 31 * result + manufacturer.hashCode()</span>
+<span class="fc" id="L113">        result = 31 * result + model.hashCode()</span>
+<span class="fc" id="L114">        return result</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

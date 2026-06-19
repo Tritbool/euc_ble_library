@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html class="no-js" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>EUCData</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+        <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js", "js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+      if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      } else {
+        const savedDarkMode = JSON.parse(storage)
+        if (savedDarkMode === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      }
+    </script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/safe-local-storage_blocking.js"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <header class="navigation theme-dark" id="navigation-wrapper" role="banner">
+            <a class="library-name--link" href="../../../index.html" tabindex="1">
+                    EUC BLE Library
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true"
+                        data-filter=":euc-ble-core/release">release</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
+                    <div class="dropdown--header"><span>Target filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close target filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":euc-ble-core/release"
+                                       data-filter=":euc-ble-core/release"/>
+                                <span class="checkbox--icon"></span>
+                                release
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </ul>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </header>
+    <div id="container">
+        <nav id="leftColumn" class="sidebar" data-item-type="SECTION" data-item-config='{"defaultSize": 280, "minSize": 200, "maxSize": 400}'>
+            <a class="toc--skip-link" href="#main">Skip to content</a>
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox" aria-label="Table of contents">
+                    <div class="dropdown--header">
+                            <span>
+                                    EUC BLE Library
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </nav>
+        <div id="resizer" class="resizer" data-item-type="BAR"></div>
+        <div id="main" data-item-type="SECTION" role="main">
+<div class="main-content" data-page-type="classlike" id="content" pageIds="EUC BLE Library::io.github.tritbool.euc.ble.models/EUCData///PointingToDeclaration//1134321133">
+  <div class="breadcrumbs"><a href="../../../index.html">EUC BLE Library</a><span class="delimiter">/</span><a href="../index.html">io.github.tritbool.euc.ble.models</a><span class="delimiter">/</span><span class="current">EUCData</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span><span>EUCData</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="index.html">EUCData</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">frameType<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator"> = </span><span class="token string">&quot;BASE&quot;</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>voltage<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>current<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>temperature<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>batteryLevel<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>distance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>power<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>pwm<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>timestamp<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>rawData<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte-array/index.html">ByteArray</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>manufacturer<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>model<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>serialNumber<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>firmwareVersion<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>isCharging<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>rideTime<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>cellVoltages<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">&gt;</span><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>motorTemperature<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>totalDistance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>pedalsMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>alarmMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>rollAngleMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>usesMiles<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>autoPowerOffMinutes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>tiltBackSpeed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>ledMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>lightMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>alertFlags<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>wheelAlarm<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>topSpeed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>fanStatus<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>chargingStatus<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>temperature2<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>cpuLoad<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>speedLimit<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>alarm1Speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>alarm2Speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>alarm3Speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>wheelMaxSpeed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>wheelDistance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>angle<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span><span class="source-link-wrapper"><span class="source-link" data-element-type="source-link">(<a href="https://github.com/Tritbool/euc_ble_library/tree/main/euc-ble-core/src/main/kotlin/io/github/tritbool/euc/ble/models/EUCData.kt#L53">source</a>)</span></span></div><p class="paragraph">Represents real-time telemetry data from an Electric Unicycle.</p><p class="paragraph">Contains all decoded data fields from BLE characteristic notifications, including speed, voltage, current, temperature, battery information, and various device-specific settings and status flags.</p><h4 class="tableheader">Parameters</h4><div class="table"><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>frame</span><wbr></wbr><span><span>Type</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Internal identifier for the frame format</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Current speed in km/h</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>voltage</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Battery voltage in volts</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>current</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Current draw in amps (positive = discharge, negative = charge)</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>temperature</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Temperature in degrees Celsius</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>battery</span><wbr></wbr><span><span>Level</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Battery level percentage (0-100)</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>distance</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Current trip distance in kilometers</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>power</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Current power consumption in watts</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>pwm</span></span></u></div></span></div><div><div class="title"><p class="paragraph">PWM duty cycle percentage (0-100), null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>timestamp</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Timestamp in milliseconds</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>raw</span><wbr></wbr><span><span>Data</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Raw byte data from the BLE characteristic</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>manufacturer</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Manufacturer name</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>model</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Device model name</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>serial</span><wbr></wbr><span><span>Number</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Device serial number, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>firmware</span><wbr></wbr><span><span>Version</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Firmware version, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>is</span><wbr></wbr><span><span>Charging</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Current charging status</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>ride</span><wbr></wbr><span><span>Time</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Total ride time in seconds</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>cell</span><wbr></wbr><span><span>Voltages</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Individual cell voltages, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>motor</span><wbr></wbr><span><span>Temperature</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Motor temperature in degrees Celsius, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>total</span><wbr></wbr><span><span>Distance</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Total distance traveled in kilometers, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>pedals</span><wbr></wbr><span><span>Mode</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Pedals mode value (legacy-mapped, typically 0..2)</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>alarm</span><wbr></wbr><span><span>Mode</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Encoded alarm mode value (firmware-dependent, usually 0..3)</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>roll</span><wbr></wbr><span>Angle</span><wbr></wbr><span><span>Mode</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Encoded roll-angle mode value (firmware-dependent, usually 0..3)</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>uses</span><wbr></wbr><span><span>Miles</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Whether the device uses miles instead of km/h</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>auto</span><wbr></wbr><span>Power</span><wbr></wbr><span>Off</span><wbr></wbr><span><span>Minutes</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Auto power-off time in minutes, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>tilt</span><wbr></wbr><span>Back</span><wbr></wbr><span><span>Speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Tilt-back speed threshold, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>led</span><wbr></wbr><span><span>Mode</span></span></u></div></span></div><div><div class="title"><p class="paragraph">LED mode setting, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>light</span><wbr></wbr><span><span>Mode</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Light mode setting, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>alert</span><wbr></wbr><span><span>Flags</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Alert flags bitmap, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>wheel</span><wbr></wbr><span><span>Alarm</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Wheel alarm status, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>top</span><wbr></wbr><span><span>Speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Session top speed in km/h, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>fan</span><wbr></wbr><span><span>Status</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Fan on/off status, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>charging</span><wbr></wbr><span><span>Status</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Charging status byte, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>temperature2</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Secondary temperature (e.g., motor/board), null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>cpu</span><wbr></wbr><span><span>Load</span></span></u></div></span></div><div><div class="title"><p class="paragraph">CPU load percentage, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>speed</span><wbr></wbr><span><span>Limit</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Configured speed limit in km/h, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>alarm1Speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Alarm 1 speed threshold, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>alarm2Speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Alarm 2 speed threshold, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>alarm3Speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Alarm 3 speed threshold, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>wheel</span><wbr></wbr><span>Max</span><wbr></wbr><span><span>Speed</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Maximum speed setting, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>wheel</span><wbr></wbr><span><span>Distance</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Trip distance reported by wheel, null if unavailable</p></div></div></div></div><div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>angle</span></span></u></div></span></div><div><div class="title"><p class="paragraph">Pitch/tilt angle in degrees, null if unavailable</p></div></div></div></div></div></div></div>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="CONSTRUCTOR">
+        <h2 class="tableheader">Constructors</h2>
+        <div class="table"><a data-name="1681825859%2FConstructors%2F1134321133" anchor-label="EUCData" id="1681825859%2FConstructors%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-togglable="CONSTRUCTOR" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-e-u-c-data.html"><span><span>EUCData</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1681825859%2FConstructors%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">frameType<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator"> = </span><span class="token string">&quot;BASE&quot;</span><span class="token punctuation">, </span></span><span class="parameter ">speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">voltage<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">current<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">temperature<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">batteryLevel<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter ">distance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">power<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">pwm<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">timestamp<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter ">rawData<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte-array/index.html">ByteArray</a><span class="token punctuation">, </span></span><span class="parameter ">manufacturer<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter ">model<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter ">serialNumber<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">firmwareVersion<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">isCharging<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token punctuation">, </span></span><span class="parameter ">rideTime<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter ">cellVoltages<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">&gt;</span><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">motorTemperature<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">totalDistance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">pedalsMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">alarmMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">rollAngleMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">usesMiles<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">autoPowerOffMinutes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">tiltBackSpeed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">ledMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">lightMode<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">alertFlags<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">wheelAlarm<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">topSpeed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">fanStatus<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">chargingStatus<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">temperature2<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">cpuLoad<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">speedLimit<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">alarm1Speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">alarm2Speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">alarm3Speed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">wheelMaxSpeed<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">wheelDistance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">angle<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="PROPERTY">
+        <h2 class="tableheader">Properties</h2>
+        <div class="table"><a data-name="-565337817%2FProperties%2F1134321133" anchor-label="alarm1Speed" id="-565337817%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="alarm1-speed.html"><span><span>alarm1Speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-565337817%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="alarm1-speed.html">alarm1Speed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-214537880%2FProperties%2F1134321133" anchor-label="alarm2Speed" id="-214537880%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="alarm2-speed.html"><span><span>alarm2Speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-214537880%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="alarm2-speed.html">alarm2Speed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="136262057%2FProperties%2F1134321133" anchor-label="alarm3Speed" id="136262057%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="alarm3-speed.html"><span><span>alarm3Speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="136262057%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="alarm3-speed.html">alarm3Speed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1144732006%2FProperties%2F1134321133" anchor-label="alarmMode" id="-1144732006%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="alarm-mode.html"><span>alarm</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1144732006%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="alarm-mode.html">alarmMode</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1015920191%2FProperties%2F1134321133" anchor-label="alertFlags" id="-1015920191%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="alert-flags.html"><span>alert</span><wbr></wbr><span><span>Flags</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1015920191%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="alert-flags.html">alertFlags</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1957094725%2FProperties%2F1134321133" anchor-label="angle" id="-1957094725%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="angle.html"><span><span>angle</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1957094725%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="angle.html">angle</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="827660168%2FProperties%2F1134321133" anchor-label="autoPowerOffMinutes" id="827660168%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="auto-power-off-minutes.html"><span>auto</span><wbr></wbr><span>Power</span><wbr></wbr><span>Off</span><wbr></wbr><span><span>Minutes</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="827660168%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="auto-power-off-minutes.html">autoPowerOffMinutes</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1276185749%2FProperties%2F1134321133" anchor-label="batteryLevel" id="1276185749%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="battery-level.html"><span>battery</span><wbr></wbr><span><span>Level</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1276185749%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="battery-level.html">batteryLevel</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1868024245%2FProperties%2F1134321133" anchor-label="cellVoltages" id="1868024245%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="cell-voltages.html"><span>cell</span><wbr></wbr><span><span>Voltages</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1868024245%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="cell-voltages.html">cellVoltages</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">&gt;</span><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1035087351%2FProperties%2F1134321133" anchor-label="chargingStatus" id="-1035087351%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="charging-status.html"><span>charging</span><wbr></wbr><span><span>Status</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1035087351%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="charging-status.html">chargingStatus</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="591679744%2FProperties%2F1134321133" anchor-label="cpuLoad" id="591679744%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="cpu-load.html"><span>cpu</span><wbr></wbr><span><span>Load</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="591679744%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="cpu-load.html">cpuLoad</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1244587157%2FProperties%2F1134321133" anchor-label="current" id="1244587157%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="current.html"><span><span>current</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1244587157%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="current.html">current</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-44337321%2FProperties%2F1134321133" anchor-label="distance" id="-44337321%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="distance.html"><span><span>distance</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-44337321%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="distance.html">distance</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1028530583%2FProperties%2F1134321133" anchor-label="fanStatus" id="-1028530583%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="fan-status.html"><span>fan</span><wbr></wbr><span><span>Status</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1028530583%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="fan-status.html">fanStatus</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-702935311%2FProperties%2F1134321133" anchor-label="firmwareVersion" id="-702935311%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="firmware-version.html"><span>firmware</span><wbr></wbr><span><span>Version</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-702935311%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="firmware-version.html">firmwareVersion</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1626612881%2FProperties%2F1134321133" anchor-label="isCharging" id="1626612881%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="is-charging.html"><span>is</span><wbr></wbr><span><span>Charging</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1626612881%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="is-charging.html">isCharging</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-761595552%2FProperties%2F1134321133" anchor-label="ledMode" id="-761595552%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="led-mode.html"><span>led</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-761595552%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="led-mode.html">ledMode</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1197301237%2FProperties%2F1134321133" anchor-label="lightMode" id="1197301237%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="light-mode.html"><span>light</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1197301237%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="light-mode.html">lightMode</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1765695621%2FProperties%2F1134321133" anchor-label="manufacturer" id="-1765695621%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="manufacturer.html"><span><span>manufacturer</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1765695621%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="manufacturer.html">manufacturer</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1711785253%2FProperties%2F1134321133" anchor-label="model" id="1711785253%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="model.html"><span><span>model</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1711785253%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="model.html">model</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-616951347%2FProperties%2F1134321133" anchor-label="motorTemperature" id="-616951347%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="motor-temperature.html"><span>motor</span><wbr></wbr><span><span>Temperature</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-616951347%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="motor-temperature.html">motorTemperature</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1899697648%2FProperties%2F1134321133" anchor-label="pedalsMode" id="1899697648%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="pedals-mode.html"><span>pedals</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1899697648%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="pedals-mode.html">pedalsMode</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1386825417%2FProperties%2F1134321133" anchor-label="power" id="1386825417%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="power.html"><span><span>power</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1386825417%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="power.html">power</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2094653416%2FProperties%2F1134321133" anchor-label="pwm" id="2094653416%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="pwm.html"><span><span>pwm</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2094653416%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="pwm.html">pwm</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1420270532%2FProperties%2F1134321133" anchor-label="rawData" id="-1420270532%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="raw-data.html"><span>raw</span><wbr></wbr><span><span>Data</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1420270532%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="raw-data.html">rawData</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte-array/index.html">ByteArray</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="191683943%2FProperties%2F1134321133" anchor-label="rideTime" id="191683943%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="ride-time.html"><span>ride</span><wbr></wbr><span><span>Time</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="191683943%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="ride-time.html">rideTime</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1121250357%2FProperties%2F1134321133" anchor-label="rollAngleMode" id="1121250357%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="roll-angle-mode.html"><span>roll</span><wbr></wbr><span>Angle</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1121250357%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="roll-angle-mode.html">rollAngleMode</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-227280273%2FProperties%2F1134321133" anchor-label="serialNumber" id="-227280273%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="serial-number.html"><span>serial</span><wbr></wbr><span><span>Number</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-227280273%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="serial-number.html">serialNumber</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1969888711%2FProperties%2F1134321133" anchor-label="speed" id="1969888711%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="speed.html"><span><span>speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1969888711%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="speed.html">speed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="9648312%2FProperties%2F1134321133" anchor-label="speedLimit" id="9648312%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="speed-limit.html"><span>speed</span><wbr></wbr><span><span>Limit</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="9648312%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="speed-limit.html">speedLimit</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1160821882%2FProperties%2F1134321133" anchor-label="temperature" id="1160821882%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="temperature.html"><span><span>temperature</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1160821882%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="temperature.html">temperature</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1175707310%2FProperties%2F1134321133" anchor-label="temperature2" id="1175707310%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="temperature2.html"><span><span>temperature2</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1175707310%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="temperature2.html">temperature2</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-756531413%2FProperties%2F1134321133" anchor-label="tiltBackSpeed" id="-756531413%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="tilt-back-speed.html"><span>tilt</span><wbr></wbr><span>Back</span><wbr></wbr><span><span>Speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-756531413%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="tilt-back-speed.html">tiltBackSpeed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1510181720%2FProperties%2F1134321133" anchor-label="timestamp" id="1510181720%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="timestamp.html"><span><span>timestamp</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1510181720%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="timestamp.html">timestamp</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="471477754%2FProperties%2F1134321133" anchor-label="topSpeed" id="471477754%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="top-speed.html"><span>top</span><wbr></wbr><span><span>Speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="471477754%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="top-speed.html">topSpeed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1744007691%2FProperties%2F1134321133" anchor-label="totalDistance" id="-1744007691%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="total-distance.html"><span>total</span><wbr></wbr><span><span>Distance</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1744007691%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="total-distance.html">totalDistance</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="414717276%2FProperties%2F1134321133" anchor-label="usesMiles" id="414717276%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="uses-miles.html"><span>uses</span><wbr></wbr><span><span>Miles</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="414717276%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="uses-miles.html">usesMiles</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-961854896%2FProperties%2F1134321133" anchor-label="voltage" id="-961854896%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="voltage.html"><span><span>voltage</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-961854896%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="voltage.html">voltage</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2078187254%2FProperties%2F1134321133" anchor-label="wheelAlarm" id="2078187254%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="wheel-alarm.html"><span>wheel</span><wbr></wbr><span><span>Alarm</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2078187254%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="wheel-alarm.html">wheelAlarm</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-31699778%2FProperties%2F1134321133" anchor-label="wheelDistance" id="-31699778%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="wheel-distance.html"><span>wheel</span><wbr></wbr><span><span>Distance</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-31699778%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="wheel-distance.html">wheelDistance</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-526933200%2FProperties%2F1134321133" anchor-label="wheelMaxSpeed" id="-526933200%2FProperties%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="wheel-max-speed.html"><span>wheel</span><wbr></wbr><span>Max</span><wbr></wbr><span><span>Speed</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-526933200%2FProperties%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">val </span><a href="wheel-max-speed.html">wheelMaxSpeed</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="tableheader">Functions</h2>
+        <div class="table"><a data-name="914093909%2FFunctions%2F1134321133" anchor-label="equals" id="914093909%2FFunctions%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="equals.html"><span><span>equals</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="914093909%2FFunctions%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">operator override </span><span class="token keyword">fun </span><a href="equals.html"><span class="token function">equals</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">other<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">?</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-35279375%2FFunctions%2F1134321133" anchor-label="hashCode" id="-35279375%2FFunctions%2F1134321133" data-filterable-set=":euc-ble-core/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":euc-ble-core/release" data-filterable-set=":euc-ble-core/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="hash-code.html"><span>hash</span><wbr></wbr><span><span>Code</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-35279375%2FFunctions%2F1134321133"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":euc-ble-core/release"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="hash-code.html"><span class="token function">hashCode</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2026 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
