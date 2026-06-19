@@ -33,13 +33,11 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Run unit tests + coverage reports
+      - name: Run unit tests
         run: >
           ./gradlew :euc-ble-core:testDebugUnitTest
           --tests
           com.euc.ble.AllTests
-          :euc-ble-core:jacocoTestReport
-          :euc-ble-core:jacocoFocusedReport
           -PmaxParallelForks=1
           --no-daemon
           --stacktrace
@@ -48,60 +46,10 @@ jobs:
           GRADLE_OPTS: "-Xmx2g -Dfile.encoding=UTF-8"
           CI: "true"
 
-      - name: Coverage summary (protocols/models/frames)
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          report = Path("euc-ble-core/build/reports/jacoco/focused/jacoco.xml")
-          summary = Path(".coverage-summary.md")
-
-          if not report.exists():
-              summary.write_text(
-                  "## Coverage (protocols/models/frames)\n\n"
-                  "Coverage XML not found at "
-                  "`euc-ble-core/build/reports/jacoco/focused/jacoco.xml`.\n"
-                  "Ensure `:euc-ble-core:jacocoFocusedReport` completed successfully.\n"
-              )
-              raise SystemExit(0)
-
-          root = ET.parse(report).getroot()
-
-          def ratio(counter_type):
-            covered = 0
-            missed = 0
-            # Agrège les compteurs au niveau package (chaque package a déjà un total)
-            for pkg in root.findall("package"):
-              for c in pkg.findall("counter"):
-                if c.attrib.get("type") == counter_type:
-                  covered += int(c.attrib.get("covered", "0"))
-                  missed += int(c.attrib.get("missed", "0"))
-
-            total = covered + missed
-            pct = (covered / total * 100.0) if total else 0.0
-            return covered, missed, pct
-
-          lines = ratio("LINE")
-          branches = ratio("BRANCH")
-
-          summary.write_text(
-              "## Coverage (protocols/models/frames)\n\n"
-              f"- Line coverage: **{lines[2]:.2f}%** ({lines[0]} covered / {lines[1]} missed)\n"
-              f"- Branch coverage: **{branches[2]:.2f}%** ({branches[0]} covered / {branches[1]} missed)\n"
-              "- Full report: `euc-ble-core/build/reports/jacoco/full/html/index.html`\n"
-              "- Focused report: `euc-ble-core/build/reports/jacoco/focused/html/index.html`\n"
-          )
-          PY
-          cat .coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-and-coverage-reports
-          path: |
-            euc-ble-core/build/reports/tests/
-            euc-ble-core/build/reports/jacoco/
+          name: test-reports
+          path: euc-ble-core/build/reports/tests/
           retention-days: 7
