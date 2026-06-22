@@ -1,7 +1,8 @@
 name: Publish Dokka docs + Coverage to GitHub Pages
 
 on:
-  push:
+  release:
+    types: [ published ]   # déclenché quand un Release (ou Pre-release) est publié
     branches: [ main ]
   workflow_dispatch: { }
 
