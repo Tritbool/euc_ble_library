@@ -1039,7 +1039,7 @@ class BLEManager internal constructor(
  *   application-level state container consumed by the UI layer.
  */
 // Callback interfaces
-sealed interface ScanCallback {
+interface ScanCallback {
     fun onScanStarted() {}
     fun onDeviceDiscovered(device: EUCDevice) {}
     fun onScanCompleted(devices: List<EUCDevice>) {}
@@ -1060,7 +1060,7 @@ sealed interface ScanCallback {
  * - For UI updates, switch explicitly to `Dispatchers.Main`, `runOnUiThread`, or
  *   publish the event into a UI-observed state holder.
  */
-sealed class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback {
+abstract class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback {
     open fun onConnected() {}
     open fun onDisconnected() {}
     open fun onConnectionFailed(error: BLEException) {}
