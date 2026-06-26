@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.channels.BufferOverflow
@@ -662,6 +663,22 @@ class InMotionProtocol : EUCProtocol {
         return data.voltage > BLEConstants.MIN_READY_VOLTAGE_V && data.batteryLevel > 0
     }
 
+    /**
+     * InMotion V2 protocol does not expose individual cell voltage data in the
+     * standard telemetry frames. The P6 has a 56S4P battery configuration (56 cells
+     * in series, 4 in parallel) with nominal voltage of 201.6V (3.6V per cell) and
+     * full charge voltage of 235.2V (4.2V per cell).
+     * 
+     * After analyzing the raw frame data from test resources, no BMS cell voltage
+     * information was found in the available frame types (MAIN_INFO, REAL_TIME_INFO,
+     * TOTAL_STATS). The protocol may not expose individual cell voltages through
+     * the standard BLE interface.
+     * 
+     * Returns null as BMS data is not available through the current protocol implementation.
+     */
+    override fun getBMSData(): List<BMSData>? = null
+
     override fun close() {
+        // No resources to clean up
     }
 }

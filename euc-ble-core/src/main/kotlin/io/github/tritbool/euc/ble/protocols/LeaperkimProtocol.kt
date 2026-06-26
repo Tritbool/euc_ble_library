@@ -359,7 +359,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         return combined.ifEmpty { null }
     }
 
-    fun getBMSData(): List<BMSData> {
+    override fun getBMSData(): List<BMSData> {
         val allIndices =
             (bmsCellPages.keys + bmsTemperatures.keys + bmsCurrents.keys).distinct().sorted()
         return allIndices.map { index ->

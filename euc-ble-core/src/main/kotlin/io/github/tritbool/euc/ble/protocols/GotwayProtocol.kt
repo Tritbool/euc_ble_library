@@ -5,6 +5,7 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
@@ -551,5 +552,27 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun isDeviceReady(data: EUCData): Boolean {
         // Conservative readiness checks: p
         return data.voltage > 0 && data.speed >= 0
+    }
+
+    /**
+     * Returns the current BMS data snapshots for all detected battery packs.
+     * Each entry represents one BMS unit (typically 1 or 2 for dual-battery wheels).
+     * Data is accumulated from Type 2/3 frames which contain smart BMS cell voltage pages.
+     */
+    override fun getBMSData(): List<BMSData> {
+        val allIndices = smartBmsCellPages.keys.distinct().sorted()
+        return allIndices.map { index ->
+            val cells = smartBmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
+            BMSData(
+                bmsIndex = index,
+                voltage = null, // Voltage not available in smart BMS pages
+                current = null, // Current not available in smart BMS pages
+                remainingCapacity = null, // Capacity not available in smart BMS pages
+                factoryCapacity = null, // Factory capacity not available in smart BMS pages
+                cycles = null, // Cycle count not available in smart BMS pages
+                temperatures = null, // Temperatures not available in smart BMS pages
+                cellVoltages = cells
+            )
+        }
     }
 }
