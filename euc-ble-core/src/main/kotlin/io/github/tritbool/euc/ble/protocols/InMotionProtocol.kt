@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.channels.BufferOverflow
@@ -105,6 +106,10 @@ class InMotionProtocol : EUCProtocol {
     private val parseLock = Any()
     private val v2Buffer = ArrayList<Byte>()
     private val legacyBuffer = ArrayList<Byte>()
+    
+    // BMS data storage for cell voltage extraction from V2 frames
+    private val bmsCellVoltages: MutableMap<Int, List<Double>> = mutableMapOf()
+    private val bmsVoltageValues: MutableList<Double> = mutableListOf()
 
     private enum class Dialect { UNKNOWN, LEGACY_V1, V2 }
 
@@ -289,6 +294,13 @@ class InMotionProtocol : EUCProtocol {
 
         val command = frame[4].toInt() and 0x7F
         val payload = if (len > 1) frame.copyOfRange(5, 5 + (len - 1)) else ByteArray(0)
+
+        // Extract BMS cell voltages from V2 frames using pattern detection
+        extractCellVoltagesFromV2Frame(frame)?.let { cellVoltages ->
+            if (cellVoltages.isNotEmpty()) {
+                bmsCellVoltages[0] = cellVoltages
+            }
+        }
 
         return when (command) {
             COMMAND_MAIN_INFO -> {
@@ -662,6 +674,96 @@ class InMotionProtocol : EUCProtocol {
         return data.voltage > BLEConstants.MIN_READY_VOLTAGE_V && data.batteryLevel > 0
     }
 
+    /**
+     * Extract cell voltages from InMotion V2 raw frame data by searching for contiguous
+     * values that are very close to each other and between 3.0 and 4.2 volts (typical cell voltage range).
+     * This is a heuristic approach for extracting BMS data from raw frames.
+     */
+    private fun extractCellVoltagesFromV2Frame(frame: ByteArray): List<Double>? {
+        if (frame.size < 8) return null
+        
+        val minCellVoltage = 3.0
+        val maxCellVoltage = 4.2
+        val maxVoltageDifference = 0.1 // Maximum difference between contiguous cell voltages
+        
+        // Try to extract 16-bit LE values (2 bytes per cell voltage)
+        val cellVoltages = mutableListOf<Double>()
+        
+        // Skip header bytes (first 4 bytes: AA AA flag len)
+        val payloadStart = 4
+        if (frame.size < payloadStart + 4) return null
+        
+        // Look through the payload for sequences of 16-bit values that look like cell voltages
+        for (i in payloadStart until frame.size - 1 step 2) {
+            if (i + 1 >= frame.size) break
+            
+            val rawValue = ByteUtils.getUnsignedShortLE(frame, i)
+            val voltage = rawValue / 1000.0 // Try 1/1000 scaling first (common for cell voltages)
+            
+            if (voltage in minCellVoltage..maxCellVoltage) {
+                cellVoltages.add(voltage)
+            } else {
+                // Try 1/100 scaling if 1/1000 doesn't work
+                val voltageAlt = rawValue / 100.0
+                if (voltageAlt in minCellVoltage..maxCellVoltage) {
+                    cellVoltages.add(voltageAlt)
+                } else {
+                    // If we have some voltages but this one doesn't fit, check if we have enough
+                    if (cellVoltages.size >= 4) {
+                        // Validate that the voltages are contiguous and close to each other
+                        var valid = true
+                        for (k in 1 until cellVoltages.size) {
+                            if (abs(cellVoltages[k] - cellVoltages[k-1]) > maxVoltageDifference) {
+                                valid = false
+                                break
+                            }
+                        }
+                        if (valid) return cellVoltages
+                    }
+                    cellVoltages.clear()
+                }
+            }
+        }
+        
+        // If we have at least 4 cell voltages that are close to each other, return them
+        if (cellVoltages.size >= 4) {
+            var valid = true
+            for (k in 1 until cellVoltages.size) {
+                if (abs(cellVoltages[k] - cellVoltages[k-1]) > maxVoltageDifference) {
+                    valid = false
+                    break
+                }
+            }
+            if (valid) return cellVoltages
+        }
+        
+        return null
+    }
+
+    /**
+     * Returns the current BMS data snapshots for all detected battery packs.
+     * For InMotion V2, this extracts cell voltages from raw frames using pattern detection.
+     */
+    override fun getBMSData(): List<BMSData>? {
+        if (bmsCellVoltages.isEmpty()) return null
+        
+        val allIndices = bmsCellVoltages.keys.distinct().sorted()
+        return allIndices.map { index ->
+            BMSData(
+                bmsIndex = index,
+                voltage = null, // Total pack voltage not directly available
+                current = null, // Current not directly available in BMS data
+                remainingCapacity = null, // Capacity not available
+                factoryCapacity = null, // Factory capacity not available
+                cycles = null, // Cycle count not available
+                temperatures = null, // Temperatures not available
+                cellVoltages = bmsCellVoltages[index]
+            )
+        }
+    }
+
     override fun close() {
+        bmsCellVoltages.clear()
+        bmsVoltageValues.clear()
     }
 }
