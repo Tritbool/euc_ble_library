@@ -213,6 +213,29 @@ class GotwayProtocolTest {
         return frame
     }
 
+
+    private fun createGotwayBmsFrame(
+        frameType: Byte,   // 0x02 pour pack 0, 0x03 pour pack 1
+        page: Int,         // numéro de page (byte[19])
+        cellMillivolts: IntArray  // exactement 8 valeurs en mV
+    ): ByteArray {
+        val frame = ByteArray(24)
+        frame[0] = 0x55.toByte()
+        frame[1] = 0xAA.toByte()
+        for (i in 0 until 8) {
+            val mv = if (i < cellMillivolts.size) cellMillivolts[i] else 0
+            frame[(i + 1) * 2] = ((mv shr 8) and 0xFF).toByte()
+            frame[(i + 1) * 2 + 1] = (mv and 0xFF).toByte()
+        }
+        frame[18] = frameType
+        frame[19] = page.toByte()
+        frame[20] = 0x5A.toByte()
+        frame[21] = 0x5A.toByte()
+        frame[22] = 0x5A.toByte()
+        frame[23] = 0x5A.toByte()
+        return frame
+    }
+
     @Test
     fun testCanHandle() {
         val gotwayDevice = MockBLEUtils.createMockDevice(
@@ -896,4 +919,135 @@ class GotwayProtocolTest {
         )
         assertFalse(protocol.isDeviceReady(negativeSpeedData))
     }
+
+    @Test
+    fun testBmsSinglePageParsedAndExposedInCellVoltages() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val bmsFrame = createGotwayBmsFrame(
+            frameType = 0x02,
+            page = 0,
+            cellMillivolts = intArrayOf(4150, 4148, 4151, 4149, 4152, 4147, 4150, 4153)
+        )
+        // Type A doit suivre pour que cellVoltages soit propagé dans EUCData
+        val typeAFrame = createGotwayFrame(voltageRaw = 6720, speedRaw = 100, distanceRaw = 0)
+
+        protocol.dataFlow.test {
+            protocol.decode(bmsFrame)
+            protocol.decode(typeAFrame)
+
+            // Le BMS frame (type 0x02) ne produit pas d'EUCData, il alimente le store
+            // Le Type A suivant doit exposer cellVoltages non null
+            val result = awaitItem()
+
+            assertNotNull(result.cellVoltages)
+            val cells = result.cellVoltages!!
+            assertEquals(8, cells.size)
+            assertEquals(4.150, cells[0], 0.001)
+            assertEquals(4.148, cells[1], 0.001)
+            assertEquals(4.153, cells[7], 0.001)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testBmsDualPackParsedByGetBMSData() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val pack0 = createGotwayBmsFrame(
+            frameType = 0x02, page = 0,
+            cellMillivolts = intArrayOf(4100, 4101, 4102, 4103, 4104, 4105, 4106, 4107)
+        )
+        val pack1 = createGotwayBmsFrame(
+            frameType = 0x03, page = 0,
+            cellMillivolts = intArrayOf(4200, 4201, 4202, 4203, 4204, 4205, 4206, 4207)
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(pack0)
+            protocol.decode(pack1)
+            // Déclenche un EUCData pour pouvoir ensuite appeler getBMSData()
+            protocol.decode(createGotwayFrame(voltageRaw = 6720, speedRaw = 0, distanceRaw = 0))
+            awaitItem()
+
+            val bmsDataList = protocol.getBMSData()
+            assertEquals(2, bmsDataList.size)
+
+            val bms0 = bmsDataList.first { it.bmsIndex == 0 }
+            val bms1 = bmsDataList.first { it.bmsIndex == 1 }
+
+            assertNotNull(bms0.cellVoltages)
+            assertNotNull(bms1.cellVoltages)
+            assertEquals(4.100, bms0.cellVoltages!![0], 0.001)
+            assertEquals(4.200, bms1.cellVoltages!![0], 0.001)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testBmsMultiPageAccumulatesAllCells() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        // Page 0 = cells 0..7, page 1 = cells 8..15
+        val page0 = createGotwayBmsFrame(
+            frameType = 0x02, page = 0,
+            cellMillivolts = intArrayOf(4100, 4101, 4102, 4103, 4104, 4105, 4106, 4107)
+        )
+        val page1 = createGotwayBmsFrame(
+            frameType = 0x02, page = 1,
+            cellMillivolts = intArrayOf(4110, 4111, 4112, 4113, 4114, 4115, 4116, 4117)
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(page0)
+            protocol.decode(page1)
+            protocol.decode(createGotwayFrame(voltageRaw = 6720, speedRaw = 0, distanceRaw = 0))
+            val result = awaitItem()
+
+            assertNotNull(result.cellVoltages)
+            val cells = result.cellVoltages!!
+            assertEquals(16, cells.size)
+            assertEquals(4.100, cells[0], 0.001)
+            assertEquals(4.110, cells[8], 0.001)
+            assertEquals(4.117, cells[15], 0.001)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testBmsFrameDoesNotEmitEUCDataDirectly() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val bmsFrame = createGotwayBmsFrame(
+            frameType = 0x02, page = 0,
+            cellMillivolts = intArrayOf(4100, 4101, 4102, 4103, 4104, 4105, 4106, 4107)
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(bmsFrame)
+            expectNoEvents()  // 0x02 est un store-only frame, pas d'émission directe
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testGetBMSDataReturnsEmptyWhenNoBmsFrameReceived() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        protocol.dataFlow.test {
+            val result = protocol.getBMSData()
+            assertTrue(result.isEmpty())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+
 }
