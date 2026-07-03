@@ -1,5 +1,6 @@
 package io.github.tritbool.euc.ble.protocols
 
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.Flow
@@ -111,6 +112,14 @@ interface EUCProtocol : Closeable {
      * Check if the device is ready for operation
      */
     fun isDeviceReady(data: EUCData): Boolean
+
+    /**
+     * Get BMS (Battery Management System) data for this protocol.
+     * Returns null if this protocol does not support BMS data extraction.
+     * Protocols that support BMS data should override this method to return
+     * a list of BMSData objects representing the current state of all battery packs.
+     */
+    fun getBMSData(): List<BMSData>? = null
 }
 
 /**

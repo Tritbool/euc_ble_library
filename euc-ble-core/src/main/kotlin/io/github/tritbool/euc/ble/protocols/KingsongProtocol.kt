@@ -567,7 +567,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
      * Data is accumulated from frame types 0xF1/0xF2 pages 0x00 (summary), 0x01 (temperatures),
      * and 0x02-0x06 (cell voltages).
      */
-    fun getBMSData(): List<BMSData> {
+    override fun getBMSData(): List<BMSData> {
         val allIndices =
             (bmsSummary.keys + bmsTemperatures.keys + bmsCellPages.keys).distinct().sorted()
         return allIndices.map { index ->
