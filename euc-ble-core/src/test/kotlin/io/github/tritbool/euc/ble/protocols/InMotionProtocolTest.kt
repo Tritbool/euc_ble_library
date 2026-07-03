@@ -21,7 +21,8 @@ class InMotionProtocolTest {
         private const val MAX_MALFORMED_ROW_RATIO = 0.2
     }
 
-    private lateinit var protocol:InMotionProtocol
+    private lateinit var protocol: InMotionProtocol
+
     @BeforeEach
     fun setUp() {
         protocol = InMotionProtocol()
@@ -31,6 +32,7 @@ class InMotionProtocolTest {
     fun tearDown() {
         protocol.close()
     }
+
     @Test
     fun decodeV9LegacyVectorMatchesExpectedValues() {
 
@@ -46,8 +48,8 @@ class InMotionProtocolTest {
 
         val decoded = packets
             .mapNotNull { protocol.decode(ByteUtils.hexToBytes(it)) }
-            //.lastOrNull { it != null }
-            //?: fail("Expected realtime telemetry frame to decode")
+        //.lastOrNull { it != null }
+        //?: fail("Expected realtime telemetry frame to decode")
 
         assertEquals("InMotion", decoded.first().manufacturer)
         assertEquals("InMotion V9", decoded.first().model)
@@ -106,7 +108,10 @@ class InMotionProtocolTest {
 
     @Test
     fun decodeLegacyV5FCsvFramesProducesTelemetryAndModel() {
-        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv", maxFrames = MAX_TEST_FRAMES)
+        val frames = loadWheelLogFrames(
+            "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv",
+            maxFrames = MAX_TEST_FRAMES
+        )
         assertTrue("Expected legacy V5F frames", frames.isNotEmpty())
         assertTrue("Expected substantial V5F frame sample", frames.size > MINIMUM_V5F_FRAME_COUNT)
 
@@ -119,7 +124,10 @@ class InMotionProtocolTest {
 
     @Test
     fun decodeLegacyV8SCsvFramesProducesTelemetryAndModel() {
-        val frames = loadWheelLogFrames("/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv", maxFrames = MAX_TEST_FRAMES)
+        val frames = loadWheelLogFrames(
+            "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv",
+            maxFrames = MAX_TEST_FRAMES
+        )
         assertTrue("Expected legacy V8S frames", frames.isNotEmpty())
         assertTrue("Expected substantial V8S frame sample", frames.size > MINIMUM_V8S_FRAME_COUNT)
 
@@ -153,7 +161,15 @@ class InMotionProtocolTest {
     @Test
     fun decodeV13AndV14CarTypeFramesMapsCorrectModelNames() {
         fun createCarTypeFrame(series: Int, type: Int): ByteArray {
-            val payload = byteArrayOf(0x01.toByte(), 0x02.toByte(), series.toByte(), type.toByte(), 0x01.toByte(), 0x01.toByte(), 0x00.toByte())
+            val payload = byteArrayOf(
+                0x01.toByte(),
+                0x02.toByte(),
+                series.toByte(),
+                type.toByte(),
+                0x01.toByte(),
+                0x01.toByte(),
+                0x00.toByte()
+            )
             val flag = 0x11
             val command = 0x82
             val len = payload.size + 1
@@ -170,7 +186,8 @@ class InMotionProtocolTest {
 
         // Test V13
         protocol.decode(createCarTypeFrame(series = 8, type = 1))
-        val realtimeFrame = ByteUtils.hexToBytes("aaaa1457847b57f4ff00000000000000000000000000000000bbe97300bbe9000000003d010000e21d991d983a7c159c18401f401f7017701750c300000000c6c800cbb0ccc4cdb0e6000200000000000000000000100000000000fc")
+        val realtimeFrame =
+            ByteUtils.hexToBytes("aaaa1457847b57f4ff00000000000000000000000000000000bbe97300bbe9000000003d010000e21d991d983a7c159c18401f401f7017701750c300000000c6c800cbb0ccc4cdb0e6000200000000000000000000100000000000fc")
         val decodedV13 = protocol.decode(realtimeFrame)
         assertNotNull(decodedV13)
         assertEquals("InMotion V13", decodedV13!!.model)
@@ -182,7 +199,60 @@ class InMotionProtocolTest {
         assertEquals("InMotion V14 50S", decodedV14!!.model)
     }
 
-    private fun loadWheelLogFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
+    @Test
+    fun decodeV9RealTimeFrameExposesAngleAndMode() {
+        // Envoie d'abord les frames de setup (model + serial + version)
+        val setupPackets = listOf(
+            "aaaa11088201020c0101010095",
+            "aaaa11178202413134323139353041303030343635460000000000fd",
+            "aaaa11388206222800040719000802212600080101000902230a0004010a0002012401000102010001012501000102010001012f0500050101000000b8"
+        )
+        for (p in setupPackets) protocol.decode(ByteUtils.hexToBytes(p))
+
+        val realtimeFrame = ByteUtils.hexToBytes(
+            "aaaa1457843e1e0c000000000000000000afffc30000000000ffffd7fe000000000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cdc900ceb0cec8ceb03a6400000000004900000000000000000000003f"
+        )
+        val result = protocol.decode(realtimeFrame)
+
+        assertNotNull(result)
+        // angle (pitch) doit être peuplé
+        assertNotNull(result!!.angle)
+        // mode doit être non-null
+        assertNotNull(result.mode)
+        // vitesse = 0 → idle ou charging
+        assertTrue(result.mode == "idle" || result.mode == "active" || result.mode == "charging")
+    }
+
+    @Test
+    fun decodeLegacyV5FFramesExposeMode() {
+        val frames = loadWheelLogFrames(
+            "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V5F.csv",
+            maxFrames = 500
+        )
+        val decoded = frames.mapNotNull { protocol.decode(it) }
+        assertTrue("Expected decoded legacy frames", decoded.isNotEmpty())
+
+        // Au moins un frame doit avoir mode = "active" (capture pendant la conduite)
+        val activeModes = decoded.filter { it.mode == "active" }
+        assertTrue(
+            "Expected at least one 'active' mode frame in V5F capture",
+            activeModes.isNotEmpty()
+        )
+
+        // Tous les modes doivent être des valeurs connues
+        val validModes = setOf("active", "idle", "charging", "calibration")
+        decoded.forEach { data ->
+            assertTrue(
+                "Unexpected mode value: ${data.mode}",
+                data.mode == null || data.mode in validModes
+            )
+        }
+    }
+
+    private fun loadWheelLogFrames(
+        resourcePath: String,
+        maxFrames: Int = Int.MAX_VALUE
+    ): List<ByteArray> {
         val inputStream = javaClass.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException("Resource not found: $resourcePath")
 
@@ -220,4 +290,5 @@ class InMotionProtocolTest {
         )
         return frames
     }
+
 }

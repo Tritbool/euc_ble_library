@@ -134,6 +134,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var lastKnownPwm: Double? = null
     private var lastKnownModel: String? = null
     private var lastKnownFirmwareVersion: String? = null
+
+    private var lastKnownPhaseCurrent: Double? = null
     private var gotwayFirmwareVariant: String? = null
     private var useHwPwm = false
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
@@ -202,6 +204,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         lastKnownPwm = null
         lastKnownModel = null
         lastKnownFirmwareVersion = null
+        lastKnownPhaseCurrent = null
         gotwayFirmwareVariant = null
         useHwPwm = false
         _channel.close()
@@ -268,15 +271,19 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             else -> ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()
         } ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
-        val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
 
-        val currentFromTypeA = currentRaw / 100.0
+        // phaseCurrent: courant moteur, toujours positif (valeur absolue en A)
+        val phaseCurrent = abs(currentRaw / 100.0)
+        lastKnownPhaseCurrent = phaseCurrent
+
+        // current: courant batterie, signé (négatif = régén)
+        // Reste l'offset 10 comme fallback jusqu'à ce que Type 7 arrive.
+        // IMPORTANT: on met à jour lastKnownCurrent SANS abs, signe préservé.
         if (!hasType7Current) {
-            // Before authoritative battery current from Type 7 is seen, keep Type A current
-            // as the carry-forward source for Type B updates.
-            lastKnownCurrent = currentFromTypeA
+            lastKnownCurrent = currentRaw / 100.0
         }
-        val current = lastKnownCurrent ?: currentFromTypeA
+        val current = lastKnownCurrent ?: (currentRaw / 100.0)
+        val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
         val temperature = tempRaw / 100.0 // Assuming a 1/100 scale
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
@@ -310,7 +317,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             rideTime = 0,
             cellVoltages = getCombinedCellVoltages(),
             motorTemperature = lastKnownMotorTemperature,
-            totalDistance = lastKnownTotalDistance
+            totalDistance = lastKnownTotalDistance,
+            phaseCurrent = lastKnownPhaseCurrent
         )
     }
 
@@ -369,7 +377,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             ledMode = ledMode,
             lightMode = lightMode,
             alertFlags = alertFlags,
-            wheelAlarm = wheelAlarm
+            wheelAlarm = wheelAlarm,
+            phaseCurrent = lastKnownPhaseCurrent
         )
     }
 
@@ -439,7 +448,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             rideTime = 0,
             cellVoltages = getCombinedCellVoltages(),
             motorTemperature = lastKnownMotorTemperature,
-            totalDistance = lastKnownTotalDistance
+            totalDistance = lastKnownTotalDistance,
+            phaseCurrent = lastKnownPhaseCurrent
         )
     }
 

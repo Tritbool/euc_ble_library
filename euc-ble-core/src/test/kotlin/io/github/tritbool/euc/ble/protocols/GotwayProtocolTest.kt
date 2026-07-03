@@ -1049,5 +1049,60 @@ class GotwayProtocolTest {
         }
     }
 
+    @Test
+    fun testTypeAExposesPhaseCurrent() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        // phaseCurrent à offset [10..11], signé BE, /100 = Ampères
+        // Ex: 0x012C = 300 → 3.00 A
+        val frame = createGotwayFrame(
+            voltageRaw = 6720,
+            speedRaw = 500,
+            distanceRaw = 0,
+            currentRaw = 300,   // offset 10: phaseCurrent raw = 300 → 3.00 A
+            tempRaw = 2500,
+            frameType = 0x00
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(frame)
+            val result = awaitItem()
+            assertNotNull(result.phaseCurrent)
+            assertEquals(3.00, result.phaseCurrent!!, 0.01)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testTypeAPhaseCurrentIsDistinctFromBatteryCurrent() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        // On envoie un Type A, puis un Type 7 avec batteryCurrent différent
+        val typeAFrame = createGotwayFrame(
+            voltageRaw = 6720, speedRaw = 500, distanceRaw = 0,
+            currentRaw = 300,   // phaseCurrent = 3.00A
+            tempRaw = 2500, frameType = 0x00
+        )
+        // Type 7: batteryCurrent à offset [2..3], -1 * signed BE / 100 → 5.00 A
+        val type7Frame =
+            createGotwayFrameType7(batteryCurrentRaw = -500, motorTempRaw = 4000, truePwmRaw = 800)
+
+        protocol.dataFlow.test {
+            protocol.decode(typeAFrame)
+            val r1 = awaitItem()
+            // Avant Type 7 : current == phaseCurrent (fallback)
+            assertEquals(3.00, r1.phaseCurrent!!, 0.01)
+
+            protocol.decode(type7Frame)
+            val r2 = awaitItem()
+            // Après Type 7 : phaseCurrent inchangé, current = vrai courant batterie
+            assertEquals(3.00, r2.phaseCurrent!!, 0.01)
+            assertEquals(5.00, r2.current, 0.01)  // batterie != phase
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
 
 }

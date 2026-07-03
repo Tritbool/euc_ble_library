@@ -396,6 +396,12 @@ class InMotionProtocol : EUCProtocol {
 
         if (totalDistance > 0.0) totalDistanceKm = totalDistance
 
+        val modeFromLegacy = when {
+            current < 0                                -> "charging"
+            speed != 0.0                               -> "active"
+            else                                       -> "idle"
+        }
+
         return EUCData(
             speed = speed,
             voltage = voltage,
@@ -414,7 +420,8 @@ class InMotionProtocol : EUCProtocol {
             rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = motorTemp,
-            totalDistance = totalDistanceKm
+            totalDistance = totalDistanceKm,
+            mode = modeFromLegacy,
         )
     }
 
@@ -493,6 +500,8 @@ class InMotionProtocol : EUCProtocol {
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
         val pitchAngle = ByteUtils.tryGetSignedShortLE(payload, 10)?.let { it / 100.0 }
+        val rollAngle = ByteUtils.tryGetSignedShortLE(payload, 72)?.let { it / 90.0 }
+
         val pwm = (ByteUtils.tryGetSignedShortLE(payload, 14)?.toDouble() ?: 0.0) / 100.0
         val distanceKm = (ByteUtils.getUnsignedShortLE(payload, 28) * 10.0) / 1000.0
 
@@ -508,6 +517,12 @@ class InMotionProtocol : EUCProtocol {
         val rideTimeFromPayload = ByteUtils.tryGetUnsignedIntLE(payload, 24)
             ?.takeIf { it in 0L..604_800L }
         val rideTimeSeconds = rideTimeFromPayload ?: deriveV2RideTimeSeconds(now)
+        val modeString = when {
+            isCharging                          -> "charging"
+            (stateByte and 0x01) == 1           -> "active"
+            (stateByte and 0x02) == 2           -> "calibration"
+            else                                -> "idle"
+        }
 
         return EUCData(
             speed = speed,
@@ -529,7 +544,9 @@ class InMotionProtocol : EUCProtocol {
             cellVoltages = null,
             motorTemperature = boardTemp.toDouble(),
             totalDistance = totalDistanceKm,
-            angle = pitchAngle
+            angle = pitchAngle,
+            roll = rollAngle,
+            mode = modeString,
         )
     }
 

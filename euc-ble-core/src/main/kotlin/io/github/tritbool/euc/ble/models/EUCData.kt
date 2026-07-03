@@ -49,6 +49,10 @@ package io.github.tritbool.euc.ble.models
  * @param wheelMaxSpeed Maximum speed setting, null if unavailable
  * @param wheelDistance Trip distance reported by wheel, null if unavailable
  * @param angle Pitch/tilt angle in degrees, null if unavailable
+ * @param phaseCurrent Motor phase current in amps, null if unavailable
+ * @param roll Roll angle in degrees, null if unavailable
+ * @param torque Estimated torque in Nm, null if unavailable
+ * @param mode Ride mode string (e.g. "active", "idle", "charging"), null if unavailable
  */
 data class EUCData(
     internal val frameType: String = "BASE",
@@ -92,7 +96,11 @@ data class EUCData(
     val alarm3Speed: Int? = null,           // alarm 3 speed threshold
     val wheelMaxSpeed: Int? = null,         // max speed setting
     val wheelDistance: Double? = null,       // trip distance (wheel-reported)
-    val angle: Double? = null                // pitch/tilt angle in degrees (null if unavailable)
+    val angle: Double? = null,                // pitch/tilt angle in degrees (null if unavailable)
+    val phaseCurrent: Double? = null,   // Phase current in amps (motor-side), null if unavailable
+    val roll: Double? = null,            // Roll angle in degrees, null if unavailable
+    val torque: Double? = null,           // Torque estimate (Nm), null if unavailable
+    val mode: String? = null             // Ride mode/state string (e.g. "active", "idle"), null if unavailable
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
