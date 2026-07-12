@@ -6,7 +6,6 @@ import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -14,12 +13,11 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 /**
- * Unit tests for the [BLEManager.shouldForwardDevice] scan-filter-bypass feature.
+ * Unit tests for [BLEManager.shouldForwardDevice].
  *
- * These tests verify that:
- * - By default only protocol-recognised devices are forwarded.
- * - After [BLEManager.setScanFilterBypass] is set to `true`, every device is forwarded.
- * - Restoring the flag to `false` re-enables the filter.
+ * All discovered BLE devices are always forwarded to [ConnectionCallback.onDeviceDiscovered]
+ * regardless of whether any registered protocol claims to support them.  Protocol
+ * identification is deferred to post-connection negotiation when the first data frames arrive.
  */
 class BLEManagerScanFilterBypassTest {
 
@@ -52,46 +50,22 @@ class BLEManagerScanFilterBypassTest {
     }
 
     @Test
-    fun `default filter forwards only protocol-recognised devices`() {
+    fun `all devices are forwarded including protocol-recognised ones`() {
         assertTrue(bleManager.shouldForwardDevice(knownDevice))
-        assertFalse(bleManager.shouldForwardDevice(unknownDevice))
     }
 
     @Test
-    fun `bypass enabled forwards all devices including unrecognised ones`() {
-        bleManager.setScanFilterBypass(true)
-
-        assertTrue(bleManager.shouldForwardDevice(knownDevice))
+    fun `all devices are forwarded including unrecognised ones`() {
         assertTrue(bleManager.shouldForwardDevice(unknownDevice))
     }
 
     @Test
-    fun `bypass disabled after being enabled restores normal filtering`() {
-        bleManager.setScanFilterBypass(true)
-        bleManager.setScanFilterBypass(false)
-
-        assertTrue(bleManager.shouldForwardDevice(knownDevice))
-        assertFalse(bleManager.shouldForwardDevice(unknownDevice))
-    }
-
-    @Test
-    fun `bypass with no registered protocols forwards all devices`() {
+    fun `devices are forwarded even when no protocols are registered`() {
         val emptyManager = BLEManager(
             mock<Context>(), NoOpLogger(),
             CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
         )
-        emptyManager.setScanFilterBypass(true)
 
         assertTrue(emptyManager.shouldForwardDevice(unknownDevice))
-    }
-
-    @Test
-    fun `no bypass with no registered protocols blocks all devices`() {
-        val emptyManager = BLEManager(
-            mock<Context>(), NoOpLogger(),
-            CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
-        )
-
-        assertFalse(emptyManager.shouldForwardDevice(unknownDevice))
     }
 }
