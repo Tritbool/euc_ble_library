@@ -441,30 +441,15 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun processScanResult(result: ScanResult) {
-        data class WheelManufacturerData(
-            val manufacturerId: Int, val data: ByteArray?
-        )
-
         val device = result.device
-        val scanRecord = result.scanRecord
-        val foundManufacturerData: WheelManufacturerData? = sequenceOf(
-            BLEConstants.MANUFACTURER_KINGSONG,
-            BLEConstants.MANUFACTURER_GOTWAY,
-            BLEConstants.MANUFACTURER_INMOTION,
-            BLEConstants.MANUFACTURER_NINEBOT,
-            BLEConstants.MANUFACTURER_VETERAN,
-            BLEConstants.MANUFACTURER_LEAPERKIM,
-        ).firstNotNullOfOrNull { id ->
-            scanRecord?.getManufacturerSpecificData(id)
-                ?.let { bytes -> WheelManufacturerData(id, bytes) }
-        }
+        val name = device.name ?: result.scanRecord?.deviceName ?: "Unknown"
 
         val eucDevice = EUCDevice(
             bluetoothDevice = device,
-            name = device.name ?: "Unknown EUC",
+            name = name,
             address = device.address,
-            manufacturerId = foundManufacturerData?.manufacturerId ?: 0,
-            manufacturerData = foundManufacturerData?.data,
+            manufacturerId = 0,       // inconnu jusqu'à la connexion GATT
+            manufacturerData = null,  // idem
             rssi = result.rssi
         )
 
