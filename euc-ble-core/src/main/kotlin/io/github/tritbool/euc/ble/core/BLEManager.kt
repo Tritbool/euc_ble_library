@@ -468,20 +468,8 @@ class BLEManager internal constructor(
             rssi = result.rssi
         )
 
-        if (shouldForwardDevice(eucDevice)) {
-            discoveredDevices[eucDevice.address] = eucDevice
-            connectionCallback?.onDeviceDiscovered(eucDevice)
-        }
-    }
-
-    /**
-     * Returns `true` for every discovered device so that all nearby BLE devices are forwarded
-     * to [ConnectionCallback.onDeviceDiscovered].  Protocol identification is deferred to
-     * post-connection negotiation when the first data frames arrive.
-     */
-    @VisibleForTesting(otherwise = PRIVATE)
-    internal fun shouldForwardDevice(device: EUCDevice): Boolean {
-        return true
+        discoveredDevices[eucDevice.address] = eucDevice
+        connectionCallback?.onDeviceDiscovered(eucDevice)
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
