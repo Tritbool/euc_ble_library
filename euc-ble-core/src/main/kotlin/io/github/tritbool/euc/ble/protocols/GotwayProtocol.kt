@@ -174,8 +174,12 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_GOTWAY ||
-                supportedModels.map { model -> model.contains(name, ignoreCase = true) }
-                    .reduce { a, b -> a || b }
+                supportedModels.map { model ->
+                    model.contains(
+                        name,
+                        ignoreCase = true
+                    ) || name.contains(model, ignoreCase = true)
+                }.reduce { a, b -> a || b }
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
