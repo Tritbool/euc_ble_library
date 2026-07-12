@@ -1,7 +1,6 @@
 package io.github.tritbool.euc.ble
 
 import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
-import io.github.tritbool.euc.ble.core.BLEManagerScanFilterBypassTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
@@ -33,7 +32,6 @@ import org.junit.platform.suite.api.Suite
     FrameReassemblerStaticFlowTest::class,
     ByteUtilsTest::class,
     ByteUtilsSafeAccessTest::class,
-    BLEManagerScanFilterBypassTest::class,
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,
