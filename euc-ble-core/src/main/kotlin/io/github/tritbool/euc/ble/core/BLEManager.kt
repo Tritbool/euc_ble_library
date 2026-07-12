@@ -498,13 +498,10 @@ class BLEManager internal constructor(
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun shouldForwardDevice(device: EUCDevice): Boolean {
         if (scanFilterBypassEnabled) {
-            val knownByProtocol = protocols.any { it.canHandle(device) }
-            if (!knownByProtocol) {
-                logger.info(
-                    "BLEManager",
-                    "Scan filter bypass active: forwarding unrecognised device ${device.name} (${device.address})"
-                )
-            }
+            logger.info(
+                "BLEManager",
+                "Scan filter bypass active: forwarding device ${device.name} (${device.address})"
+            )
             return true
         }
         return protocols.any { it.canHandle(device) }
