@@ -76,6 +76,7 @@ class BLEManager internal constructor(
     private var connectionTimeout: Long = BLEConstants.DEFAULT_CONNECTION_TIMEOUT_MS
     private var autoReconnect: Boolean = true
     private var maxRetries: Int = 3
+    private var scanFilterBypassEnabled: Boolean = false
 
     // State management
     private var connectionState: BLEConstants.ConnectionState =
@@ -390,6 +391,18 @@ class BLEManager internal constructor(
     }
 
     /**
+     * When set to `true`, the [canHandle] protocol filter is skipped during scanning: every
+     * discovered BLE device is forwarded to [ConnectionCallback.onDeviceDiscovered] regardless
+     * of whether any registered protocol claims to support it.  Protocol identification is then
+     * deferred to post-connection negotiation.
+     *
+     * Defaults to `false` (only devices matched by at least one protocol are reported).
+     */
+    fun setScanFilterBypass(enabled: Boolean) {
+        this.scanFilterBypassEnabled = enabled
+    }
+
+    /**
      * Callback registration methods.
      *
      * Threading contract:
@@ -468,12 +481,33 @@ class BLEManager internal constructor(
             rssi = result.rssi
         )
 
-        // Check if this device is supported by any protocol
-        val supportingProtocol = protocols.find { it.canHandle(eucDevice) }
-        if (supportingProtocol != null) {
+        if (shouldForwardDevice(eucDevice)) {
             discoveredDevices[eucDevice.address] = eucDevice
             connectionCallback?.onDeviceDiscovered(eucDevice)
         }
+    }
+
+    /**
+     * Returns `true` if [device] should be forwarded to [ConnectionCallback.onDeviceDiscovered]
+     * during a scan.
+     *
+     * When the scan filter bypass is disabled (the default), only devices recognised by at
+     * least one registered protocol are forwarded.  When bypass is enabled every discovered
+     * device is forwarded so that protocol identification can happen after connection.
+     */
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun shouldForwardDevice(device: EUCDevice): Boolean {
+        if (scanFilterBypassEnabled) {
+            val knownByProtocol = protocols.any { it.canHandle(device) }
+            if (!knownByProtocol) {
+                logger.info(
+                    "BLEManager",
+                    "Scan filter bypass active: forwarding unrecognised device ${device.name} (${device.address})"
+                )
+            }
+            return true
+        }
+        return protocols.any { it.canHandle(device) }
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)

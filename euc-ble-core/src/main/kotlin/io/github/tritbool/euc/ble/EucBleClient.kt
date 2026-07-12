@@ -95,6 +95,18 @@ class EucBleClient(
         bleManager.setErrorCallback(callback)
     }
 
+    /**
+     * When set to `true`, the [canHandle] protocol filter is skipped during scanning: every
+     * discovered BLE device is forwarded to [ConnectionCallback.onDeviceDiscovered] regardless
+     * of whether any registered protocol claims to support it.  Protocol identification is then
+     * deferred to post-connection negotiation.
+     *
+     * Defaults to `false` (only devices matched by at least one protocol are reported).
+     */
+    fun setScanFilterBypass(enabled: Boolean) {
+        bleManager.setScanFilterBypass(enabled)
+    }
+
     val rawFrameFlow: SharedFlow<ByteArray> = bleManager.rawFrameFlow
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = bleManager.queryTraceFlow
 
