@@ -241,6 +241,7 @@ class BLEManager internal constructor(
 
         currentDevice = device
         connectionState = BLEConstants.ConnectionState.CONNECTING
+        connectionCallback?.onConnecting()
 
         // Main connection job
         connectionJob = coroutineScope.launch {
@@ -527,6 +528,7 @@ class BLEManager internal constructor(
 
             BluetoothProfile.STATE_CONNECTING -> {
                 connectionState = BLEConstants.ConnectionState.CONNECTING
+                connectionCallback?.onConnecting()
             }
 
             BluetoothProfile.STATE_DISCONNECTING -> {
@@ -566,6 +568,7 @@ class BLEManager internal constructor(
             }
             reconnectRetryCount++
             connectionState = BLEConstants.ConnectionState.CONNECTING
+            connectionCallback?.onConnecting()
             try {
                 currentDevice?.bluetoothDevice?.let { device ->
                     connectToDevice(device)
@@ -1061,6 +1064,7 @@ interface ScanCallback {
  *   publish the event into a UI-observed state holder.
  */
 abstract class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback {
+    open fun onConnecting() {}
     open fun onConnected() {}
     open fun onDisconnected() {}
     open fun onConnectionFailed(error: BLEException) {}
@@ -1092,6 +1096,10 @@ class ListenerConnectionCallback(
 
     override fun onScanCompleted(devices: List<EUCDevice>) {
         listener?.onEvent(BleBackendEvent.ScanCompleted(devices))
+    }
+
+    override fun onConnecting() {
+        listener?.onEvent(BleBackendEvent.Connecting)
     }
 
     override fun onConnected() {

@@ -20,6 +20,7 @@ sealed interface BleBackendEvent {
     data class DeviceDiscovered(val device: EUCDevice) : BleBackendEvent
     data class ScanCompleted(val devices: List<EUCDevice>) : BleBackendEvent
     data class Connected(val device: EUCDevice?) : BleBackendEvent
+    data object Connecting : BleBackendEvent
     data object Disconnected : BleBackendEvent
     data class ServicesDiscovered(val serviceUuids: List<UUID>) : BleBackendEvent
     data class MtuChanged(val mtu: Int) : BleBackendEvent
