@@ -1,6 +1,8 @@
 package io.github.tritbool.euc.ble.integration
 
 import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.core.ProtocolCandidate
+import io.github.tritbool.euc.ble.core.ProtocolSelection
 import io.github.tritbool.euc.ble.exceptions.BLEException
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
@@ -24,6 +26,8 @@ sealed interface BleBackendEvent {
     data object Disconnected : BleBackendEvent
     data class ServicesDiscovered(val serviceUuids: List<UUID>) : BleBackendEvent
     data class MtuChanged(val mtu: Int) : BleBackendEvent
+    data class ProtocolSelectionRequired(val candidates: List<ProtocolCandidate>) : BleBackendEvent
+    data class ProtocolSelected(val selection: ProtocolSelection) : BleBackendEvent
     data class DataReceived(val data: EUCData) : BleBackendEvent
     /**
      * Event emitted when a raw BLE frame is received.
