@@ -12,6 +12,8 @@ import io.github.tritbool.euc.ble.core.ConnectionCallback
 import io.github.tritbool.euc.ble.core.DataCallback
 import io.github.tritbool.euc.ble.core.ErrorCallback
 import io.github.tritbool.euc.ble.core.Logger
+import io.github.tritbool.euc.ble.core.ProtocolCandidate
+import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
@@ -31,8 +33,8 @@ import kotlinx.coroutines.flow.SharedFlow
 /**
  * Main public entry point for EUC BLE discovery, connection and telemetry.
  *
- * Protocol registration is fully managed internally; client applications should not select
- * or register brand-specific protocols.
+ * Protocol registration is fully managed internally; client applications should not register
+ * brand-specific protocols, but may inspect candidates and choose among built-in protocols.
  */
 class EucBleClient(
     context: Context,
@@ -82,6 +84,28 @@ class EucBleClient(
     fun getConnectionState(): BLEConstants.ConnectionState = bleManager.getConnectionState()
 
     fun getConnectedDevice(): EUCDevice? = bleManager.getConnectedDevice()
+
+    fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {
+        bleManager.setProtocolSelectionMode(mode)
+    }
+
+    fun getProtocolSelectionMode(): ProtocolSelectionMode = bleManager.getProtocolSelectionMode()
+
+    fun getProtocolCandidates(): List<ProtocolCandidate> = bleManager.getProtocolCandidates()
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun selectProtocol(protocolId: String): Boolean {
+        return bleManager.selectProtocol(protocolId)
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun forceProtocol(protocolId: String): Boolean {
+        return bleManager.forceProtocol(protocolId)
+    }
+
+    fun clearForcedProtocol() {
+        bleManager.clearForcedProtocol()
+    }
 
     fun setConnectionCallback(callback: ConnectionCallback) {
         bleManager.setConnectionCallback(callback)
