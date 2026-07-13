@@ -146,7 +146,6 @@ class InMotionProtocol : EUCProtocol {
 
         val v2Frames = extractV2Frames(data)
         for (frame in v2Frames) {
-            lastDetectedDialect = Dialect.V2
             val decoded = parseV2Frame(frame) ?: continue
             lastDecoded = decoded
             _channel.trySend(decoded)
@@ -154,7 +153,6 @@ class InMotionProtocol : EUCProtocol {
 
         val legacyFrames = extractLegacyFrames(data)
         for (frame in legacyFrames) {
-            lastDetectedDialect = Dialect.LEGACY_V1
             val decoded = parseLegacyFrame(frame) ?: continue
             lastDecoded = decoded
             _channel.trySend(decoded)
@@ -297,17 +295,20 @@ class InMotionProtocol : EUCProtocol {
 
         return when (command) {
             COMMAND_MAIN_INFO -> {
+                lastDetectedDialect = Dialect.V2
                 parseMainInfo(payload)
                 hasSeenV2MainInfo = true
                 null
             }
 
             COMMAND_TOTAL_STATS -> {
+                lastDetectedDialect = Dialect.V2
                 parseTotalStats(payload)
                 null
             }
 
             COMMAND_REAL_TIME_INFO -> parseRealTime(payload, frame)?.also {
+                lastDetectedDialect = Dialect.V2
                 hasSeenV2Realtime = true
             }
             else -> null
@@ -320,11 +321,13 @@ class InMotionProtocol : EUCProtocol {
 
         return when (frame[2].toInt() and 0xFF) {
             0x14 -> {
+                lastDetectedDialect = Dialect.LEGACY_V1
                 parseLegacyInfo(frame)
                 null
             }
 
             0x13 -> parseLegacyRealtime(frame)?.also {
+                lastDetectedDialect = Dialect.LEGACY_V1
                 hasSeenLegacyRealtime = true
             }
             else -> null
@@ -564,10 +567,16 @@ class InMotionProtocol : EUCProtocol {
         return ((nowMs - start) / 1000L).coerceAtLeast(0L)
     }
 
+    private fun allowsActivePolling(): Boolean {
+        return lastDetectedDialect != Dialect.LEGACY_V1
+    }
+
     private fun decodeTemperature(raw: Byte): Int = (raw.toInt() and 0xFF) + 80 - 256
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
-        if (lastDetectedDialect == Dialect.LEGACY_V1) return byteArrayOf()
+        if (!allowsActivePolling()) return byteArrayOf()
+        // While dialect is unknown, only allow a minimal V2 probe command to avoid
+        // spamming V2-only requests against legacy devices.
         if (lastDetectedDialect == Dialect.UNKNOWN && commandType != CommandType.REQUEST_FIRMWARE) {
             return byteArrayOf()
         }
@@ -621,7 +630,9 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override fun getPollingPlan(): ProtocolPollingPlan {
-        if (lastDetectedDialect == Dialect.LEGACY_V1) {
+        // Legacy InMotion wheels are telemetry-push based in this library path, so
+        // active polling should stay disabled once legacy dialect is identified.
+        if (!allowsActivePolling()) {
             return ProtocolPollingPlan.disabled()
         }
         return ProtocolPollingPlan(
@@ -649,7 +660,6 @@ class InMotionProtocol : EUCProtocol {
 
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
         if (data.size < 5 || data[0] != HEADER[0] || data[1] != HEADER[1]) return false
-        if (lastDetectedDialect == Dialect.LEGACY_V1) return false
         val command = data[4].toInt() and 0x7F
         return when (query.commandType) {
             CommandType.REQUEST_SERIAL,

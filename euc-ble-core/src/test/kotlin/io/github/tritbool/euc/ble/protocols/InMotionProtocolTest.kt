@@ -154,7 +154,9 @@ class InMotionProtocolTest {
         assertTrue(plan.enabled)
         assertEquals(1, plan.startupQueries.size)
         assertTrue(plan.periodicQueries.isNotEmpty())
-        assertTrue(plan.startupQueries.any { it.commandType == CommandType.REQUEST_FIRMWARE })
+        val startup = plan.startupQueries.single()
+        assertEquals("inmotion.dialect-probe", startup.id)
+        assertEquals(CommandType.REQUEST_FIRMWARE, startup.commandType)
     }
 
     @Test
@@ -170,9 +172,23 @@ class InMotionProtocolTest {
         val blocked = protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
         assertTrue(blocked.isEmpty())
 
+        // V2 MAIN_INFO response frame (AA AA 11 08 82 ... checksum) used to lock
+        // the protocol dialect to V2 before issuing realtime polling commands.
         protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
         val realtime = protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
         assertTrue(realtime.isNotEmpty())
+    }
+
+    @Test
+    fun createCommandRemainsBlockedAfterLegacyDialectDetected() {
+        val legacyInfoFrame = byteArrayOf(
+            0xAA.toByte(), 0xAA.toByte(), 0x14.toByte(), 0x00.toByte(),
+            0x00.toByte(), 0x00.toByte(), 0x55.toByte(), 0xAA.toByte()
+        )
+        protocol.decode(legacyInfoFrame)
+
+        val blocked = protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
+        assertTrue(blocked.isEmpty())
     }
 
     @Test

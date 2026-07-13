@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 internal object ProtocolMatching {
+    private val tokenSplitRegex = Regex("[^a-z0-9]+")
     private val genericNames = setOf(
         "unknown",
         "ble",
@@ -26,23 +27,27 @@ internal object ProtocolMatching {
     fun hasStrongModelNameMatch(name: String, supportedModels: List<String>): Boolean {
         if (isGenericDeviceName(name)) return false
         val normalizedName = normalizeName(name)
-        return hasExactModelTokenMatch(normalizedName, supportedModels) ||
-            hasModelSubstringMatch(normalizedName, supportedModels)
+        val normalizedModels = supportedModels.map(::normalizeName)
+        return hasExactModelTokenMatch(normalizedName, normalizedModels) ||
+            hasModelSubstringMatch(normalizedName, normalizedModels)
     }
 
-    private fun hasExactModelTokenMatch(normalizedName: String, supportedModels: List<String>): Boolean {
-        val tokens = normalizedName.split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }.toSet()
+    fun tokenizeName(name: String): Set<String> {
+        val normalized = normalizeName(name)
+        return normalized.split(tokenSplitRegex)
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    private fun hasExactModelTokenMatch(normalizedName: String, normalizedModels: List<String>): Boolean {
+        val tokens = tokenizeName(normalizedName)
         if (tokens.isEmpty()) return false
-        return supportedModels.any { model ->
-            val normalizedModel = normalizeName(model)
-            tokens.contains(normalizedModel)
-        }
+        return normalizedModels.any { model -> tokens.contains(model) }
     }
 
-    private fun hasModelSubstringMatch(normalizedName: String, supportedModels: List<String>): Boolean {
-        return supportedModels.any { model ->
-            val normalizedModel = normalizeName(model)
-            normalizedModel.length >= 4 && normalizedName.contains(normalizedModel)
+    private fun hasModelSubstringMatch(normalizedName: String, normalizedModels: List<String>): Boolean {
+        return normalizedModels.any { model ->
+            model.length >= 4 && normalizedName.contains(model)
         }
     }
 }

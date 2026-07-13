@@ -27,6 +27,7 @@ import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
+import io.github.tritbool.euc.ble.protocols.ProtocolMatching
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +71,14 @@ class BLEManager internal constructor(
     companion object {
         private const val MIN_QUERY_ATTEMPTS = 1
         private const val MIN_QUERY_TIMEOUT_MS = 200L
+        // Confidence hierarchy:
+        // manufacturer > exact full name > exact token > compatibility fallback > substring.
+        // Fallback intentionally outranks weak substring matches while staying below exact tokens.
+        private const val SCORE_MANUFACTURER_MATCH = 300
+        private const val SCORE_EXACT_NAME_MATCH = 200
+        private const val SCORE_EXACT_TOKEN_MATCH = 150
+        private const val SCORE_SUBSTRING_MATCH = 80
+        private const val SCORE_COMPATIBILITY_FALLBACK = 100
     }
 
     // Configuration
@@ -105,6 +114,15 @@ class BLEManager internal constructor(
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
+    private val manufacturerIdsByBrand: Map<String, Set<Int>> = mapOf(
+        "inmotion" to setOf(BLEConstants.MANUFACTURER_INMOTION),
+        "kingsong" to setOf(BLEConstants.MANUFACTURER_KINGSONG),
+        "gotway" to setOf(BLEConstants.MANUFACTURER_GOTWAY),
+        "extremebull" to setOf(BLEConstants.MANUFACTURER_EXTREMEBULL),
+        "leaperkim" to setOf(BLEConstants.MANUFACTURER_LEAPERKIM, BLEConstants.MANUFACTURER_VETERAN),
+        "nosfet" to setOf(BLEConstants.MANUFACTURER_NOSFET),
+        "ninebot" to setOf(BLEConstants.MANUFACTURER_NINEBOT)
+    )
 
     // Callbacks
     private var platformScanCallback: AndroidScanCallback? = null
@@ -664,11 +682,12 @@ class BLEManager internal constructor(
         when {
             frameMatches.size == 1 -> setActiveProtocol(frameMatches.single(), "frame signature")
 
-            frameMatches.size == 2 -> {
+            frameMatches.isNotEmpty() -> {
                 highestConfidenceProtocol(frameMatches)?.let {
                     setActiveProtocol(it, "frame signature + confidence")
                     return
                 }
+                if (frameMatches.size != 2) return
                 val manuf1 = frameMatches[0].manufacturer
                 val manuf2 = frameMatches[1].manufacturer
 
@@ -714,12 +733,6 @@ class BLEManager internal constructor(
                     }!!, "frame signature tie-break Ninebot/NinebotZ")
                 }
 
-            }
-
-            frameMatches.isNotEmpty() -> {
-                highestConfidenceProtocol(frameMatches)?.let {
-                    setActiveProtocol(it, "frame signature + confidence")
-                }
             }
 
             else -> highestConfidenceProtocol(metadataMatchedProtocols)?.let {
@@ -866,54 +879,45 @@ class BLEManager internal constructor(
 
     private fun calculateProtocolMatchScore(protocol: EUCProtocol, device: EUCDevice): Int {
         val manufacturerScore = if (device.manufacturerId in protocolManufacturerIds(protocol)) {
-            300
+            SCORE_MANUFACTURER_MATCH
         } else {
             0
         }
         val nameScore = protocolNameScore(protocol, device.name)
         val score = manufacturerScore + nameScore
         if (score <= 0 && protocol.canHandle(device)) {
-            return 100
+            // Preserve backward compatibility for protocols whose legacy canHandle()
+            // rules still match devices through heuristics not represented by the
+            // confidence model (manufacturer + model-name scoring).
+            return SCORE_COMPATIBILITY_FALLBACK
         }
         return score
     }
 
     private fun protocolNameScore(protocol: EUCProtocol, rawName: String): Int {
-        val name = rawName.trim().lowercase()
-        if (name.isBlank() || name.length < 3) return 0
-        if (name in setOf("unknown", "ble", "bluetooth", "device", "wheel", "euc")) return 0
+        val name = ProtocolMatching.normalizeName(rawName)
+        if (ProtocolMatching.isGenericDeviceName(name)) return 0
 
         val exactMatch = protocol.supportedModels.any { model ->
             model.trim().lowercase() == name
         }
-        if (exactMatch) return 200
+        if (exactMatch) return SCORE_EXACT_NAME_MATCH
 
-        val tokenMatches = name.split(Regex("[^a-z0-9]+"))
-            .filter { it.isNotBlank() }
-            .toSet()
+        val tokenMatches = ProtocolMatching.tokenizeName(name)
         val exactTokenMatch = protocol.supportedModels.any { model ->
             tokenMatches.contains(model.trim().lowercase())
         }
-        if (exactTokenMatch) return 150
+        if (exactTokenMatch) return SCORE_EXACT_TOKEN_MATCH
 
         val substringMatch = protocol.supportedModels.any { model ->
             val modelName = model.trim().lowercase()
             modelName.length >= 4 && name.contains(modelName)
         }
-        return if (substringMatch) 80 else 0
+        return if (substringMatch) SCORE_SUBSTRING_MATCH else 0
     }
 
     private fun protocolManufacturerIds(protocol: EUCProtocol): Set<Int> {
-        return when (protocol.manufacturer.lowercase()) {
-            "inmotion" -> setOf(BLEConstants.MANUFACTURER_INMOTION)
-            "kingsong" -> setOf(BLEConstants.MANUFACTURER_KINGSONG)
-            "gotway" -> setOf(BLEConstants.MANUFACTURER_GOTWAY)
-            "extremebull" -> setOf(BLEConstants.MANUFACTURER_EXTREMEBULL)
-            "leaperkim" -> setOf(BLEConstants.MANUFACTURER_LEAPERKIM, BLEConstants.MANUFACTURER_VETERAN)
-            "nosfet" -> setOf(BLEConstants.MANUFACTURER_NOSFET)
-            "ninebot" -> setOf(BLEConstants.MANUFACTURER_NINEBOT)
-            else -> emptySet()
-        }
+        return manufacturerIdsByBrand[protocol.manufacturer.lowercase()] ?: emptySet()
     }
 
     private fun candidateDataCharacteristicUuids(protocol: EUCProtocol): List<UUID> {
