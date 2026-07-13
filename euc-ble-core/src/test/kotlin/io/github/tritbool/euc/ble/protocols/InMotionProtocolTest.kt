@@ -141,6 +141,8 @@ class InMotionProtocolTest {
 
     @Test
     fun createCommandSupportsV2LightBrightness() {
+        // Trigger V2 dialect detection so the dialect guard doesn't block the command.
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
         val cmd = protocol.createCommand(CommandType.LIGHT_BRIGHTNESS, 70)
         assertArrayEquals(
             ByteUtils.hexToBytes("AAAA1403602B461A"),
