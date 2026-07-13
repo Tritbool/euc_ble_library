@@ -26,6 +26,7 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +100,7 @@ class BLEManager internal constructor(
     internal var currentProtocol: EUCProtocol? = null
     private var metadataMatchedProtocols: List<EUCProtocol> = emptyList()
     private var frameCandidateProtocols: List<EUCProtocol> = emptyList()
+    private var protocolCandidateScores: Map<EUCProtocol, Int> = emptyMap()
     private var queryOrchestrationJob: Job? = null
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
@@ -592,20 +594,17 @@ class BLEManager internal constructor(
                 return
             }
 
-            frameCandidateProtocols.map { it.getDataCharacteristicUUID() }.distinct()
+            frameCandidateProtocols
+                .flatMap { candidateDataCharacteristicUuids(it) }
+                .distinct()
                 .forEach { characteristicUuid ->
                     enableNotifications(characteristicUuid)
                 }
             connectionCallback?.onServicesDiscovered(gatt.services)
 
-            when {
-                metadataMatchedProtocols.size == 1 -> setActiveProtocol(
-                    metadataMatchedProtocols.single(), "metadata"
-                )
-
-                frameCandidateProtocols.size == 1 -> setActiveProtocol(
-                    frameCandidateProtocols.single(), "single candidate"
-                )
+            when (val confident = highestConfidenceProtocol(metadataMatchedProtocols)) {
+                null -> Unit
+                else -> setActiveProtocol(confident, "metadata confidence")
             }
         } else {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -665,15 +664,11 @@ class BLEManager internal constructor(
         when {
             frameMatches.size == 1 -> setActiveProtocol(frameMatches.single(), "frame signature")
 
-            metadataMatchedProtocols.size == 1 -> setActiveProtocol(
-                metadataMatchedProtocols.single(), "metadata fallback"
-            )
-
-            candidates.size == 1 -> setActiveProtocol(
-                candidates.single(), "single registered protocol"
-            )
-
             frameMatches.size == 2 -> {
+                highestConfidenceProtocol(frameMatches)?.let {
+                    setActiveProtocol(it, "frame signature + confidence")
+                    return
+                }
                 val manuf1 = frameMatches[0].manufacturer
                 val manuf2 = frameMatches[1].manufacturer
 
@@ -719,6 +714,16 @@ class BLEManager internal constructor(
                     }!!, "frame signature tie-break Ninebot/NinebotZ")
                 }
 
+            }
+
+            frameMatches.isNotEmpty() -> {
+                highestConfidenceProtocol(frameMatches)?.let {
+                    setActiveProtocol(it, "frame signature + confidence")
+                }
+            }
+
+            else -> highestConfidenceProtocol(metadataMatchedProtocols)?.let {
+                setActiveProtocol(it, "metadata fallback")
             }
         }
     }
@@ -836,10 +841,89 @@ class BLEManager internal constructor(
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun prepareProtocolCandidates(device: EUCDevice) {
-        metadataMatchedProtocols = protocols.filter { protocol ->
-            protocol.canHandle(device)
+        protocolCandidateScores = protocols.associateWith { protocol ->
+            calculateProtocolMatchScore(protocol, device)
         }
+        metadataMatchedProtocols = protocolCandidateScores
+            .filterValues { score -> score > 0 }
+            .keys
+            .toList()
+            .sortedByDescending { protocolCandidateScores[it] ?: 0 }
         frameCandidateProtocols = metadataMatchedProtocols.ifEmpty { protocols.toList() }
+    }
+
+    private fun highestConfidenceProtocol(candidates: List<EUCProtocol>): EUCProtocol? {
+        if (candidates.isEmpty()) return null
+        val ranked = candidates
+            .map { it to (protocolCandidateScores[it] ?: 0) }
+            .sortedByDescending { it.second }
+        if (ranked.isEmpty()) return null
+        val (bestProtocol, bestScore) = ranked.first()
+        if (bestScore <= 0) return null
+        val secondBestScore = ranked.getOrNull(1)?.second
+        return if (secondBestScore == null || bestScore > secondBestScore) bestProtocol else null
+    }
+
+    private fun calculateProtocolMatchScore(protocol: EUCProtocol, device: EUCDevice): Int {
+        val manufacturerScore = if (device.manufacturerId in protocolManufacturerIds(protocol)) {
+            300
+        } else {
+            0
+        }
+        val nameScore = protocolNameScore(protocol, device.name)
+        val score = manufacturerScore + nameScore
+        if (score <= 0 && protocol.canHandle(device)) {
+            return 100
+        }
+        return score
+    }
+
+    private fun protocolNameScore(protocol: EUCProtocol, rawName: String): Int {
+        val name = rawName.trim().lowercase()
+        if (name.isBlank() || name.length < 3) return 0
+        if (name in setOf("unknown", "ble", "bluetooth", "device", "wheel", "euc")) return 0
+
+        val exactMatch = protocol.supportedModels.any { model ->
+            model.trim().lowercase() == name
+        }
+        if (exactMatch) return 200
+
+        val tokenMatches = name.split(Regex("[^a-z0-9]+"))
+            .filter { it.isNotBlank() }
+            .toSet()
+        val exactTokenMatch = protocol.supportedModels.any { model ->
+            tokenMatches.contains(model.trim().lowercase())
+        }
+        if (exactTokenMatch) return 150
+
+        val substringMatch = protocol.supportedModels.any { model ->
+            val modelName = model.trim().lowercase()
+            modelName.length >= 4 && name.contains(modelName)
+        }
+        return if (substringMatch) 80 else 0
+    }
+
+    private fun protocolManufacturerIds(protocol: EUCProtocol): Set<Int> {
+        return when (protocol.manufacturer.lowercase()) {
+            "inmotion" -> setOf(BLEConstants.MANUFACTURER_INMOTION)
+            "kingsong" -> setOf(BLEConstants.MANUFACTURER_KINGSONG)
+            "gotway" -> setOf(BLEConstants.MANUFACTURER_GOTWAY)
+            "extremebull" -> setOf(BLEConstants.MANUFACTURER_EXTREMEBULL)
+            "leaperkim" -> setOf(BLEConstants.MANUFACTURER_LEAPERKIM, BLEConstants.MANUFACTURER_VETERAN)
+            "nosfet" -> setOf(BLEConstants.MANUFACTURER_NOSFET)
+            "ninebot" -> setOf(BLEConstants.MANUFACTURER_NINEBOT)
+            else -> emptySet()
+        }
+    }
+
+    private fun candidateDataCharacteristicUuids(protocol: EUCProtocol): List<UUID> {
+        if (protocol is InMotionProtocol) {
+            return listOf(
+                UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC),
+                UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
+            )
+        }
+        return listOf(protocol.getDataCharacteristicUUID())
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)

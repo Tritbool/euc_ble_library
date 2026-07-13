@@ -11,9 +11,8 @@ class ExtremeBullProtocol : GotwayProtocol() {
     )
 
     override fun canHandle(device: EUCDevice): Boolean {
-        val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_EXTREMEBULL ||
-                supportedModels.map{model -> model.contains(name, ignoreCase = true)}.reduce { a,b -> a || b  }
+        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_EXTREMEBULL
+        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
     }
 
 }

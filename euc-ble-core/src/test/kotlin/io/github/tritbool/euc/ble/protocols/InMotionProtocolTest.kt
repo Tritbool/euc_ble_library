@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
@@ -151,11 +152,27 @@ class InMotionProtocolTest {
     fun getPollingPlanHasStartupAndPeriodicQueries() {
         val plan = protocol.getPollingPlan()
         assertTrue(plan.enabled)
-        assertTrue(plan.startupQueries.size >= 3)
+        assertEquals(1, plan.startupQueries.size)
         assertTrue(plan.periodicQueries.isNotEmpty())
-        // Verify startup queries include serial and firmware
-        assertTrue(plan.startupQueries.any { it.commandType == CommandType.REQUEST_SERIAL })
         assertTrue(plan.startupQueries.any { it.commandType == CommandType.REQUEST_FIRMWARE })
+    }
+
+    @Test
+    fun canHandleRejectsBlankAndTooShortNamesWithoutMetadata() {
+        val blank = EUCDevice(name = "", address = "A", manufacturerId = 0, rssi = -60)
+        val short = EUCDevice(name = "V", address = "B", manufacturerId = 0, rssi = -60)
+        assertEquals(false, protocol.canHandle(blank))
+        assertEquals(false, protocol.canHandle(short))
+    }
+
+    @Test
+    fun createCommandOnlyAllowsProbeUntilV2Detected() {
+        val blocked = protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
+        assertTrue(blocked.isEmpty())
+
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
+        val realtime = protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
+        assertTrue(realtime.isNotEmpty())
     }
 
     @Test

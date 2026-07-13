@@ -58,15 +58,9 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)
 
     override fun canHandle(device: EUCDevice): Boolean {
-        val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
-                device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN ||
-                supportedModels.map { model ->
-                    model.contains(
-                        name,
-                        ignoreCase = true
-                    ) || name.contains(model, ignoreCase = true)
-                }.reduce { a, b -> a || b }
+        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
+            device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN
+        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {

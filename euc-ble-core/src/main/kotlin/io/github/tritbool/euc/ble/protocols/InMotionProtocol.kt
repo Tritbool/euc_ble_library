@@ -122,16 +122,16 @@ class InMotionProtocol : EUCProtocol {
     private var totalDistanceKm: Double? = null
     @Volatile
     private var v2SessionStartTimestampMs: Long? = null
+    @Volatile
+    private var hasSeenV2MainInfo: Boolean = false
+    @Volatile
+    private var hasSeenV2Realtime: Boolean = false
+    @Volatile
+    private var hasSeenLegacyRealtime: Boolean = false
 
     override fun canHandle(device: EUCDevice): Boolean {
-        val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_INMOTION ||
-                supportedModels.map { model ->
-                    model.contains(
-                        name,
-                        ignoreCase = true
-                    ) || name.contains(model, ignoreCase = true)
-                }.reduce { a, b -> a || b }
+        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_INMOTION
+        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
     }
 
     override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
@@ -146,16 +146,16 @@ class InMotionProtocol : EUCProtocol {
 
         val v2Frames = extractV2Frames(data)
         for (frame in v2Frames) {
-            val decoded = parseV2Frame(frame) ?: continue
             lastDetectedDialect = Dialect.V2
+            val decoded = parseV2Frame(frame) ?: continue
             lastDecoded = decoded
             _channel.trySend(decoded)
         }
 
         val legacyFrames = extractLegacyFrames(data)
         for (frame in legacyFrames) {
-            val decoded = parseLegacyFrame(frame) ?: continue
             lastDetectedDialect = Dialect.LEGACY_V1
+            val decoded = parseLegacyFrame(frame) ?: continue
             lastDecoded = decoded
             _channel.trySend(decoded)
         }
@@ -298,6 +298,7 @@ class InMotionProtocol : EUCProtocol {
         return when (command) {
             COMMAND_MAIN_INFO -> {
                 parseMainInfo(payload)
+                hasSeenV2MainInfo = true
                 null
             }
 
@@ -306,7 +307,9 @@ class InMotionProtocol : EUCProtocol {
                 null
             }
 
-            COMMAND_REAL_TIME_INFO -> parseRealTime(payload, frame)
+            COMMAND_REAL_TIME_INFO -> parseRealTime(payload, frame)?.also {
+                hasSeenV2Realtime = true
+            }
             else -> null
         }
     }
@@ -321,7 +324,9 @@ class InMotionProtocol : EUCProtocol {
                 null
             }
 
-            0x13 -> parseLegacyRealtime(frame)
+            0x13 -> parseLegacyRealtime(frame)?.also {
+                hasSeenLegacyRealtime = true
+            }
             else -> null
         }
     }
@@ -563,6 +568,9 @@ class InMotionProtocol : EUCProtocol {
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         if (lastDetectedDialect == Dialect.LEGACY_V1) return byteArrayOf()
+        if (lastDetectedDialect == Dialect.UNKNOWN && commandType != CommandType.REQUEST_FIRMWARE) {
+            return byteArrayOf()
+        }
         return when (commandType) {
             CommandType.LIGHT_ON -> buildMessage(
                 FLAG_DEFAULT,
@@ -613,32 +621,18 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override fun getPollingPlan(): ProtocolPollingPlan {
+        if (lastDetectedDialect == Dialect.LEGACY_V1) {
+            return ProtocolPollingPlan.disabled()
+        }
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
                 ProtocolQuerySpec(
-                    id = "inmotion.main-info-init",
+                    id = "inmotion.dialect-probe",
                     commandType = CommandType.REQUEST_FIRMWARE,
                     initialDelayMs = 0L,
-                    maxRetries = 3
-                ),
-                ProtocolQuerySpec(
-                    id = "inmotion.serial",
-                    commandType = CommandType.REQUEST_SERIAL,
-                    initialDelayMs = 200L,
-                    maxRetries = 3
-                ),
-                ProtocolQuerySpec(
-                    id = "inmotion.firmware-version",
-                    commandType = CommandType.REQUEST_FIRMWARE,
-                    initialDelayMs = 400L,
-                    maxRetries = 3
-                ),
-                ProtocolQuerySpec(
-                    id = "inmotion.realtime-init",
-                    commandType = CommandType.REQUEST_BATTERY_INFO,
-                    initialDelayMs = 600L,
-                    maxRetries = 2
+                    responseTimeoutMs = 800L,
+                    maxRetries = 1
                 )
             ),
             periodicQueries = listOf(
@@ -655,6 +649,7 @@ class InMotionProtocol : EUCProtocol {
 
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
         if (data.size < 5 || data[0] != HEADER[0] || data[1] != HEADER[1]) return false
+        if (lastDetectedDialect == Dialect.LEGACY_V1) return false
         val command = data[4].toInt() and 0x7F
         return when (query.commandType) {
             CommandType.REQUEST_SERIAL,
@@ -681,7 +676,12 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {
-        return data.voltage > BLEConstants.MIN_READY_VOLTAGE_V && data.batteryLevel > 0
+        if (data.voltage <= BLEConstants.MIN_READY_VOLTAGE_V || data.batteryLevel <= 0) return false
+        return when (lastDetectedDialect) {
+            Dialect.V2 -> hasSeenV2MainInfo && hasSeenV2Realtime
+            Dialect.LEGACY_V1 -> hasSeenLegacyRealtime
+            Dialect.UNKNOWN -> false
+        }
     }
 
     /**
