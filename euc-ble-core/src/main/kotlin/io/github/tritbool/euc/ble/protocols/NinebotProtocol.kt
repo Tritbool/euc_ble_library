@@ -3,7 +3,6 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -42,9 +41,6 @@ class NinebotProtocol : EUCProtocol {
     }
 
     override val manufacturer: String = "Ninebot"
-    override val supportedModels: List<String> = listOf(
-        "S1", "S2", "S2 Pro", "A1", "A1 Pro", "One S2", "One E+", "One C+"
-    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -77,27 +73,6 @@ class NinebotProtocol : EUCProtocol {
 
     override fun getWriteCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.NINEBOT_WRITE_CHARACTERISTIC)
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&
-                supportedModels.map { model ->
-                    model.contains(
-                        name,
-                        ignoreCase = true
-                    ) || name.contains(model, ignoreCase = true)
-                }.reduce { a, b -> a || b }
-    }
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
-        if (chunk.isEmpty()) return false
-        val first = chunk[0].toInt() and 0xFF
-        if (first == FRAME_HEADER) return true
-        if (chunk.size >= 2 && first == WHEELLOG_HEADER_FIRST &&
-            (chunk[1].toInt() and 0xFF) == WHEELLOG_HEADER_SECOND
-        ) return true
-        return false
-    }
 
     override fun decode(data: ByteArray): EUCData? {
         _rawFrameFlow.tryEmit(data.clone())

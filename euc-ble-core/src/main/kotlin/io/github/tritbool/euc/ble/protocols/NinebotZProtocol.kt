@@ -2,7 +2,6 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -38,8 +37,6 @@ class NinebotZProtocol : EUCProtocol {
     private val delegate = NinebotProtocol()
 
     override val manufacturer: String = "Ninebot"
-    override val supportedModels: List<String> =
-        listOf("Z6", "Z8", "Z10", "Ninebot Z-series", "Ninebot Z")
     override val dataFlow: Flow<EUCData> = delegate.dataFlow
     override val rawFrameFlow: Flow<ByteArray> = delegate.rawFrameFlow
     override val supportedCommandTypes: Set<CommandType> = setOf(
@@ -72,31 +69,7 @@ class NinebotZProtocol : EUCProtocol {
      * Address Resolution) characteristic, while NinebotZ's does not. Excluding this characteristic
      * in the `00001800` spec ensures we match NinebotZ and not InMotion V2.
      */
-    override fun getGattSignatures(): List<GattSignature> = listOf(
-        // NinebotZ: Nordic UART service, and 00001800 does NOT contain 00002aa6 (InMotion V2 marker)
-        listOf(
-            GattServiceSpec(uuid = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")),
-            GattServiceSpec(
-                uuid = UUID.fromString("00001800-0000-1000-8000-00805f9b34fb"),
-                excludedCharacteristicUUIDs = setOf(UUID.fromString("00002aa6-0000-1000-8000-00805f9b34fb"))
-            )
-        )
-    )
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val name = device.name
-        return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&
-                supportedModels.map { model ->
-                    model.contains(
-                        name,
-                        ignoreCase = true
-                    ) || name.contains(model, ignoreCase = true)
-                }.reduce { a, b -> a || b }
-    }
-
     override fun decode(data: ByteArray): EUCData? = delegate.decode(data)
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean = delegate.looksLikeMyFrames(chunk)
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {

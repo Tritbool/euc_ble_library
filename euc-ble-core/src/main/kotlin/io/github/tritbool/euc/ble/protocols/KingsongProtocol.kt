@@ -6,7 +6,6 @@ import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -98,10 +97,6 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     override val manufacturer: String = "KingSong"
-    override val supportedModels: List<String> = listOf(
-        "KS-14D", "KS-16", "KS-16S", "KS-16X", "KS-18L", "KS-18XL",
-        "KS-19", "KS-S18", "KS-S19", "KS-S20", "KS-S22", "KS-F22"
-    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -121,42 +116,6 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.KINGSONG_READ_CHARACTERISTIC)
-
-    /**
-     * KingSong GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
-     *
-     * Older KingSong wheels expose a `0000fff0` service containing characteristics `0000fff1`
-     * through `0000fff5`. The presence of `0000fff2` in that service is exclusive to KingSong
-     * (Gotway firmware also exposes a `0000fff0` service in some revisions but only with `0000fff1`).
-     *
-     * Newer KingSong wheels expose a proprietary `02f00000-0000-0000-0000-00000000fe00` service
-     * that is KingSong-exclusive.
-     */
-    override fun getGattSignatures(): List<GattSignature> = listOf(
-        // Older KingSong: 0000fff0 service contains 0000fff2 (not present on Gotway)
-        listOf(
-            GattServiceSpec(
-                uuid = UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
-                requiredCharacteristicUUIDs = setOf(UUID.fromString("0000fff2-0000-1000-8000-00805f9b34fb"))
-            )
-        ),
-        // Newer KingSong: proprietary OTA/configuration service
-        listOf(
-            GattServiceSpec(uuid = UUID.fromString("02f00000-0000-0000-0000-00000000fe00"))
-        )
-    )
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_KINGSONG
-        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
-    }
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
-        if (chunk.size < 2) return false
-        val a = chunk[0].toInt() and 0xFF
-        val b = chunk[1].toInt() and 0xFF
-        return (a == 0xAA && b == 0x55) || (a == 0x55 && b == 0xAA)
-    }
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length

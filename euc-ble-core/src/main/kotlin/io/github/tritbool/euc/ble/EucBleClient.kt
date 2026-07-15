@@ -12,12 +12,12 @@ import io.github.tritbool.euc.ble.core.ConnectionCallback
 import io.github.tritbool.euc.ble.core.DataCallback
 import io.github.tritbool.euc.ble.core.ErrorCallback
 import io.github.tritbool.euc.ble.core.Logger
-import io.github.tritbool.euc.ble.core.ProtocolCandidate
 import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
@@ -34,7 +34,8 @@ import kotlinx.coroutines.flow.SharedFlow
  * Main public entry point for EUC BLE discovery, connection and telemetry.
  *
  * Protocol registration is fully managed internally; client applications should not register
- * brand-specific protocols, but may inspect candidates and choose among built-in protocols.
+ * brand-specific protocols, but may inspect and manually select from the registered protocols
+ * using [getRegisteredProtocols].
  */
 class EucBleClient(
     context: Context,
@@ -91,16 +92,20 @@ class EucBleClient(
 
     fun getProtocolSelectionMode(): ProtocolSelectionMode = bleManager.getProtocolSelectionMode()
 
-    fun getProtocolCandidates(): List<ProtocolCandidate> = bleManager.getProtocolCandidates()
+    /**
+     * Returns all registered protocols. Callers can use this list to freely choose a protocol
+     * for manual selection via [selectProtocol] or [forceProtocol].
+     */
+    fun getRegisteredProtocols(): List<EUCProtocol> = bleManager.getRegisteredProtocols()
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    fun selectProtocol(protocolId: String): Boolean {
-        return bleManager.selectProtocol(protocolId)
+    fun selectProtocol(protocol: EUCProtocol): Boolean {
+        return bleManager.selectProtocol(protocol)
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    fun forceProtocol(protocolId: String): Boolean {
-        return bleManager.forceProtocol(protocolId)
+    fun forceProtocol(protocol: EUCProtocol): Boolean {
+        return bleManager.forceProtocol(protocol)
     }
 
     fun clearForcedProtocol() {

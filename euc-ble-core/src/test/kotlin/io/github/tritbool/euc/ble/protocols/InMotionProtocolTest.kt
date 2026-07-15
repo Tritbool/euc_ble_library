@@ -1,7 +1,6 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.ByteUtils
-import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
@@ -159,14 +158,6 @@ class InMotionProtocolTest {
         val startup = plan.startupQueries.single()
         assertEquals("inmotion.dialect-probe", startup.id)
         assertEquals(CommandType.REQUEST_FIRMWARE, startup.commandType)
-    }
-
-    @Test
-    fun canHandleRejectsBlankAndTooShortNamesWithoutMetadata() {
-        val blank = EUCDevice(name = "", address = "A", manufacturerId = 0, rssi = -60)
-        val short = EUCDevice(name = "V", address = "B", manufacturerId = 0, rssi = -60)
-        assertEquals(false, protocol.canHandle(blank))
-        assertEquals(false, protocol.canHandle(short))
     }
 
     @Test

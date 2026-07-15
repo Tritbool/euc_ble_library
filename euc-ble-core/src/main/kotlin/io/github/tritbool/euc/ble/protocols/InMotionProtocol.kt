@@ -4,7 +4,6 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -52,10 +51,6 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override val manufacturer: String = "InMotion"
-    override val supportedModels: List<String> = listOf(
-        "V5", "V5F", "V8", "V8F", "V8S", "V9", "V10", "V10F", "V11", "V11Y",
-        "V12", "V12S", "V12 HS", "V12 HT", "V12 PRO", "V13", "V13 PRO", "V14", "V14 50GB", "V14 50S", "P6"
-    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -94,30 +89,13 @@ class InMotionProtocol : EUCProtocol {
     }
 
     /**
-     * InMotion GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
-     *
-     * InMotion V1 (legacy) exposes a large set of proprietary services including `0000ffc0`,
-     * `0000ffd0`, `0000ffa0`, `0000ff90`, `0000fc60` and others. The presence of `0000ffc0` is
-     * unique to InMotion V1 and not shared by any other EUC manufacturer.
-     *
-     * InMotion V2 (modern) uses the Nordic UART service (`6e400001`) and additionally exposes
-     * a `00001800` (Generic Access) service that contains the `00002aa6` (Central Address
-     * Resolution) characteristic — a marker not present on NinebotZ which also uses the
-     * Nordic UART service.
+     * InMotion exposes two possible data characteristics depending on the dialect detected
+     * at runtime (V1 legacy or V2). Both must be enabled for notifications at connection time
+     * so that the protocol can determine which dialect is in use from the incoming frames.
      */
-    override fun getGattSignatures(): List<GattSignature> = listOf(
-        // InMotion V1: has the proprietary 0000ffc0 service (unique to InMotion legacy hardware)
-        listOf(
-            GattServiceSpec(uuid = UUID.fromString("0000ffc0-0000-1000-8000-00805f9b34fb"))
-        ),
-        // InMotion V2: Nordic UART service + 00002aa6 characteristic in 00001800 (Central Address Resolution)
-        listOf(
-            GattServiceSpec(uuid = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")),
-            GattServiceSpec(
-                uuid = UUID.fromString("00001800-0000-1000-8000-00805f9b34fb"),
-                requiredCharacteristicUUIDs = setOf(UUID.fromString("00002aa6-0000-1000-8000-00805f9b34fb"))
-            )
-        )
+    override fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(
+        UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC),
+        UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
     )
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
@@ -155,16 +133,6 @@ class InMotionProtocol : EUCProtocol {
     private var hasSeenV2Realtime: Boolean = false
     @Volatile
     private var hasSeenLegacyRealtime: Boolean = false
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_INMOTION
-        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
-    }
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
-        if (chunk.size < 2) return false
-        return (chunk[0].toInt() and 0xFF) == 0xAA && (chunk[1].toInt() and 0xFF) == 0xAA
-    }
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null

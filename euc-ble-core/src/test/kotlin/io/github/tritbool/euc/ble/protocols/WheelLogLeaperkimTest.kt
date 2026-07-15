@@ -2,10 +2,8 @@ package io.github.tritbool.euc.ble.protocols
 
 import app.cash.turbine.test
 import io.github.tritbool.euc.ble.SlowTest
-import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.async
@@ -127,43 +125,6 @@ class WheelLogLeaperkimTest {
         return previousDistance >= tripResetMinDistanceBeforeReset &&
                 currentDistance <= tripResetMaxDistanceAfterReset &&
                 previousDistance - currentDistance >= tripResetMinDropDistance
-    }
-
-    @Test
-    fun canHandleLeaperkimAndVeteranDeviceNames() {
-        val devices = listOf(
-            EUCDevice(
-                name = "Patton-S",
-                address = "A",
-                manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM,
-                rssi = -50
-            ),
-            EUCDevice(name = "Veteran Patton", address = "B", manufacturerId = 0, rssi = -60),
-            EUCDevice(name = "Leaperkim Lynx", address = "C", manufacturerId = 0, rssi = -70)
-        )
-        devices.forEach { assertTrue(protocol.canHandle(it)) }
-        assertEquals(
-            false,
-            protocol.canHandle(
-                EUCDevice(
-                    name = "KS-16X",
-                    address = "D",
-                    manufacturerId = BLEConstants.MANUFACTURER_KINGSONG,
-                    rssi = -45
-                )
-            )
-        )
-        assertEquals(
-            false,
-            protocol.canHandle(
-                EUCDevice(
-                    name = "Nosfet Aero",
-                    address = "E",
-                    manufacturerId = 0,
-                    rssi = -45
-                )
-            )
-        )
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<BleFrame> {

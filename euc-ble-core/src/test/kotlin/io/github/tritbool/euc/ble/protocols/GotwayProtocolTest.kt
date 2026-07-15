@@ -1,6 +1,5 @@
 package io.github.tritbool.euc.ble.protocols
 
-import io.github.tritbool.euc.ble.models.EUCDevice
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -234,41 +233,6 @@ class GotwayProtocolTest {
         frame[22] = 0x5A.toByte()
         frame[23] = 0x5A.toByte()
         return frame
-    }
-
-    @Test
-    fun testCanHandle() {
-        val gotwayDevice = MockBLEUtils.createMockDevice(
-            name = "Gotway MSX",
-            manufacturerId = 0x0047
-        )
-        assertTrue(protocol.canHandle(gotwayDevice))
-
-        val gotwayByName = MockBLEUtils.createMockDevice(
-            name = "Begode Master",
-            manufacturerId = 0x0000
-        )
-        assertTrue(protocol.canHandle(gotwayByName))
-
-        val nonGotway = MockBLEUtils.createMockDevice(
-            name = "OtherBrand",
-            manufacturerId = 0x1234
-        )
-        assertFalse(protocol.canHandle(nonGotway))
-
-        val mtenDevice = MockBLEUtils.createMockDevice(
-            name = "Mten3",
-            manufacturerId = 0x0000
-        )
-        assertTrue(protocol.canHandle(mtenDevice))
-
-        val nikolaDevice = EUCDevice(
-            name = "Nikola Plus",
-            address = "00:11:22:33:44:55",
-            rssi = -50,
-            manufacturerId = 0
-        )
-        assertTrue(protocol.canHandle(nikolaDevice))
     }
 
     @Test

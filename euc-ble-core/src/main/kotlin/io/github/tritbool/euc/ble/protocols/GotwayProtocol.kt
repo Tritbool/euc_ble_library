@@ -7,7 +7,6 @@ import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -150,13 +149,6 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     }
 
     override val manufacturer: String = "Gotway"
-    override val supportedModels: List<String> = listOf(
-        "MSuper", "MSX", "MSX Pro", "Mten3", "Mten4", "MTen5",
-        "Nikola", "Nikola Plus", "Tesla", "Monster", "Monster Pro",
-        "Begode", "Begode RS", "Begode Master", "Begode Hero", "Master Pro",
-        "blitz", "blitz pro", "mten3", "mten4", "mten5", "A1", "A2", "race",
-        "Extreme"
-    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -170,40 +162,6 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
-
-    /**
-     * Gotway GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
-     *
-     * Most Gotway/Begode wheels share the same `0000ffe0` service as KingSong, Ninebot, and
-     * Leaperkim, so they cannot be identified by that service alone. However, newer Gotway/Begode
-     * firmware revisions expose a proprietary OTA service (`1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0`)
-     * that is exclusive to this manufacturer.
-     *
-     * Older Gotway wheels with only the `0000ffe0` service will not match any signature here and
-     * will fall back to name-based detection.
-     */
-    override fun getGattSignatures(): List<GattSignature> = listOf(
-        // Newer Gotway/Begode: proprietary OTA service exclusive to this manufacturer
-        listOf(
-            GattServiceSpec(uuid = UUID.fromString("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0"))
-        )
-    )
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_GOTWAY
-        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
-    }
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
-        if (chunk.size < 2) return false
-        val hasHeader = (chunk[0].toInt() and 0xFF) == 0x55 && (chunk[1].toInt() and 0xFF) == 0xAA
-        val hasFooter = chunk.size >= 4 &&
-                (chunk[chunk.size - 4].toInt() and 0xFF) == 0x5A &&
-                (chunk[chunk.size - 3].toInt() and 0xFF) == 0x5A &&
-                (chunk[chunk.size - 2].toInt() and 0xFF) == 0x5A &&
-                (chunk[chunk.size - 1].toInt() and 0xFF) == 0x5A
-        return hasHeader || hasFooter
-    }
 
     override fun close() {
         scope.cancel()

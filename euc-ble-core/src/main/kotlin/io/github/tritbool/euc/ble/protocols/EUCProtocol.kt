@@ -2,7 +2,6 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.io.Closeable
@@ -36,18 +35,16 @@ data class GattServiceSpec(
 typealias GattSignature = List<GattServiceSpec>
 
 /**
- * Base interface for EUC manufacturer protocols
+ * Base interface for EUC manufacturer protocols.
+ *
+ * Protocol selection is performed by GATT fingerprint matching using [EucFingerprintDatabase].
+ * If no fingerprint match is found, the caller is responsible for selecting a protocol manually.
  */
 interface EUCProtocol : Closeable {
     /**
-     * Manufacturer name
+     * Manufacturer name (used for display and logging).
      */
     val manufacturer: String
-
-    /**
-     * List of supported models
-     */
-    val supportedModels: List<String>
 
     val dataFlow: Flow<EUCData>
 
@@ -66,43 +63,19 @@ interface EUCProtocol : Closeable {
      */
     val writeFlow: Flow<ByteArray> get() = emptyFlow()
 
-
-    /**
-     * Check if this protocol can handle the given device
-     */
-    fun canHandle(device: EUCDevice): Boolean
-
     /**
      * Decode raw BLE data into EUCData
      */
     fun decode(data: ByteArray): EUCData?
 
     /**
-     * Returns GATT service signatures that uniquely identify this protocol.
+     * Returns the candidate data characteristic UUIDs for this protocol.
      *
-     * This is the highest-confidence identification method and takes priority over name-based
-     * and frame-based detection. It is evaluated immediately after [onServicesDiscovered] using
-     * the full GATT service+characteristic profile of the connected device, which is analogous
-     * to what WheelLog.Android does in its `detectWheel` method.
-     *
-     * Each entry in the returned list is an alternative [GattSignature] (OR semantics). A
-     * [GattSignature] is a list of [GattServiceSpec] that must ALL match (AND semantics).
-     *
-     * The default returns an empty list, meaning this protocol will not be identified by GATT
-     * fingerprinting and will rely on name-based or frame-based detection instead. Protocols
-     * that expose a distinctive GATT service profile should override this to improve reliability.
+     * Most protocols expose a single data characteristic. Protocols that dynamically detect their
+     * dialect (such as InMotion V1/V2) should override this to return all possible candidates so
+     * that BLE notifications are enabled for each characteristic at connection time.
      */
-    fun getGattSignatures(): List<GattSignature> = emptyList()
-
-    /**
-     * Optional fast header check: returns true if [chunk] appears to contain frames belonging
-     * to this protocol, based on magic-byte patterns alone.  The default returns false (opt-out).
-     * Protocols override this to enable frame-header-based routing without full decoding.
-     *
-     * Note: header-based routing is a hint only.  [canHandle] (device-name / manufacturer-ID)
-     * remains the authoritative gate for protocol selection at connection time.
-     */
-    fun looksLikeMyFrames(chunk: ByteArray): Boolean = false
+    fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(getDataCharacteristicUUID())
 
     /**
      * Get the UUID for the data characteristic
