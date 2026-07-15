@@ -139,13 +139,13 @@ class EucBleClientEntryPointWheelLogTest {
             expectedFrames = 1
         )
         assertTrue(decoded.isNotEmpty())
-        assertTrue(decoded.all { it.manufacturer.contains("Leaperkim", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.contains("Nosfet", ignoreCase = true) })
     }
 
     @Test
     fun leaperkimProtocolDecodesPattonFrames() = runTest {
         val decoded = feedFramesWithProtocol<LeaperkimProtocol>(
-            resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_20_08_09.csv",
+            resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
             maxFrames = 300,
             expectedFrames = 1
         )

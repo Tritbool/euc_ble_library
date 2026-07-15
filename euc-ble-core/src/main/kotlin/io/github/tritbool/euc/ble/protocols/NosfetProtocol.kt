@@ -4,9 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.math.roundToInt
 
-class NosfetProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : LeaperkimProtocol(scope) {
+class NosfetProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
+    LeaperkimProtocol(scope) {
 
-    override val manufacturer: String = "Nosfet"    override fun modelByMajorVersion(version: Int): String {
+    override val manufacturer: String = "Nosfet"
+    override fun modelByMajorVersion(version: Int): String {
         return when (version) {
             42 -> "Nosfet Apex"
             43 -> "Nosfet Aero"
