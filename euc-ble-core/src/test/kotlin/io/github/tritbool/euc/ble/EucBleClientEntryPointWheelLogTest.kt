@@ -132,14 +132,17 @@ class EucBleClientEntryPointWheelLogTest {
 
     @Test
     fun leaperkimProtocolDecodesNosfetFrames() = runTest {
-        // Nosfet devices use the Leaperkim protocol; verify Leaperkim decodes Nosfet frames
+        // Nosfet uses the same frame format as Leaperkim; verify the Leaperkim engine can decode
+        // Nosfet raw frames.  The decoded data carries the Leaperkim manufacturer label because
+        // LeaperkimProtocol is used directly here — NosfetProtocol is the right choice when the
+        // device has been identified as a Nosfet wheel (see nosfetProtocolDecodesNosfetFrames).
         val decoded = feedFramesWithProtocol<LeaperkimProtocol>(
             resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
             maxFrames = 300,
             expectedFrames = 1
         )
         assertTrue(decoded.isNotEmpty())
-        assertTrue(decoded.all { it.manufacturer.contains("Nosfet", ignoreCase = true) })
+        assertTrue(decoded.all { it.manufacturer.contains("Leaperkim", ignoreCase = true) })
     }
 
     @Test
@@ -193,7 +196,7 @@ class EucBleClientEntryPointWheelLogTest {
         maxFrames: Int,
         expectedFrames: Int
     ): List<EUCData> {
-        val protocol = bleManager.protocols.filterIsInstance<T>().firstOrNull()
+        val protocol = bleManager.protocols.firstOrNull { it.javaClass == T::class.java } as? T
             ?: error("Protocol ${T::class.simpleName} not registered in EucBleClient")
         return feedFramesAndCollect(protocol, resourcePath, maxFrames, expectedFrames)
     }

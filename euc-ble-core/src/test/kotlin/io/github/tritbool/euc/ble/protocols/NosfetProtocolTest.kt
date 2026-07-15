@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import org.junit.jupiter.api.AfterEach
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -57,6 +58,27 @@ class NosfetProtocolTest {
 
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun matchesDeviceName_recognizesKnownNosfetKeywords() {
+        protocol = NosfetProtocol()
+        assertTrue(protocol.matchesDeviceName("Nosfet Apex"))
+        assertTrue(protocol.matchesDeviceName("NOSFET AERO"))
+        assertTrue(protocol.matchesDeviceName("nosfet"))
+        assertTrue(protocol.matchesDeviceName("apex rider"))
+        assertTrue(protocol.matchesDeviceName("APEX X Pro"))
+        assertTrue(protocol.matchesDeviceName("Aero 2"))
+        assertTrue(protocol.matchesDeviceName("Aeon GT"))
+    }
+
+    @Test
+    fun matchesDeviceName_returnsFalseForUnrelatedNames() {
+        protocol = NosfetProtocol()
+        assertFalse(protocol.matchesDeviceName("Leaperkim Sherman"))
+        assertFalse(protocol.matchesDeviceName("Gotway King"))
+        assertFalse(protocol.matchesDeviceName("Unknown EUC"))
+        assertFalse(protocol.matchesDeviceName(""))
     }
 
     @Test
