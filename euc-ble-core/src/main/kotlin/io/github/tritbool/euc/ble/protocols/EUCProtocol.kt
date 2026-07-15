@@ -115,7 +115,7 @@ interface EUCProtocol : Closeable {
      *
      * Used as a secondary selection signal when GATT fingerprinting is ambiguous or
      * unavailable (e.g. protocols that share a common service UUID). The default
-     * implementation returns false; protocols with a recognisable device-name pattern
+     * implementation returns false; protocols with a recognizable device-name pattern
      * should override this and match their known advertised names or model keywords.
      */
     fun matchesDeviceName(deviceName: String): Boolean = false

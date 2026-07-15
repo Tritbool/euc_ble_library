@@ -83,6 +83,7 @@ class NosfetProtocolTest {
 
     @Test
     fun createCommandMapsKnownActions() {
+        protocol = NosfetProtocol()
 
         assertArrayEquals(
             "SetLightON".encodeToByteArray(),

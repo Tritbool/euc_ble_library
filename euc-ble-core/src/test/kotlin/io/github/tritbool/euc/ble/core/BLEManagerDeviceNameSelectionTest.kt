@@ -108,6 +108,24 @@ class BLEManagerDeviceNameSelectionTest {
         assertNull(manager.selectByDeviceName("anything"))
     }
 
+    @Test
+    fun `selectByDeviceName selects real NosfetProtocol by device name`() {
+        val leaperkim = LeaperkimProtocol().also(protocolsToClose::add)
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(leaperkim)
+        manager.registerProtocol(nosfet)
+        assertEquals(nosfet, manager.selectByDeviceName("Nosfet Apex"))
+        assertNull(manager.selectByDeviceName("Veteran Sherman"))
+    }
+
+    @Test
+    fun `selectByDeviceName selects real ExtremeBullProtocol by device name`() {
+        val extremeBull = ExtremeBullProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(extremeBull)
+        assertEquals(extremeBull, manager.selectByDeviceName("Extreme Bull Master"))
+        assertNull(manager.selectByDeviceName("KingSong S22"))
+    }
+
     // ──────────────── selectSubclassByDeviceName unit tests ────────────────
 
     @Test

@@ -196,7 +196,7 @@ class EucBleClientEntryPointWheelLogTest {
         maxFrames: Int,
         expectedFrames: Int
     ): List<EUCData> {
-        val protocol = bleManager.protocols.firstOrNull { it::class == T::class } as? T
+        val protocol = bleManager.protocols.firstOrNull { it.javaClass == T::class.java } as? T
             ?: error("Protocol ${T::class.simpleName} not registered in EucBleClient")
         return feedFramesAndCollect(protocol, resourcePath, maxFrames, expectedFrames)
     }
