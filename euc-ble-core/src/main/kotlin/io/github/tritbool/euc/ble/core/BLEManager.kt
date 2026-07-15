@@ -664,28 +664,44 @@ class BLEManager internal constructor(
             return
         }
 
-        // Try GATT fingerprint matching — primary and only automatic selection strategy
+        // Try GATT fingerprint matching — primary automatic selection strategy
         val fingerprintMatch = selectByGattFingerprint(gatt.services)
 
         connectionCallback?.onServicesDiscovered(gatt.services)
 
         if (fingerprintMatch != null) {
-            fingerprintMatch.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
-            if (!activateProtocolIfReady(fingerprintMatch, ProtocolSelectionReason.AUTO_GATT_FINGERPRINT, "GATT fingerprint")) {
+            // Refine with device name when a more-specific sub-protocol is registered
+            val subclassOverride = selectSubclassByDeviceName(fingerprintMatch, device.name)
+            val selected = subclassOverride ?: fingerprintMatch
+            val reason = if (subclassOverride != null) ProtocolSelectionReason.AUTO_DEVICE_NAME
+                         else ProtocolSelectionReason.AUTO_GATT_FINGERPRINT
+            val logReason = if (subclassOverride != null) "GATT fingerprint + device name"
+                            else "GATT fingerprint"
+            selected.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+            if (!activateProtocolIfReady(selected, reason, logReason)) {
                 disconnect()
             }
         } else {
-            // No fingerprint match — caller must choose manually
-            when (protocolSelectionMode) {
-                ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK -> {
-                    protocols.forEach { proto ->
-                        proto.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
-                    }
-                    notifyProtocolSelectionRequired()
-                }
-                else -> {
-                    errorCallback?.onError(BLEException("No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"))
+            // No fingerprint match — try device name matching before falling back to manual
+            val deviceNameMatch = selectByDeviceName(device.name)
+            if (deviceNameMatch != null) {
+                deviceNameMatch.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+                if (!activateProtocolIfReady(deviceNameMatch, ProtocolSelectionReason.AUTO_DEVICE_NAME, "device name")) {
                     disconnect()
+                }
+            } else {
+                // No automatic match — caller must choose manually
+                when (protocolSelectionMode) {
+                    ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK -> {
+                        protocols.forEach { proto ->
+                            proto.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+                        }
+                        notifyProtocolSelectionRequired()
+                    }
+                    else -> {
+                        errorCallback?.onError(BLEException("No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"))
+                        disconnect()
+                    }
                 }
             }
         }
@@ -893,6 +909,73 @@ class BLEManager internal constructor(
             val presentCharUUIDs = service.characteristics.map { it.uuid }.toSet()
             serviceSpec.requiredCharacteristicUUIDs.all { it in presentCharUUIDs } &&
                 serviceSpec.excludedCharacteristicUUIDs.none { it in presentCharUUIDs }
+        }
+    }
+
+    /**
+     * Looks for a registered protocol that is a strict subclass of [baseProtocol]'s class
+     * and whose [EUCProtocol.matchesDeviceName] returns true for [deviceName].
+     *
+     * Used to refine a GATT fingerprint match with a more specific sub-protocol
+     * (e.g. GotwayProtocol → ExtremeBullProtocol when the device name contains "bull").
+     *
+     * Returns the single matching subclass, or null if none or multiple match.
+     * Exposed for testing.
+     */
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun selectSubclassByDeviceName(
+        baseProtocol: EUCProtocol,
+        deviceName: String
+    ): EUCProtocol? {
+        val matches = protocols.filter { proto ->
+            proto.javaClass != baseProtocol.javaClass &&
+            baseProtocol.javaClass.isAssignableFrom(proto.javaClass) &&
+            proto.matchesDeviceName(deviceName)
+        }
+        return if (matches.size == 1) {
+            logger.info(
+                "BLEManager",
+                "Device name '$deviceName' refined fingerprint match to subclass ${matches.single().javaClass.simpleName}"
+            )
+            matches.single()
+        } else {
+            if (matches.size > 1) {
+                logger.warn(
+                    "BLEManager",
+                    "Device name '$deviceName' matched multiple subclass protocols (${matches.joinToString { it.javaClass.simpleName }}); using base protocol"
+                )
+            }
+            null
+        }
+    }
+
+    /**
+     * Attempts to identify the protocol solely by matching [deviceName] against all registered
+     * protocols' [EUCProtocol.matchesDeviceName] implementations.
+     *
+     * Used when GATT fingerprinting yields no match (e.g. Leaperkim/Nosfet share the
+     * same service UUID and cannot be disambiguated by GATT alone).
+     *
+     * Returns the single matching protocol, or null if none or multiple protocols match.
+     * Exposed for testing.
+     */
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun selectByDeviceName(deviceName: String): EUCProtocol? {
+        val matches = protocols.filter { it.matchesDeviceName(deviceName) }
+        return if (matches.size == 1) {
+            logger.info(
+                "BLEManager",
+                "Device name '$deviceName' matched protocol ${matches.single().javaClass.simpleName}"
+            )
+            matches.single()
+        } else {
+            if (matches.size > 1) {
+                logger.warn(
+                    "BLEManager",
+                    "Device name '$deviceName' matched multiple protocols (${matches.joinToString { it.javaClass.simpleName }}); ambiguous"
+                )
+            }
+            null
         }
     }
 
@@ -1271,6 +1354,7 @@ enum class ProtocolSelectionMode {
 
 enum class ProtocolSelectionReason {
     AUTO_GATT_FINGERPRINT,
+    AUTO_DEVICE_NAME,
     MANUAL_FALLBACK,
     FORCED
 }

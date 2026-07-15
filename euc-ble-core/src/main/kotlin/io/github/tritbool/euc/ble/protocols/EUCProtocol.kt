@@ -111,6 +111,16 @@ interface EUCProtocol : Closeable {
     }
 
     /**
+     * Returns true if the given BLE device advertisement name suggests this protocol.
+     *
+     * Used as a secondary selection signal when GATT fingerprinting is ambiguous or
+     * unavailable (e.g. protocols that share a common service UUID). The default
+     * implementation returns false; protocols with a recognisable device-name pattern
+     * should override this and match their known advertised names or model keywords.
+     */
+    fun matchesDeviceName(deviceName: String): Boolean = false
+
+    /**
      * Optional polling/query plan consumed by BLEManager orchestration.
      */
     fun getPollingPlan(): ProtocolPollingPlan = ProtocolPollingPlan.disabled()

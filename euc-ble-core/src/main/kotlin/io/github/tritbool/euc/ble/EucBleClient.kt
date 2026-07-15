@@ -18,6 +18,7 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
@@ -133,12 +134,13 @@ class EucBleClient(
     }
 
     private fun registerBuiltInProtocols(scope: CoroutineScope) {
-        bleManager.registerProtocol(KingsongProtocol(scope =scope))
-        bleManager.registerProtocol(GotwayProtocol(scope=scope))
+        bleManager.registerProtocol(KingsongProtocol(scope = scope))
+        bleManager.registerProtocol(GotwayProtocol(scope = scope))
+        bleManager.registerProtocol(ExtremeBullProtocol(scope = scope))
         bleManager.registerProtocol(InMotionProtocol())
         bleManager.registerProtocol(NinebotZProtocol())
         bleManager.registerProtocol(NinebotProtocol())
-        bleManager.registerProtocol(NosfetProtocol(scope=scope))
-        bleManager.registerProtocol(LeaperkimProtocol(scope=scope))
+        bleManager.registerProtocol(NosfetProtocol(scope = scope))
+        bleManager.registerProtocol(LeaperkimProtocol(scope = scope))
     }
 }

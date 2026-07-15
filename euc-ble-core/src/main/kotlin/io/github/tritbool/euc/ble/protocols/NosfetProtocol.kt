@@ -8,6 +8,13 @@ class NosfetProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
     LeaperkimProtocol(scope) {
 
     override val manufacturer: String = "Nosfet"
+
+    override fun matchesDeviceName(deviceName: String): Boolean {
+        val lower = deviceName.lowercase()
+        return lower.contains("nosfet") || lower.contains("apex") ||
+               lower.contains("aero") || lower.contains("aeon")
+    }
+
     override fun modelByMajorVersion(version: Int): String {
         return when (version) {
             42 -> "Nosfet Apex"
