@@ -122,6 +122,30 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     override fun getDataCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.KINGSONG_READ_CHARACTERISTIC)
 
+    /**
+     * KingSong GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
+     *
+     * Older KingSong wheels expose a `0000fff0` service containing characteristics `0000fff1`
+     * through `0000fff5`. The presence of `0000fff2` in that service is exclusive to KingSong
+     * (Gotway firmware also exposes a `0000fff0` service in some revisions but only with `0000fff1`).
+     *
+     * Newer KingSong wheels expose a proprietary `02f00000-0000-0000-0000-00000000fe00` service
+     * that is KingSong-exclusive.
+     */
+    override fun getGattSignatures(): List<GattSignature> = listOf(
+        // Older KingSong: 0000fff0 service contains 0000fff2 (not present on Gotway)
+        listOf(
+            GattServiceSpec(
+                uuid = UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
+                requiredCharacteristicUUIDs = setOf(UUID.fromString("0000fff2-0000-1000-8000-00805f9b34fb"))
+            )
+        ),
+        // Newer KingSong: proprietary OTA/configuration service
+        listOf(
+            GattServiceSpec(uuid = UUID.fromString("02f00000-0000-0000-0000-00000000fe00"))
+        )
+    )
+
     override fun canHandle(device: EUCDevice): Boolean {
         val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_KINGSONG
         return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)

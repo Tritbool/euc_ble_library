@@ -93,6 +93,33 @@ class InMotionProtocol : EUCProtocol {
         }
     }
 
+    /**
+     * InMotion GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
+     *
+     * InMotion V1 (legacy) exposes a large set of proprietary services including `0000ffc0`,
+     * `0000ffd0`, `0000ffa0`, `0000ff90`, `0000fc60` and others. The presence of `0000ffc0` is
+     * unique to InMotion V1 and not shared by any other EUC manufacturer.
+     *
+     * InMotion V2 (modern) uses the Nordic UART service (`6e400001`) and additionally exposes
+     * a `00001800` (Generic Access) service that contains the `00002aa6` (Central Address
+     * Resolution) characteristic — a marker not present on NinebotZ which also uses the
+     * Nordic UART service.
+     */
+    override fun getGattSignatures(): List<GattSignature> = listOf(
+        // InMotion V1: has the proprietary 0000ffc0 service (unique to InMotion legacy hardware)
+        listOf(
+            GattServiceSpec(uuid = UUID.fromString("0000ffc0-0000-1000-8000-00805f9b34fb"))
+        ),
+        // InMotion V2: Nordic UART service + 00002aa6 characteristic in 00001800 (Central Address Resolution)
+        listOf(
+            GattServiceSpec(uuid = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")),
+            GattServiceSpec(
+                uuid = UUID.fromString("00001800-0000-1000-8000-00805f9b34fb"),
+                requiredCharacteristicUUIDs = setOf(UUID.fromString("00002aa6-0000-1000-8000-00805f9b34fb"))
+            )
+        )
+    )
+
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 

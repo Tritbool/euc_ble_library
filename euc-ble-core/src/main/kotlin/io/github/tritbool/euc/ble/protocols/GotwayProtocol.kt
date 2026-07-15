@@ -171,6 +171,24 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun getDataCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
 
+    /**
+     * Gotway GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
+     *
+     * Most Gotway/Begode wheels share the same `0000ffe0` service as KingSong, Ninebot, and
+     * Leaperkim, so they cannot be identified by that service alone. However, newer Gotway/Begode
+     * firmware revisions expose a proprietary OTA service (`1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0`)
+     * that is exclusive to this manufacturer.
+     *
+     * Older Gotway wheels with only the `0000ffe0` service will not match any signature here and
+     * will fall back to name-based detection.
+     */
+    override fun getGattSignatures(): List<GattSignature> = listOf(
+        // Newer Gotway/Begode: proprietary OTA service exclusive to this manufacturer
+        listOf(
+            GattServiceSpec(uuid = UUID.fromString("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0"))
+        )
+    )
+
     override fun canHandle(device: EUCDevice): Boolean {
         val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_GOTWAY
         return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)

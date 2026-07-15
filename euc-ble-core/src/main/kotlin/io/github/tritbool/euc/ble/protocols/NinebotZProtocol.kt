@@ -64,6 +64,25 @@ class NinebotZProtocol : EUCProtocol {
     override fun getWriteCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.NINEBOT_Z_WRITE_CHARACTERISTIC)
 
+    /**
+     * NinebotZ GATT signatures derived from WheelLog's bluetooth_services.json fingerprint database.
+     *
+     * Both NinebotZ and InMotion V2 use the Nordic UART service (`6e400001`). The distinction is
+     * that InMotion V2's `00001800` (Generic Access) service contains the `00002aa6` (Central
+     * Address Resolution) characteristic, while NinebotZ's does not. Excluding this characteristic
+     * in the `00001800` spec ensures we match NinebotZ and not InMotion V2.
+     */
+    override fun getGattSignatures(): List<GattSignature> = listOf(
+        // NinebotZ: Nordic UART service, and 00001800 does NOT contain 00002aa6 (InMotion V2 marker)
+        listOf(
+            GattServiceSpec(uuid = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")),
+            GattServiceSpec(
+                uuid = UUID.fromString("00001800-0000-1000-8000-00805f9b34fb"),
+                excludedCharacteristicUUIDs = setOf(UUID.fromString("00002aa6-0000-1000-8000-00805f9b34fb"))
+            )
+        )
+    )
+
     override fun canHandle(device: EUCDevice): Boolean {
         val name = device.name
         return device.manufacturerId == BLEConstants.MANUFACTURER_NINEBOT &&

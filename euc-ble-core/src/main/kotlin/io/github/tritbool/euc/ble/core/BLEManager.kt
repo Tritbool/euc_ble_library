@@ -26,6 +26,7 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolMatching
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
@@ -680,8 +681,15 @@ class BLEManager internal constructor(
                 return
             }
 
+            // Try GATT service fingerprint matching first — this is the most reliable identification
+            // method and takes priority over name/score-based selection when a unique match is found.
+            val fingerprintMatch = if (protocolSelectionMode != ProtocolSelectionMode.FORCED) {
+                selectByGattFingerprint(gatt.services)
+            } else null
+
             val notificationProtocols = when {
                 forcedProtocol != null -> listOf(forcedProtocol)
+                fingerprintMatch != null -> listOf(fingerprintMatch)
                 else -> frameCandidateProtocols
             }
 
@@ -702,6 +710,12 @@ class BLEManager internal constructor(
             when {
                 forcedProtocol != null -> {
                     if (!activateProtocolIfReady(forcedProtocol, ProtocolSelectionReason.FORCED, "forced override")) {
+                        disconnect()
+                    }
+                }
+
+                fingerprintMatch != null -> {
+                    if (!activateProtocolIfReady(fingerprintMatch, ProtocolSelectionReason.AUTO_GATT_FINGERPRINT, "GATT fingerprint")) {
                         disconnect()
                     }
                 }
@@ -1052,6 +1066,56 @@ class BLEManager internal constructor(
             frameCandidateProtocols.isNotEmpty() -> frameCandidateProtocols
             protocols.isNotEmpty() -> protocols.toList()
             else -> emptyList()
+        }
+    }
+
+    /**
+     * Attempts to identify the connected device's protocol by matching the discovered GATT
+     * service+characteristic profile against each registered protocol's [EUCProtocol.getGattSignatures].
+     *
+     * This is the highest-confidence identification step, modelled after WheelLog.Android's
+     * `detectWheel` approach of comparing the full GATT fingerprint against a known database.
+     *
+     * Returns the single matching protocol if exactly one protocol's signature matches, or `null`
+     * if the result is ambiguous (zero or multiple matches). Ambiguous results fall through to
+     * the existing name-based scoring.
+     */
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun selectByGattFingerprint(discoveredServices: List<BluetoothGattService>): EUCProtocol? {
+        val matches = protocols.filter { protocol ->
+            val signatures = protocol.getGattSignatures()
+            signatures.isNotEmpty() && signatures.any { signature ->
+                matchesGattSignature(discoveredServices, signature)
+            }
+        }
+        return if (matches.size == 1) {
+            logger.info("BLEManager", "GATT fingerprint uniquely matched protocol ${matches.single().javaClass.simpleName}")
+            matches.single()
+        } else {
+            if (matches.size > 1) {
+                logger.warn(
+                    "BLEManager",
+                    "GATT fingerprint matched multiple protocols (${matches.joinToString { it.javaClass.simpleName }}); falling back to name-based scoring"
+                )
+            }
+            null
+        }
+    }
+
+    /**
+     * Returns true if all [GattServiceSpec] entries in [signature] are satisfied by the
+     * discovered GATT services.
+     */
+    private fun matchesGattSignature(
+        discoveredServices: List<BluetoothGattService>,
+        signature: GattSignature
+    ): Boolean {
+        return signature.all { serviceSpec ->
+            val service = discoveredServices.find { it.uuid == serviceSpec.uuid }
+                ?: return@all false
+            val presentCharUUIDs = service.characteristics.map { it.uuid }.toSet()
+            serviceSpec.requiredCharacteristicUUIDs.all { it in presentCharUUIDs } &&
+                serviceSpec.excludedCharacteristicUUIDs.none { it in presentCharUUIDs }
         }
     }
 
@@ -1475,6 +1539,7 @@ enum class ProtocolSelectionMode {
 }
 
 enum class ProtocolSelectionReason {
+    AUTO_GATT_FINGERPRINT,
     AUTO_METADATA,
     AUTO_FRAME_SIGNATURE,
     AUTO_FRAME_SIGNATURE_CONFIDENCE,

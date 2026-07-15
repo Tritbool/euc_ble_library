@@ -9,6 +9,33 @@ import java.io.Closeable
 import java.util.UUID
 
 /**
+ * Specifies a single GATT service requirement within a [GattSignature].
+ *
+ * A service spec matches when:
+ * - The service UUID is present in the discovered GATT services.
+ * - All [requiredCharacteristicUUIDs] are present as characteristics of that service.
+ * - None of the [excludedCharacteristicUUIDs] are present as characteristics of that service.
+ *
+ * @param uuid The service UUID that must be present.
+ * @param requiredCharacteristicUUIDs Characteristic UUIDs that must ALL be present in the service.
+ * @param excludedCharacteristicUUIDs Characteristic UUIDs that must NOT be present in the service.
+ */
+data class GattServiceSpec(
+    val uuid: UUID,
+    val requiredCharacteristicUUIDs: Set<UUID> = emptySet(),
+    val excludedCharacteristicUUIDs: Set<UUID> = emptySet()
+)
+
+/**
+ * A GATT signature is a list of [GattServiceSpec] entries that all must match for a protocol to
+ * be identified by GATT fingerprinting. All specs use AND semantics (every spec must hold).
+ *
+ * A protocol can declare multiple alternative signatures (OR semantics between signatures):
+ * the protocol matches if at least one signature matches.
+ */
+typealias GattSignature = List<GattServiceSpec>
+
+/**
  * Base interface for EUC manufacturer protocols
  */
 interface EUCProtocol : Closeable {
@@ -49,6 +76,23 @@ interface EUCProtocol : Closeable {
      * Decode raw BLE data into EUCData
      */
     fun decode(data: ByteArray): EUCData?
+
+    /**
+     * Returns GATT service signatures that uniquely identify this protocol.
+     *
+     * This is the highest-confidence identification method and takes priority over name-based
+     * and frame-based detection. It is evaluated immediately after [onServicesDiscovered] using
+     * the full GATT service+characteristic profile of the connected device, which is analogous
+     * to what WheelLog.Android does in its `detectWheel` method.
+     *
+     * Each entry in the returned list is an alternative [GattSignature] (OR semantics). A
+     * [GattSignature] is a list of [GattServiceSpec] that must ALL match (AND semantics).
+     *
+     * The default returns an empty list, meaning this protocol will not be identified by GATT
+     * fingerprinting and will rely on name-based or frame-based detection instead. Protocols
+     * that expose a distinctive GATT service profile should override this to improve reliability.
+     */
+    fun getGattSignatures(): List<GattSignature> = emptyList()
 
     /**
      * Optional fast header check: returns true if [chunk] appears to contain frames belonging
