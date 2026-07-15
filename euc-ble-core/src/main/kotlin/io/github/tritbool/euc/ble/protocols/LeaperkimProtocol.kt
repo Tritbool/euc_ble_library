@@ -2,11 +2,9 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
-import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -37,10 +35,6 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     }
 
     override val manufacturer: String = "Leaperkim"
-    override val supportedModels: List<String> = listOf(
-        "Patton", "Patton S", "Sherman", "Sherman S", "Sherman L",
-        "Lynx", "Lynx S", "Abrams", "Oryx"
-    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -56,19 +50,6 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     override fun getWriteCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_LEAPERKIM ||
-            device.manufacturerId == BLEConstants.MANUFACTURER_VETERAN
-        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
-    }
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
-        if (chunk.size < 3) return false
-        return (chunk[0].toInt() and 0xFF) == 0xDC &&
-                (chunk[1].toInt() and 0xFF) == 0x5A &&
-                (chunk[2].toInt() and 0xFF) == 0x5C
-    }
 
     private enum class ParseState {
         UNKNOWN,

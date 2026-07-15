@@ -1,8 +1,6 @@
 package io.github.tritbool.euc.ble.protocols
 
 import app.cash.turbine.test
-import io.github.tritbool.euc.ble.core.BLEConstants
-import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -10,7 +8,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -44,40 +41,6 @@ class LeaperkimProtocolTest {
         if (this::protocol.isInitialized) {
             protocol.close()
         }
-    }
-
-    @Test
-    fun canHandleLeaperkimAndVeteranDevicesOnly() {
-        assertTrue(
-            protocol.canHandle(
-                EUCDevice(name = "Veteran Patton", address = "A", manufacturerId = 0, rssi = -50)
-            )
-        )
-        assertTrue(
-            protocol.canHandle(
-                EUCDevice(
-                    name = "Unknown",
-                    address = "B",
-                    manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM,
-                    rssi = -55
-                )
-            )
-        )
-        assertFalse(
-            protocol.canHandle(
-                EUCDevice(
-                    name = "KS-16X",
-                    address = "C",
-                    manufacturerId = BLEConstants.MANUFACTURER_KINGSONG,
-                    rssi = -60
-                )
-            )
-        )
-        assertFalse(
-            protocol.canHandle(
-                EUCDevice(name = "Nosfet Aero", address = "D", manufacturerId = 0, rssi = -61)
-            )
-        )
     }
 
     @Test

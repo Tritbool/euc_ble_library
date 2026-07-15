@@ -34,9 +34,9 @@ class BLEManagerProtocolSelectionTest {
     }
 
     @Test
-    fun autoWithManualFallbackRequestsManualSelectionWhenMetadataHasNoMatch() {
-        val alpha = AlphaProtocol("KingSong", listOf("MODEL-A"), uuid("00000000-0000-0000-0000-0000000000A1"))
-        val beta = BetaProtocol("InMotion", listOf("MODEL-B"), uuid("00000000-0000-0000-0000-0000000000B1"))
+    fun autoWithManualFallbackRequestsManualSelectionWhenNoFingerprintMatches() {
+        val alpha = AlphaProtocol(uuid("00000000-0000-0000-0000-0000000000A1"))
+        val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B1"))
         register(alpha, beta)
 
         val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
@@ -46,26 +46,25 @@ class BLEManagerProtocolSelectionTest {
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
         assertNull(manager.currentProtocol)
-        assertEquals(listOf("AlphaProtocol", "BetaProtocol"), callback.requiredSelections.single().map { it.id })
+        assertEquals(listOf(alpha, beta), callback.requiredSelections.single())
         assertTrue(callback.selectedProtocols.isEmpty())
     }
 
     @Test
-    fun ambiguousCandidatesFollowManualSelectionPath() {
-        val alpha = AlphaProtocol("KingSong", listOf("MODEL-A"), uuid("00000000-0000-0000-0000-0000000000A2"))
-        val beta = BetaProtocol("KingSong", listOf("MODEL-B"), uuid("00000000-0000-0000-0000-0000000000B2"))
+    fun manualSelectionActivatesChosenProtocol() {
+        val alpha = AlphaProtocol(uuid("00000000-0000-0000-0000-0000000000A2"))
+        val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B2"))
         register(alpha, beta)
 
         val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
-        attachSession(device("Unknown wheel", BLEConstants.MANUFACTURER_KINGSONG), gatt)
+        attachSession(device("Unknown wheel", 0), gatt)
 
         manager.setProtocolSelectionMode(ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK)
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
         assertNull(manager.currentProtocol)
-        assertEquals(listOf("AlphaProtocol", "BetaProtocol"), callback.requiredSelections.single().map { it.id })
 
-        assertTrue(manager.selectProtocol("BetaProtocol"))
+        assertTrue(manager.selectProtocol(beta))
         assertEquals(beta, manager.currentProtocol)
         assertEquals(ProtocolSelectionReason.MANUAL_FALLBACK, callback.selectedProtocols.single().reason)
         assertEquals("BetaProtocol", callback.selectedProtocols.single().protocolId)
@@ -73,14 +72,14 @@ class BLEManagerProtocolSelectionTest {
 
     @Test
     fun forcedProtocolOverridesAutoSelection() {
-        val alpha = AlphaProtocol("KingSong", listOf("MODEL-A"), uuid("00000000-0000-0000-0000-0000000000A3"))
-        val beta = BetaProtocol("KingSong", listOf("MODEL-B"), uuid("00000000-0000-0000-0000-0000000000B3"))
+        val alpha = AlphaProtocol(uuid("00000000-0000-0000-0000-0000000000A3"))
+        val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B3"))
         register(alpha, beta)
 
         val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
-        attachSession(device("MODEL-A", BLEConstants.MANUFACTURER_KINGSONG), gatt)
+        attachSession(device("Unknown wheel", 0), gatt)
 
-        assertTrue(manager.forceProtocol("BetaProtocol"))
+        assertTrue(manager.forceProtocol(beta))
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
         assertEquals(beta, manager.currentProtocol)
@@ -89,29 +88,29 @@ class BLEManagerProtocolSelectionTest {
     }
 
     @Test
-    fun defaultAutoModeRemainsBackwardCompatible() {
-        val alpha = AlphaProtocol("KingSong", listOf("KS-S22"), uuid("00000000-0000-0000-0000-0000000000A4"))
-        val beta = BetaProtocol("InMotion", listOf("V11"), uuid("00000000-0000-0000-0000-0000000000B4"))
+    fun autoModeDoesNotFireSelectionCallbackWhenNoFingerprintMatches() {
+        val alpha = AlphaProtocol(uuid("00000000-0000-0000-0000-0000000000A4"))
+        val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B4"))
         register(alpha, beta)
 
         val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
-        attachSession(device("KS-S22", BLEConstants.MANUFACTURER_KINGSONG), gatt)
+        attachSession(device("Unknown wheel", 0), gatt)
 
+        // AUTO mode (default): no fingerprint match → no protocol selected, no callback
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
-        assertEquals(alpha, manager.currentProtocol)
-        assertEquals(ProtocolSelectionReason.AUTO_METADATA, callback.selectedProtocols.single().reason)
+        assertNull(manager.currentProtocol)
         assertTrue(callback.requiredSelections.isEmpty())
     }
 
     @Test
-    fun manualSelectionRejectsUnavailableProtocolForCurrentSession() {
-        val alpha = AlphaProtocol("KingSong", listOf("KS-S22"), uuid("00000000-0000-0000-0000-0000000000A5"))
-        val beta = BetaProtocol("InMotion", listOf("V11"), uuid("00000000-0000-0000-0000-0000000000B5"))
+    fun manualSelectionRejectsProtocolWhoseCharacteristicIsUnavailable() {
+        val alpha = AlphaProtocol(uuid("00000000-0000-0000-0000-0000000000A5"))
+        val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B5"))
         register(alpha, beta)
 
         val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID())
-        attachSession(device("KS-S22", BLEConstants.MANUFACTURER_KINGSONG), gatt)
+        attachSession(device("Unknown wheel", 0), gatt)
 
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
@@ -122,8 +121,16 @@ class BLEManagerProtocolSelectionTest {
             }
         })
 
-        assertFalse(manager.selectProtocol("BetaProtocol"))
-        assertTrue(errors.single().message!!.contains("not available"))
+        assertFalse(manager.selectProtocol(beta))
+        assertTrue(errors.single().message!!.contains("unavailable", ignoreCase = true))
+    }
+
+    @Test
+    fun getRegisteredProtocolsReturnsAllRegisteredProtocols() {
+        val alpha = AlphaProtocol(uuid("00000000-0000-0000-0000-0000000000A6"))
+        val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B6"))
+        register(alpha, beta)
+        assertEquals(listOf(alpha, beta), manager.getRegisteredProtocols())
     }
 
     private fun register(vararg protocols: EUCProtocol) {
@@ -144,7 +151,11 @@ class BLEManagerProtocolSelectionTest {
             }
         }
         val service = mock<BluetoothGattService>()
+        whenever(service.uuid).thenReturn(uuid("00000000-0000-0000-0000-00000000F000"))
         whenever(service.characteristics).thenReturn(characteristics)
+        characteristicUuids.forEachIndexed { i, uuid ->
+            whenever(service.getCharacteristic(uuid)).thenReturn(characteristics[i])
+        }
 
         return mock<BluetoothGatt>().also { gatt ->
             whenever(gatt.services).thenReturn(listOf(service))
@@ -170,11 +181,11 @@ class BLEManagerProtocolSelectionTest {
     private fun uuid(value: String): UUID = UUID.fromString(value)
 
     private class RecordingConnectionCallback : ConnectionCallback() {
-        val requiredSelections = mutableListOf<List<ProtocolCandidate>>()
+        val requiredSelections = mutableListOf<List<EUCProtocol>>()
         val selectedProtocols = mutableListOf<ProtocolSelection>()
 
-        override fun onProtocolSelectionRequired(candidates: List<ProtocolCandidate>) {
-            requiredSelections += candidates
+        override fun onProtocolSelectionRequired(protocols: List<EUCProtocol>) {
+            requiredSelections += protocols
         }
 
         override fun onProtocolSelected(selection: ProtocolSelection) {
@@ -183,36 +194,18 @@ class BLEManagerProtocolSelectionTest {
     }
 
     private abstract class TestProtocol(
-        override val manufacturer: String,
-        override val supportedModels: List<String>,
         private val dataCharacteristicUuid: UUID
     ) : EUCProtocol {
+        override val manufacturer: String = "Test"
         override val dataFlow: Flow<EUCData> = emptyFlow()
-
-        override fun canHandle(device: EUCDevice): Boolean = false
-
         override fun decode(data: ByteArray): EUCData? = null
-
         override fun getDataCharacteristicUUID(): UUID = dataCharacteristicUuid
-
         override fun getServiceUUID(): UUID = UUID.fromString("00000000-0000-0000-0000-00000000F000")
-
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf(0x01)
-
         override fun isDeviceReady(data: EUCData): Boolean = true
-
         override fun close() = Unit
     }
 
-    private class AlphaProtocol(
-        manufacturer: String,
-        supportedModels: List<String>,
-        dataCharacteristicUuid: UUID
-    ) : TestProtocol(manufacturer, supportedModels, dataCharacteristicUuid)
-
-    private class BetaProtocol(
-        manufacturer: String,
-        supportedModels: List<String>,
-        dataCharacteristicUuid: UUID
-    ) : TestProtocol(manufacturer, supportedModels, dataCharacteristicUuid)
+    private class AlphaProtocol(dataCharacteristicUuid: UUID) : TestProtocol(dataCharacteristicUuid)
+    private class BetaProtocol(dataCharacteristicUuid: UUID) : TestProtocol(dataCharacteristicUuid)
 }

@@ -2,25 +2,49 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.io.Closeable
 import java.util.UUID
 
 /**
- * Base interface for EUC manufacturer protocols
+ * Specifies a single GATT service requirement within a [GattSignature].
+ *
+ * A service spec matches when:
+ * - The service UUID is present in the discovered GATT services.
+ * - All [requiredCharacteristicUUIDs] are present as characteristics of that service.
+ * - None of the [excludedCharacteristicUUIDs] are present as characteristics of that service.
+ *
+ * @param uuid The service UUID that must be present.
+ * @param requiredCharacteristicUUIDs Characteristic UUIDs that must ALL be present in the service.
+ * @param excludedCharacteristicUUIDs Characteristic UUIDs that must NOT be present in the service.
+ */
+data class GattServiceSpec(
+    val uuid: UUID,
+    val requiredCharacteristicUUIDs: Set<UUID> = emptySet(),
+    val excludedCharacteristicUUIDs: Set<UUID> = emptySet()
+)
+
+/**
+ * A GATT signature is a list of [GattServiceSpec] entries that all must match for a protocol to
+ * be identified by GATT fingerprinting. All specs use AND semantics (every spec must hold).
+ *
+ * A protocol can declare multiple alternative signatures (OR semantics between signatures):
+ * the protocol matches if at least one signature matches.
+ */
+typealias GattSignature = List<GattServiceSpec>
+
+/**
+ * Base interface for EUC manufacturer protocols.
+ *
+ * Protocol selection is performed by GATT fingerprint matching using [EucFingerprintDatabase].
+ * If no fingerprint match is found, the caller is responsible for selecting a protocol manually.
  */
 interface EUCProtocol : Closeable {
     /**
-     * Manufacturer name
+     * Manufacturer name (used for display and logging).
      */
     val manufacturer: String
-
-    /**
-     * List of supported models
-     */
-    val supportedModels: List<String>
 
     val dataFlow: Flow<EUCData>
 
@@ -39,26 +63,19 @@ interface EUCProtocol : Closeable {
      */
     val writeFlow: Flow<ByteArray> get() = emptyFlow()
 
-
-    /**
-     * Check if this protocol can handle the given device
-     */
-    fun canHandle(device: EUCDevice): Boolean
-
     /**
      * Decode raw BLE data into EUCData
      */
     fun decode(data: ByteArray): EUCData?
 
     /**
-     * Optional fast header check: returns true if [chunk] appears to contain frames belonging
-     * to this protocol, based on magic-byte patterns alone.  The default returns false (opt-out).
-     * Protocols override this to enable frame-header-based routing without full decoding.
+     * Returns the candidate data characteristic UUIDs for this protocol.
      *
-     * Note: header-based routing is a hint only.  [canHandle] (device-name / manufacturer-ID)
-     * remains the authoritative gate for protocol selection at connection time.
+     * Most protocols expose a single data characteristic. Protocols that dynamically detect their
+     * dialect (such as InMotion V1/V2) should override this to return all possible candidates so
+     * that BLE notifications are enabled for each characteristic at connection time.
      */
-    fun looksLikeMyFrames(chunk: ByteArray): Boolean = false
+    fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(getDataCharacteristicUUID())
 
     /**
      * Get the UUID for the data characteristic

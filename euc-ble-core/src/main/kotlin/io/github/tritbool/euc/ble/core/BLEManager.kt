@@ -26,8 +26,8 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
-import io.github.tritbool.euc.ble.protocols.InMotionProtocol
-import io.github.tritbool.euc.ble.protocols.ProtocolMatching
+import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
+import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,14 +71,6 @@ class BLEManager internal constructor(
     companion object {
         private const val MIN_QUERY_ATTEMPTS = 1
         private const val MIN_QUERY_TIMEOUT_MS = 200L
-        // Confidence hierarchy:
-        // manufacturer > exact full name > exact token > compatibility fallback > substring.
-        // Fallback intentionally outranks weak substring matches while staying below exact tokens.
-        private const val SCORE_MANUFACTURER_MATCH = 300
-        private const val SCORE_EXACT_NAME_MATCH = 200
-        private const val SCORE_EXACT_TOKEN_MATCH = 150
-        private const val SCORE_SUBSTRING_MATCH = 80
-        private const val SCORE_COMPATIBILITY_FALLBACK = 100
     }
 
     // Configuration
@@ -107,26 +99,13 @@ class BLEManager internal constructor(
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal var currentProtocol: EUCProtocol? = null
-    private var metadataMatchedProtocols: List<EUCProtocol> = emptyList()
-    private var frameCandidateProtocols: List<EUCProtocol> = emptyList()
-    private var protocolCandidateScores: Map<EUCProtocol, Int> = emptyMap()
     private var protocolSelectionMode: ProtocolSelectionMode = ProtocolSelectionMode.AUTO
-    private var forcedProtocolId: String? = null
+    private var forcedProtocol: EUCProtocol? = null
     private var awaitingManualProtocolSelection: Boolean = false
-    private var lastProtocolSelectionRequestIds: List<String> = emptyList()
     private var queryOrchestrationJob: Job? = null
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
-    private val manufacturerIdsByBrand: Map<String, Set<Int>> = mapOf(
-        "inmotion" to setOf(BLEConstants.MANUFACTURER_INMOTION),
-        "kingsong" to setOf(BLEConstants.MANUFACTURER_KINGSONG),
-        "gotway" to setOf(BLEConstants.MANUFACTURER_GOTWAY),
-        "extremebull" to setOf(BLEConstants.MANUFACTURER_EXTREMEBULL),
-        "leaperkim" to setOf(BLEConstants.MANUFACTURER_LEAPERKIM, BLEConstants.MANUFACTURER_VETERAN),
-        "nosfet" to setOf(BLEConstants.MANUFACTURER_NOSFET),
-        "ninebot" to setOf(BLEConstants.MANUFACTURER_NINEBOT)
-    )
 
     // Callbacks
     private var platformScanCallback: AndroidScanCallback? = null
@@ -200,7 +179,7 @@ class BLEManager internal constructor(
     }
 
     fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {
-        protocolSelectionMode = if (mode == ProtocolSelectionMode.FORCED && forcedProtocolId == null) {
+        protocolSelectionMode = if (mode == ProtocolSelectionMode.FORCED && forcedProtocol == null) {
             errorCallback?.onError(BLEException("Cannot enable forced protocol mode without a forced protocol"))
             ProtocolSelectionMode.AUTO
         } else {
@@ -208,7 +187,6 @@ class BLEManager internal constructor(
         }
         if (protocolSelectionMode != ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK) {
             awaitingManualProtocolSelection = false
-            lastProtocolSelectionRequestIds = emptyList()
         }
         if (protocolSelectionMode == ProtocolSelectionMode.FORCED) {
             maybeActivateForcedProtocol()
@@ -219,42 +197,39 @@ class BLEManager internal constructor(
 
     fun getProtocolSelectionMode(): ProtocolSelectionMode = protocolSelectionMode
 
-    fun getProtocolCandidates(): List<ProtocolCandidate> {
-        return buildProtocolCandidates(selectableProtocols())
-    }
+    /**
+     * Returns all registered protocols so the caller can inspect and choose one if needed.
+     */
+    fun getRegisteredProtocols(): List<EUCProtocol> = protocols.toList()
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    fun selectProtocol(protocolId: String): Boolean {
+    fun selectProtocol(protocol: EUCProtocol): Boolean {
         if (currentDevice == null) {
             errorCallback?.onError(BLEException("No connected device available for manual protocol selection"))
             return false
         }
-        val protocol = resolveProtocol(protocolId, selectableProtocols()) ?: run {
-            errorCallback?.onError(
-                BLEException("Protocol '$protocolId' is not available for the current device/session")
-            )
+        if (!protocols.contains(protocol)) {
+            errorCallback?.onError(BLEException("Protocol '${protocolIdentifier(protocol)}' is not registered"))
             return false
         }
         awaitingManualProtocolSelection = false
-        lastProtocolSelectionRequestIds = emptyList()
         return activateProtocolIfReady(protocol, ProtocolSelectionReason.MANUAL_FALLBACK, "manual fallback")
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    fun forceProtocol(protocolId: String): Boolean {
-        val protocol = resolveProtocol(protocolId, protocols) ?: run {
-            errorCallback?.onError(BLEException("Unknown protocol '$protocolId'"))
+    fun forceProtocol(protocol: EUCProtocol): Boolean {
+        if (!protocols.contains(protocol)) {
+            errorCallback?.onError(BLEException("Protocol '${protocolIdentifier(protocol)}' is not registered"))
             return false
         }
-        forcedProtocolId = protocolIdentifier(protocol)
+        forcedProtocol = protocol
         protocolSelectionMode = ProtocolSelectionMode.FORCED
         awaitingManualProtocolSelection = false
-        lastProtocolSelectionRequestIds = emptyList()
         return maybeActivateForcedProtocol(protocol) ?: true
     }
 
     fun clearForcedProtocol() {
-        forcedProtocolId = null
+        forcedProtocol = null
         if (protocolSelectionMode == ProtocolSelectionMode.FORCED) {
             protocolSelectionMode = ProtocolSelectionMode.AUTO
         }
@@ -362,10 +337,7 @@ class BLEManager internal constructor(
         bluetoothGatt = null
         currentDevice = null
         currentProtocol = null
-        metadataMatchedProtocols = emptyList()
-        frameCandidateProtocols = emptyList()
         awaitingManualProtocolSelection = false
-        lastProtocolSelectionRequestIds = emptyList()
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
         connectionCallback?.onDisconnected()
     }
@@ -663,66 +635,59 @@ class BLEManager internal constructor(
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
         super.onServicesDiscovered(gatt, status)
 
-        if (status == BluetoothGatt.GATT_SUCCESS) {
-            val device = currentDevice
-            if (device == null) {
-                errorCallback?.onError(BLEException("No connected device available for protocol selection"))
-                disconnect()
-                return
-            }
+        if (status != BluetoothGatt.GATT_SUCCESS) {
+            errorCallback?.onError(BLEException("Service discovery failed: $status"))
+            disconnect()
+            return
+        }
 
-            prepareProtocolCandidates(device)
+        val device = currentDevice
+        if (device == null) {
+            errorCallback?.onError(BLEException("No connected device available for protocol selection"))
+            disconnect()
+            return
+        }
 
-            val forcedProtocol = resolveForcedProtocol()
-            if (protocolSelectionMode == ProtocolSelectionMode.FORCED && forcedProtocol == null) {
+        // Handle forced protocol mode
+        if (protocolSelectionMode == ProtocolSelectionMode.FORCED) {
+            val forced = forcedProtocol
+            if (forced == null) {
                 errorCallback?.onError(BLEException("Forced protocol is not registered"))
                 disconnect()
                 return
             }
-
-            val notificationProtocols = when {
-                forcedProtocol != null -> listOf(forcedProtocol)
-                else -> frameCandidateProtocols
-            }
-
-            if (notificationProtocols.isEmpty()) {
-                errorCallback?.onError(BLEException("No protocol found for this device"))
-                disconnect()
-                return
-            }
-
-            notificationProtocols
-                .flatMap { candidateDataCharacteristicUuids(it) }
-                .distinct()
-                .forEach { characteristicUuid ->
-                    enableNotifications(characteristicUuid)
-                }
+            forced.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
             connectionCallback?.onServicesDiscovered(gatt.services)
+            if (!activateProtocolIfReady(forced, ProtocolSelectionReason.FORCED, "forced override")) {
+                disconnect()
+            }
+            return
+        }
 
-            when {
-                forcedProtocol != null -> {
-                    if (!activateProtocolIfReady(forcedProtocol, ProtocolSelectionReason.FORCED, "forced override")) {
-                        disconnect()
-                    }
-                }
+        // Try GATT fingerprint matching — primary and only automatic selection strategy
+        val fingerprintMatch = selectByGattFingerprint(gatt.services)
 
-                else -> when (val confident = highestConfidenceProtocol(metadataMatchedProtocols)) {
-                    null -> {
-                        if (protocolSelectionMode == ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK) {
-                            notifyProtocolSelectionRequired()
-                        }
-                    }
+        connectionCallback?.onServicesDiscovered(gatt.services)
 
-                    else -> setActiveProtocol(
-                        confident,
-                        "metadata confidence",
-                        ProtocolSelectionReason.AUTO_METADATA
-                    )
-                }
+        if (fingerprintMatch != null) {
+            fingerprintMatch.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+            if (!activateProtocolIfReady(fingerprintMatch, ProtocolSelectionReason.AUTO_GATT_FINGERPRINT, "GATT fingerprint")) {
+                disconnect()
             }
         } else {
-            errorCallback?.onError(BLEException("Service discovery failed: $status"))
-            disconnect()
+            // No fingerprint match — caller must choose manually
+            when (protocolSelectionMode) {
+                ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK -> {
+                    protocols.forEach { proto ->
+                        proto.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+                    }
+                    notifyProtocolSelectionRequired()
+                }
+                else -> {
+                    errorCallback?.onError(BLEException("No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"))
+                    disconnect()
+                }
+            }
         }
     }
 
@@ -751,112 +716,12 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     internal fun handleIncomingBytes(data: ByteArray) {
         _rawFrameFlow.tryEmit(data.clone())
-        if (currentProtocol == null) {
-            maybeSelectProtocolFromFrame(data)
-        }
         currentProtocol?.let { protocol ->
             try {
                 matchPendingQueries(protocol, data)
                 protocol.decode(data)
             } catch (e: Exception) {
                 errorCallback?.onError(BLEException("Data decoding failed: ${e.message}"))
-            }
-        }
-    }
-
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun maybeSelectProtocolFromFrame(data: ByteArray) {
-        if (currentProtocol != null) return
-        if (protocolSelectionMode == ProtocolSelectionMode.FORCED) return
-        val candidates =
-            if (frameCandidateProtocols.isNotEmpty()) frameCandidateProtocols else protocols
-        if (candidates.isEmpty()) return
-
-        val frameMatches = candidates.filter { candidate ->
-            runCatching { candidate.looksLikeMyFrames(data) }.getOrDefault(false)
-        }
-
-        when {
-            frameMatches.size == 1 -> setActiveProtocol(
-                frameMatches.single(),
-                "frame signature",
-                ProtocolSelectionReason.AUTO_FRAME_SIGNATURE
-            )
-
-            frameMatches.isNotEmpty() -> {
-                highestConfidenceProtocol(frameMatches)?.let {
-                    setActiveProtocol(
-                        it,
-                        "frame signature + confidence",
-                        ProtocolSelectionReason.AUTO_FRAME_SIGNATURE_CONFIDENCE
-                    )
-                    return
-                }
-                if (protocolSelectionMode == ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK) {
-                    notifyProtocolSelectionRequired(frameMatches)
-                    return
-                }
-                if (frameMatches.size != 2) return
-                val manuf1 = frameMatches[0].manufacturer
-                val manuf2 = frameMatches[1].manufacturer
-
-                // CANNOT DECIDE BETWEEN LK AND NOSFET
-                if (manuf1.equals("Leaperkim", ignoreCase = true) && manuf2.equals(
-                        "Nosfet", ignoreCase = true
-                    ) || manuf2.equals("Leaperkim", ignoreCase = true) && manuf1.equals(
-                        "Nosfet", ignoreCase = true
-                    )
-                ) {
-                    setActiveProtocol(protocols.find {
-                        it.manufacturer.equals(
-                            "Leaperkim", ignoreCase = true
-                        )
-                    }!!, "frame signature tie-break LK/Nosfet", ProtocolSelectionReason.AUTO_TIE_BREAK)
-                }
-
-                // CANNOT DECIDE BETWEEN GW AND EB
-                if (manuf1.equals("ExtremeBull", ignoreCase = true) && manuf2.equals(
-                        "GOTWAY", ignoreCase = true
-                    ) || manuf2.equals("Gotway", ignoreCase = true) && manuf1.equals(
-                        "ExtremeBull", ignoreCase = true
-                    )
-                ) {
-                    setActiveProtocol(protocols.find {
-                        it.manufacturer.equals(
-                            "Gotway", ignoreCase = true
-                        )
-                    }!!, "frame signature tie-break EB/GW", ProtocolSelectionReason.AUTO_TIE_BREAK)
-                }
-
-                // CANNOT DECIDE BETWEEN NINEBOT AND NINEBOTZ
-                if (manuf1.equals("ninebot", ignoreCase = true) && manuf2.equals(
-                        "ninebot", ignoreCase = true
-                    ) || manuf2.equals("ninebot", ignoreCase = true) && manuf1.equals(
-                        "ninebot", ignoreCase = true
-                    )
-                ) {
-                    setActiveProtocol(protocols.find {
-                        it.supportedModels.contains(
-                            "Z10"
-                        )
-                    }!!,
-                        "frame signature tie-break Ninebot/NinebotZ",
-                        ProtocolSelectionReason.AUTO_TIE_BREAK
-                    )
-                }
-
-            }
-
-            else -> highestConfidenceProtocol(metadataMatchedProtocols)?.let {
-                setActiveProtocol(
-                    it,
-                    "metadata fallback",
-                    ProtocolSelectionReason.AUTO_METADATA_FALLBACK
-                )
-            } ?: run {
-                if (protocolSelectionMode == ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK) {
-                    notifyProtocolSelectionRequired()
-                }
             }
         }
     }
@@ -972,133 +837,76 @@ class BLEManager internal constructor(
         if (currentProtocol === protocol) return
         currentProtocol = protocol
         awaitingManualProtocolSelection = false
-        lastProtocolSelectionRequestIds = emptyList()
         logger.info("BLEManager", "Selected protocol ${protocol.javaClass.simpleName} via $reason")
         startPollingOrchestration(protocol)
         startDataFlowCollection(protocol)
         connectionCallback?.onProtocolSelected(buildProtocolSelection(protocol, selectionReason))
     }
 
+    /**
+     * Attempts to identify the connected device's protocol by matching the discovered GATT
+     * service+characteristic profile against the [EucFingerprintDatabase].
+     *
+     * Returns the single matching protocol if exactly one protocol's fingerprint matches.
+     * Returns `null` when zero protocols match (unknown device) or when multiple protocols
+     * match the same profile (ambiguous — a warning is logged in that case).
+     *
+     * @param signaturesProvider Overridable signature lookup — defaults to [EucFingerprintDatabase].
+     *   Exposed as a parameter for testing.
+     */
     @VisibleForTesting(otherwise = PRIVATE)
-    internal fun prepareProtocolCandidates(device: EUCDevice) {
-        protocolCandidateScores = protocols.associateWith { protocol ->
-            calculateProtocolMatchScore(protocol, device)
+    internal fun selectByGattFingerprint(
+        discoveredServices: List<BluetoothGattService>,
+        signaturesProvider: (String) -> List<GattSignature> = EucFingerprintDatabase::getSignatures
+    ): EUCProtocol? {
+        val matches = protocols.filter { protocol ->
+            val signatures = signaturesProvider(protocol.javaClass.simpleName)
+            signatures.isNotEmpty() && signatures.any { signature ->
+                matchesGattSignature(discoveredServices, signature)
+            }
         }
-        metadataMatchedProtocols = protocolCandidateScores
-            .filterValues { score -> score > 0 }
-            .keys
-            .toList()
-            .sortedByDescending { protocolCandidateScores[it] ?: 0 }
-        frameCandidateProtocols = metadataMatchedProtocols.ifEmpty { protocols.toList() }
-    }
-
-    private fun highestConfidenceProtocol(candidates: List<EUCProtocol>): EUCProtocol? {
-        if (candidates.isEmpty()) return null
-        val ranked = candidates
-            .map { it to (protocolCandidateScores[it] ?: 0) }
-            .sortedByDescending { it.second }
-        if (ranked.isEmpty()) return null
-        val (bestProtocol, bestScore) = ranked.first()
-        if (bestScore <= 0) return null
-        val secondBestScore = ranked.getOrNull(1)?.second
-        return if (secondBestScore == null || bestScore > secondBestScore) bestProtocol else null
-    }
-
-    private fun calculateProtocolMatchScore(protocol: EUCProtocol, device: EUCDevice): Int {
-        val manufacturerScore = if (device.manufacturerId in protocolManufacturerIds(protocol)) {
-            SCORE_MANUFACTURER_MATCH
+        return if (matches.size == 1) {
+            logger.info("BLEManager", "GATT fingerprint uniquely matched protocol ${matches.single().javaClass.simpleName}")
+            matches.single()
         } else {
-            0
-        }
-        val nameScore = protocolNameScore(protocol, device.name)
-        val score = manufacturerScore + nameScore
-        if (score <= 0 && protocol.canHandle(device)) {
-            // Preserve backward compatibility for protocols whose legacy canHandle()
-            // rules still match devices through heuristics not represented by the
-            // confidence model (manufacturer + model-name scoring).
-            return SCORE_COMPATIBILITY_FALLBACK
-        }
-        return score
-    }
-
-    private fun protocolNameScore(protocol: EUCProtocol, rawName: String): Int {
-        val name = ProtocolMatching.normalizeName(rawName)
-        if (ProtocolMatching.isGenericDeviceName(name)) return 0
-
-        val exactMatch = protocol.supportedModels.any { model ->
-            model.trim().lowercase() == name
-        }
-        if (exactMatch) return SCORE_EXACT_NAME_MATCH
-
-        val tokenMatches = ProtocolMatching.tokenizeName(name)
-        val exactTokenMatch = protocol.supportedModels.any { model ->
-            tokenMatches.contains(model.trim().lowercase())
-        }
-        if (exactTokenMatch) return SCORE_EXACT_TOKEN_MATCH
-
-        val substringMatch = protocol.supportedModels.any { model ->
-            val modelName = model.trim().lowercase()
-            modelName.length >= 4 && name.contains(modelName)
-        }
-        return if (substringMatch) SCORE_SUBSTRING_MATCH else 0
-    }
-
-    private fun protocolManufacturerIds(protocol: EUCProtocol): Set<Int> {
-        return manufacturerIdsByBrand[protocol.manufacturer.lowercase()] ?: emptySet()
-    }
-
-    private fun selectableProtocols(): List<EUCProtocol> {
-        return when {
-            frameCandidateProtocols.isNotEmpty() -> frameCandidateProtocols
-            protocols.isNotEmpty() -> protocols.toList()
-            else -> emptyList()
-        }
-    }
-
-    private fun buildProtocolCandidates(source: List<EUCProtocol>): List<ProtocolCandidate> {
-        return source
-            .distinct()
-            .sortedByDescending { protocolCandidateScores[it] ?: 0 }
-            .map { protocol ->
-                ProtocolCandidate(
-                    id = protocolIdentifier(protocol),
-                    manufacturer = protocol.manufacturer,
-                    protocolClassName = protocol.javaClass.name,
-                    supportedModels = protocol.supportedModels,
-                    score = protocolCandidateScores[protocol] ?: 0,
-                    matchedByMetadata = metadataMatchedProtocols.contains(protocol)
+            if (matches.size > 1) {
+                logger.warn(
+                    "BLEManager",
+                    "GATT fingerprint matched multiple protocols (${matches.joinToString { it.javaClass.simpleName }}); manual selection required"
                 )
             }
+            null
+        }
+    }
+
+    /**
+     * Returns true if all [GattServiceSpec] entries in [signature] are satisfied by the
+     * discovered GATT services.
+     */
+    private fun matchesGattSignature(
+        discoveredServices: List<BluetoothGattService>,
+        signature: GattSignature
+    ): Boolean {
+        return signature.all { serviceSpec ->
+            val service = discoveredServices.find { it.uuid == serviceSpec.uuid }
+                ?: return@all false
+            val presentCharUUIDs = service.characteristics.map { it.uuid }.toSet()
+            serviceSpec.requiredCharacteristicUUIDs.all { it in presentCharUUIDs } &&
+                serviceSpec.excludedCharacteristicUUIDs.none { it in presentCharUUIDs }
+        }
     }
 
     private fun protocolIdentifier(protocol: EUCProtocol): String {
         return protocol.javaClass.simpleName.ifBlank { protocol.javaClass.name }
     }
 
-    private fun resolveProtocol(protocolId: String, source: List<EUCProtocol>): EUCProtocol? {
-        val normalizedId = protocolId.trim()
-        if (normalizedId.isEmpty()) return null
-        return source.find { protocol ->
-            protocolIdentifier(protocol).equals(normalizedId, ignoreCase = true) ||
-                protocol.javaClass.name.equals(normalizedId, ignoreCase = true)
-        } ?: run {
-            val manufacturerMatches = source.filter { it.manufacturer.equals(normalizedId, ignoreCase = true) }
-            if (manufacturerMatches.size == 1) manufacturerMatches.single() else null
-        }
-    }
-
-    private fun resolveForcedProtocol(): EUCProtocol? {
-        val protocolId = forcedProtocolId ?: return null
-        return resolveProtocol(protocolId, protocols)
-    }
-
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun maybeActivateForcedProtocol(protocol: EUCProtocol? = resolveForcedProtocol()): Boolean? {
+    private fun maybeActivateForcedProtocol(protocol: EUCProtocol? = forcedProtocol): Boolean? {
         if (protocolSelectionMode != ProtocolSelectionMode.FORCED) return null
         val selectedProtocol = protocol ?: return false
         val servicesReady = currentDevice != null && bluetoothGatt?.services?.isNotEmpty() == true
         if (!servicesReady) return null
-        candidateDataCharacteristicUuids(selectedProtocol)
+        selectedProtocol.getCandidateDataCharacteristicUUIDs()
             .distinct()
             .forEach { characteristicUuid ->
                 enableNotifications(characteristicUuid)
@@ -1112,7 +920,7 @@ class BLEManager internal constructor(
         selectionReason: ProtocolSelectionReason,
         logReason: String
     ): Boolean {
-        val hasReadableCharacteristic = candidateDataCharacteristicUuids(protocol).any { uuid ->
+        val hasReadableCharacteristic = protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
             getCharacteristic(uuid) != null
         }
         if (!hasReadableCharacteristic) {
@@ -1131,15 +939,12 @@ class BLEManager internal constructor(
         return true
     }
 
-    private fun notifyProtocolSelectionRequired(source: List<EUCProtocol> = selectableProtocols()) {
+    private fun notifyProtocolSelectionRequired() {
         if (protocolSelectionMode != ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK || currentProtocol != null) return
-        val candidates = buildProtocolCandidates(source)
-        if (candidates.isEmpty()) return
-        val candidateIds = candidates.map { it.id }
-        if (awaitingManualProtocolSelection && candidateIds == lastProtocolSelectionRequestIds) return
+        if (protocols.isEmpty()) return
+        if (awaitingManualProtocolSelection) return
         awaitingManualProtocolSelection = true
-        lastProtocolSelectionRequestIds = candidateIds
-        connectionCallback?.onProtocolSelectionRequired(candidates)
+        connectionCallback?.onProtocolSelectionRequired(protocols.toList())
     }
 
     private fun buildProtocolSelection(
@@ -1152,16 +957,6 @@ class BLEManager internal constructor(
             protocolClassName = protocol.javaClass.name,
             reason = reason
         )
-    }
-
-    private fun candidateDataCharacteristicUuids(protocol: EUCProtocol): List<UUID> {
-        if (protocol is InMotionProtocol) {
-            return listOf(
-                UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC),
-                UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
-            )
-        }
-        return listOf(protocol.getDataCharacteristicUUID())
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -1373,7 +1168,7 @@ abstract class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback
     open fun onConnectionFailed(error: BLEException) {}
     open fun onServicesDiscovered(services: List<BluetoothGattService>) {}
     open fun onMtuChanged(mtu: Int) {}
-    open fun onProtocolSelectionRequired(candidates: List<ProtocolCandidate>) {}
+    open fun onProtocolSelectionRequired(protocols: List<EUCProtocol>) {}
     open fun onProtocolSelected(selection: ProtocolSelection) {}
 }
 
@@ -1427,8 +1222,8 @@ class ListenerConnectionCallback(
         listener?.onEvent(BleBackendEvent.MtuChanged(mtu))
     }
 
-    override fun onProtocolSelectionRequired(candidates: List<ProtocolCandidate>) {
-        listener?.onEvent(BleBackendEvent.ProtocolSelectionRequired(candidates))
+    override fun onProtocolSelectionRequired(protocols: List<EUCProtocol>) {
+        listener?.onEvent(BleBackendEvent.ProtocolSelectionRequired(protocols))
     }
 
     override fun onProtocolSelected(selection: ProtocolSelection) {
@@ -1475,23 +1270,10 @@ enum class ProtocolSelectionMode {
 }
 
 enum class ProtocolSelectionReason {
-    AUTO_METADATA,
-    AUTO_FRAME_SIGNATURE,
-    AUTO_FRAME_SIGNATURE_CONFIDENCE,
-    AUTO_METADATA_FALLBACK,
-    AUTO_TIE_BREAK,
+    AUTO_GATT_FINGERPRINT,
     MANUAL_FALLBACK,
     FORCED
 }
-
-data class ProtocolCandidate(
-    val id: String,
-    val manufacturer: String,
-    val protocolClassName: String,
-    val supportedModels: List<String>,
-    val score: Int,
-    val matchedByMetadata: Boolean
-)
 
 data class ProtocolSelection(
     val protocolId: String,

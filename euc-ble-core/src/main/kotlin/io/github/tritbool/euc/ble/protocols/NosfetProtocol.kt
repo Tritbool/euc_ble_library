@@ -1,28 +1,12 @@
 package io.github.tritbool.euc.ble.protocols
 
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.math.roundToInt
 
 class NosfetProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : LeaperkimProtocol(scope) {
 
-    override val manufacturer: String = "Nosfet"
-    override val supportedModels: List<String> = listOf(
-        "Nosfet Apex", "Nosfet Aero", "Nosfet Aeon"
-    )
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val name = device.name
-        val matchesNosfetFamily =
-            name.contains("Nosfet", ignoreCase = true) ||
-                name.contains("Apex", ignoreCase = true) ||
-                name.contains("Aero", ignoreCase = true) ||
-                name.contains("Aeon", ignoreCase = true)
-        return matchesNosfetFamily
-    }
-
-    override fun modelByMajorVersion(version: Int): String {
+    override val manufacturer: String = "Nosfet"    override fun modelByMajorVersion(version: Int): String {
         return when (version) {
             42 -> "Nosfet Apex"
             43 -> "Nosfet Aero"

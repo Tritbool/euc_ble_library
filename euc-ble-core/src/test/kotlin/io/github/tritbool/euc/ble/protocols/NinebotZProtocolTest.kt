@@ -1,7 +1,5 @@
 package io.github.tritbool.euc.ble.protocols
 
-import io.github.tritbool.euc.ble.core.BLEConstants
-import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
@@ -21,32 +19,6 @@ class NinebotZProtocolTest {
     @AfterEach
     fun tearDown() {
         protocol.close()
-    }
-
-    @Test
-    fun canHandleNinebotZIdentifiersAndNames() {
-        val byMetadata = EUCDevice(
-            name = "Ninebot Z10",
-            address = "A",
-            manufacturerId = BLEConstants.MANUFACTURER_NINEBOT,
-            rssi = -45
-        )
-        val bySegwayName = EUCDevice(
-            name = "Segway Z8",
-            address = "B",
-            manufacturerId = BLEConstants.MANUFACTURER_NINEBOT,
-            rssi = -70
-        )
-        val other = EUCDevice(
-            name = "KS-16X",
-            address = "D",
-            manufacturerId = BLEConstants.MANUFACTURER_KINGSONG,
-            rssi = -55
-        )
-
-        assertTrue(protocol.canHandle(byMetadata))
-        assertTrue(protocol.canHandle(bySegwayName))
-        assertEquals(false, protocol.canHandle(other))
     }
 
     @Test

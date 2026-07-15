@@ -4,7 +4,6 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -52,10 +51,6 @@ class InMotionProtocol : EUCProtocol {
     }
 
     override val manufacturer: String = "InMotion"
-    override val supportedModels: List<String> = listOf(
-        "V5", "V5F", "V8", "V8F", "V8S", "V9", "V10", "V10F", "V11", "V11Y",
-        "V12", "V12S", "V12 HS", "V12 HT", "V12 PRO", "V13", "V13 PRO", "V14", "V14 50GB", "V14 50S", "P6"
-    )
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -93,6 +88,18 @@ class InMotionProtocol : EUCProtocol {
         }
     }
 
+    /**
+     * InMotion exposes two possible data characteristics depending on the dialect detected
+     * at runtime. Both must be enabled for notifications at connection time so that the
+     * protocol can determine which dialect is in use from the incoming frames:
+     * - V1 (legacy): [BLEConstants.INMOTION_READ_CHARACTERISTIC] (`0000ffe4`)
+     * - V2 (modern): [BLEConstants.INMOTION_V2_READ_CHARACTERISTIC] (`6e400003`)
+     */
+    override fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(
+        UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC),
+        UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
+    )
+
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
 
@@ -128,16 +135,6 @@ class InMotionProtocol : EUCProtocol {
     private var hasSeenV2Realtime: Boolean = false
     @Volatile
     private var hasSeenLegacyRealtime: Boolean = false
-
-    override fun canHandle(device: EUCDevice): Boolean {
-        val metadataMatch = device.manufacturerId == BLEConstants.MANUFACTURER_INMOTION
-        return metadataMatch || ProtocolMatching.hasStrongModelNameMatch(device.name, supportedModels)
-    }
-
-    override fun looksLikeMyFrames(chunk: ByteArray): Boolean {
-        if (chunk.size < 2) return false
-        return (chunk[0].toInt() and 0xFF) == 0xAA && (chunk[1].toInt() and 0xFF) == 0xAA
-    }
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null

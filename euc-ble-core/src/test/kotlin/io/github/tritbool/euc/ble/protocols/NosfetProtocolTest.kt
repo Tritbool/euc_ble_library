@@ -1,12 +1,9 @@
 package io.github.tritbool.euc.ble.protocols
 
-import io.github.tritbool.euc.ble.core.BLEConstants
-import io.github.tritbool.euc.ble.models.EUCDevice
 import app.cash.turbine.test
 import org.junit.jupiter.api.AfterEach
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
-import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -28,32 +25,6 @@ class NosfetProtocolTest {
         if (this::protocol.isInitialized) {
             protocol.close()
         }
-    }
-
-    @Test
-    fun canHandleNosfetDevicesOnly() {
-        protocol = NosfetProtocol()
-
-        assertTrue(
-            protocol.canHandle(
-                EUCDevice(name = "Nosfet Aero", address = "A", manufacturerId = 0, rssi = -50)
-            )
-        )
-        assertTrue(
-            protocol.canHandle(
-                EUCDevice(
-                    name = "Apex",
-                    address = "B",
-                    manufacturerId = BLEConstants.MANUFACTURER_LEAPERKIM,
-                    rssi = -55
-                )
-            )
-        )
-        assertFalse(
-            protocol.canHandle(
-                EUCDevice(name = "Veteran Patton", address = "C", manufacturerId = 0, rssi = -60)
-            )
-        )
     }
 
     @Test
