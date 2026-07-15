@@ -43,6 +43,28 @@ class WheelLogLeaperkimTest {
     }
 
     @Test
+    fun LkBmsTest() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(backgroundScope)
+
+        val frames = loadFrames("${resourceDir}RAW_2026_04_30_07_04_10.csv", maxFrames = 70000)
+        assertTrue("Expected WheelLog frames", frames.isNotEmpty())
+
+        protocol.dataFlow.test {
+
+            frames.forEach { it -> protocol.decode(it.bleData) }
+            val decoded = mutableListOf<EUCData>()
+            repeat(500) {
+                decoded.add(awaitItem())
+            }
+            val bmsData = protocol.getBMSData()
+            assert(bmsData.isNotEmpty())
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun decodeRealLeaperkimWheelLogFrames() = runTest {
         tearDown()
         protocol = LeaperkimProtocol(backgroundScope)
