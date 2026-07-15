@@ -90,8 +90,10 @@ class InMotionProtocol : EUCProtocol {
 
     /**
      * InMotion exposes two possible data characteristics depending on the dialect detected
-     * at runtime (V1 legacy or V2). Both must be enabled for notifications at connection time
-     * so that the protocol can determine which dialect is in use from the incoming frames.
+     * at runtime. Both must be enabled for notifications at connection time so that the
+     * protocol can determine which dialect is in use from the incoming frames:
+     * - V1 (legacy): [BLEConstants.INMOTION_READ_CHARACTERISTIC] (`0000ffe4`)
+     * - V2 (modern): [BLEConstants.INMOTION_V2_READ_CHARACTERISTIC] (`6e400003`)
      */
     override fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(
         UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC),

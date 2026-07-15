@@ -847,8 +847,9 @@ class BLEManager internal constructor(
      * Attempts to identify the connected device's protocol by matching the discovered GATT
      * service+characteristic profile against the [EucFingerprintDatabase].
      *
-     * Returns the single matching protocol if exactly one protocol's fingerprint matches, or `null`
-     * if the result is ambiguous (zero or multiple matches).
+     * Returns the single matching protocol if exactly one protocol's fingerprint matches.
+     * Returns `null` when zero protocols match (unknown device) or when multiple protocols
+     * match the same profile (ambiguous — a warning is logged in that case).
      *
      * @param signaturesProvider Overridable signature lookup — defaults to [EucFingerprintDatabase].
      *   Exposed as a parameter for testing.

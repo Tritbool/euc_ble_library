@@ -31,9 +31,9 @@ import java.io.InputStreamReader
  * End-to-end decoding tests that verify each registered protocol correctly decodes real BLE
  * frames captured from WheelLog.
  *
- * Protocol selection is performed by directly activating the protocol under test rather than
- * relying on GATT fingerprinting (which requires a live BLE connection). These tests focus
- * purely on frame decoding correctness.
+ * Protocol selection is performed by directly setting `currentProtocol` via reflection and
+ * calling `startDataFlowCollection`, rather than relying on GATT fingerprinting (which
+ * requires a live BLE connection). These tests focus purely on frame decoding correctness.
  */
 @SlowTest
 class EucBleClientEntryPointWheelLogTest {

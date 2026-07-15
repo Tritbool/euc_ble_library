@@ -9,6 +9,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattServiceSpec
 import io.github.tritbool.euc.ble.protocols.GattSignature
 import kotlinx.coroutines.flow.Flow
@@ -150,74 +151,54 @@ class BLEManagerGattFingerprintTest {
         assertEquals(proto, manager.selectByGattFingerprint(gatt.services, provider))
     }
 
-    // ──────────────────── InMotion V2 vs NinebotZ disambiguation ────────────────────
+    // ──────────── InMotion and NinebotZ fingerprint discrimination ────────────
+    //
+    // The library uses a single InMotionProtocol for both V1 (legacy 0000ffc0 service) and
+    // V2 (Nordic UART + 00002aa6 in Generic Access). Both GATT profiles are registered under
+    // the "InMotionProtocol" key in EucFingerprintDatabase. The stubs below are named to match
+    // those DB keys so that the real fingerprints are resolved via EucFingerprintDatabase.
 
     @Test
-    fun `InMotion V2 vs NinebotZ - matches InMotion V2 when 00002aa6 is present in 00001800`() {
-        val nordicUart = uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
-        val genericAccess = uuid("00001800-0000-1000-8000-00805f9b34fb")
-        val centralAddressResolution = uuid("00002aa6-0000-1000-8000-00805f9b34fb")
-
-        val inMotionV2 = SimpleProtocol(uuid("6e400003-b5a3-f393-e0a9-e50e24dcca9e"), "InMotionV2")
-        val ninebotZ = SimpleProtocol(uuid("6e400003-b5a3-f393-e0a9-e50e24dcca9e"), "NinebotZ")
-        manager.registerProtocol(inMotionV2)
+    fun `InMotion V1 device matches InMotionProtocol via 0000ffc0 service`() {
+        val inMotion = InMotionProtocol()
+        val ninebotZ = NinebotZProtocol()
+        manager.registerProtocol(inMotion)
         manager.registerProtocol(ninebotZ)
 
-        val inMotionSignature: GattSignature = listOf(
-            GattServiceSpec(uuid = nordicUart),
-            GattServiceSpec(uuid = genericAccess, requiredCharacteristicUUIDs = setOf(centralAddressResolution))
-        )
-        val ninebotZSignature: GattSignature = listOf(
-            GattServiceSpec(uuid = nordicUart),
-            GattServiceSpec(uuid = genericAccess, excludedCharacteristicUUIDs = setOf(centralAddressResolution))
-        )
-        val provider: (String) -> List<GattSignature> = { name ->
-            when (name) {
-                "InMotionV2" -> listOf(inMotionSignature)
-                "NinebotZ" -> listOf(ninebotZSignature)
-                else -> emptyList()
-            }
-        }
-
         val gatt = gattWithServices(
-            service(nordicUart, uuid("6e400002-b5a3-f393-e0a9-e50e24dcca9e")),
-            service(genericAccess, uuid("00002a00-0000-1000-8000-00805f9b34fb"), centralAddressResolution)
+            service(uuid("0000ffc0-0000-1000-8000-00805f9b34fb"))
         )
-        assertEquals(inMotionV2, manager.selectByGattFingerprint(gatt.services, provider))
+        assertEquals(inMotion, manager.selectByGattFingerprint(gatt.services, EucFingerprintDatabase::getSignatures))
     }
 
     @Test
-    fun `InMotion V2 vs NinebotZ - matches NinebotZ when 00002aa6 is absent from 00001800`() {
-        val nordicUart = uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
-        val genericAccess = uuid("00001800-0000-1000-8000-00805f9b34fb")
-        val centralAddressResolution = uuid("00002aa6-0000-1000-8000-00805f9b34fb")
-
-        val inMotionV2 = SimpleProtocol(uuid("6e400003-b5a3-f393-e0a9-e50e24dcca9e"), "InMotionV2")
-        val ninebotZ = SimpleProtocol(uuid("6e400003-b5a3-f393-e0a9-e50e24dcca9e"), "NinebotZ")
-        manager.registerProtocol(inMotionV2)
+    fun `InMotion V2 device matches InMotionProtocol when Nordic UART and 00002aa6 are present`() {
+        val inMotion = InMotionProtocol()
+        val ninebotZ = NinebotZProtocol()
+        manager.registerProtocol(inMotion)
         manager.registerProtocol(ninebotZ)
 
-        val inMotionSignature: GattSignature = listOf(
-            GattServiceSpec(uuid = nordicUart),
-            GattServiceSpec(uuid = genericAccess, requiredCharacteristicUUIDs = setOf(centralAddressResolution))
+        val gatt = gattWithServices(
+            service(uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e"), uuid("6e400002-b5a3-f393-e0a9-e50e24dcca9e")),
+            service(uuid("00001800-0000-1000-8000-00805f9b34fb"),
+                uuid("00002a00-0000-1000-8000-00805f9b34fb"),
+                uuid("00002aa6-0000-1000-8000-00805f9b34fb"))
         )
-        val ninebotZSignature: GattSignature = listOf(
-            GattServiceSpec(uuid = nordicUart),
-            GattServiceSpec(uuid = genericAccess, excludedCharacteristicUUIDs = setOf(centralAddressResolution))
-        )
-        val provider: (String) -> List<GattSignature> = { name ->
-            when (name) {
-                "InMotionV2" -> listOf(inMotionSignature)
-                "NinebotZ" -> listOf(ninebotZSignature)
-                else -> emptyList()
-            }
-        }
+        assertEquals(inMotion, manager.selectByGattFingerprint(gatt.services, EucFingerprintDatabase::getSignatures))
+    }
+
+    @Test
+    fun `NinebotZ device matches NinebotZProtocol when Nordic UART is present but 00002aa6 is absent`() {
+        val inMotion = InMotionProtocol()
+        val ninebotZ = NinebotZProtocol()
+        manager.registerProtocol(inMotion)
+        manager.registerProtocol(ninebotZ)
 
         val gatt = gattWithServices(
-            service(nordicUart, uuid("6e400002-b5a3-f393-e0a9-e50e24dcca9e")),
-            service(genericAccess, uuid("00002a00-0000-1000-8000-00805f9b34fb"))
+            service(uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e"), uuid("6e400002-b5a3-f393-e0a9-e50e24dcca9e")),
+            service(uuid("00001800-0000-1000-8000-00805f9b34fb"), uuid("00002a00-0000-1000-8000-00805f9b34fb"))
         )
-        assertEquals(ninebotZ, manager.selectByGattFingerprint(gatt.services, provider))
+        assertEquals(ninebotZ, manager.selectByGattFingerprint(gatt.services, EucFingerprintDatabase::getSignatures))
     }
 
     // ──────────────────── onServicesDiscovered integration tests ────────────────────
@@ -357,6 +338,40 @@ class BLEManagerGattFingerprintTest {
         override fun decode(data: ByteArray): EUCData? = null
         override fun getDataCharacteristicUUID(): UUID = dataCharUuid
         override fun getServiceUUID(): UUID = uuid("0000fff0-0000-1000-8000-00805f9b34fb")
+        override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
+        override fun isDeviceReady(data: EUCData): Boolean = true
+        override fun close() = Unit
+        private fun uuid(v: String) = UUID.fromString(v)
+    }
+
+    /**
+     * Stub whose simple class name "InMotionProtocol" matches the real EucFingerprintDatabase
+     * entry. The library uses a single InMotionProtocol for both V1 (0000ffc0 service) and
+     * V2 (Nordic UART + 00002aa6), so both GATT signatures are registered under this key.
+     */
+    private class InMotionProtocol : EUCProtocol {
+        override val manufacturer: String = "InMotion"
+        override val dataFlow: Flow<EUCData> = emptyFlow()
+        override fun decode(data: ByteArray): EUCData? = null
+        // V1 read characteristic; V2 also exists (6e400003) but both are probed at connection time
+        override fun getDataCharacteristicUUID(): UUID = uuid("0000ffe4-0000-1000-8000-00805f9b34fb")
+        override fun getServiceUUID(): UUID = uuid("0000ffe0-0000-1000-8000-00805f9b34fb")
+        override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
+        override fun isDeviceReady(data: EUCData): Boolean = true
+        override fun close() = Unit
+        private fun uuid(v: String) = UUID.fromString(v)
+    }
+
+    /**
+     * Stub whose simple class name "NinebotZProtocol" matches the real EucFingerprintDatabase
+     * entry, used alongside [InMotionProtocol] to verify Nordic UART + 00002aa6 disambiguation.
+     */
+    private class NinebotZProtocol : EUCProtocol {
+        override val manufacturer: String = "Ninebot"
+        override val dataFlow: Flow<EUCData> = emptyFlow()
+        override fun decode(data: ByteArray): EUCData? = null
+        override fun getDataCharacteristicUUID(): UUID = uuid("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+        override fun getServiceUUID(): UUID = uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
         override fun isDeviceReady(data: EUCData): Boolean = true
         override fun close() = Unit
