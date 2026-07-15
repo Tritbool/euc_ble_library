@@ -30,7 +30,6 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogGotwayTest {
-
     private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
 
     // Delays match existing WheelLog async decoding tests to ensure capture-based test stability.
@@ -54,6 +53,42 @@ class WheelLogGotwayTest {
         if (this::protocol.isInitialized) {
             protocol.close()
         }
+    }
+
+    @Test
+    fun testBmsData() = runTest {
+        val frames =
+            loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
+        assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
+        val decoded = mutableListOf<EUCData>()
+        var vendorMismatch = 0
+
+        // Start collecting in background FIRST using launch
+        val collectorJob = launch {
+            protocol.dataFlow.collect { data ->
+                decoded.add(data)
+                if (decoded.size >= 500) return@collect
+            }
+        }
+
+        // Small delay to ensure collector is subscribed
+        delay(200.milliseconds)
+
+        // Send all frames to the protocol for reassembly on IO dispatcher
+        withContext(Dispatchers.IO) {
+            for (frame in frames) {
+                protocol.decode(frame.bleData)
+            }
+        }
+
+        // Wait for async processing to complete (needs time for IO dispatcher)
+        delay(3000.milliseconds)
+
+        val bmsData  = protocol.getBMSData()
+        assert(bmsData.isNotEmpty())
+
+        // Cancel collector job
+        collectorJob.cancel()
     }
 
     @Test
@@ -212,7 +247,10 @@ class WheelLogGotwayTest {
         val typeBFrames = decoded.filter { frame ->
             val raw = frame.rawData
             val actualFrameType = raw[frameTypeOffset].toInt() and 0xFF
-            actualFrameType == typeBFrameType && frame.frameType.contains("Type B", ignoreCase = true)
+            actualFrameType == typeBFrameType && frame.frameType.contains(
+                "Type B",
+                ignoreCase = true
+            )
 
         }
         assertTrue("No Type B frames decoded from WheelLog capture", typeBFrames.isNotEmpty())
@@ -377,7 +415,10 @@ class WheelLogGotwayTest {
             //delay(100.milliseconds)
 
             val results = awaitItem()
-            assertTrue("Should decode one reassembled frame",  results.rawData.contentEquals(validFrame))
+            assertTrue(
+                "Should decode one reassembled frame",
+                results.rawData.contentEquals(validFrame)
+            )
             assertEquals(67.2, results.voltage, 0.01)
         }
 
