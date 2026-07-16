@@ -30,7 +30,8 @@ import kotlin.math.roundToInt
  * - Full frame size: len + 4 bytes
  * - For long frames (len > 38), trailing CRC32 is expected
  */
-open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) : EUCProtocol {
+open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
+    EUCProtocol {
     companion object {
         private const val LEAPERKIM_MAX_BMS_CELLS = 42
     }
@@ -44,6 +45,12 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         CommandType.RESET_TRIP,
         CommandType.CUSTOM
     )
+
+    override fun matchesDeviceName(deviceName: String): Boolean {
+        val lower = deviceName.lowercase()
+        return lower.contains("sherman") || lower.contains("lynx") ||
+                lower.contains("patton") || lower.contains("oryx") || lower.contains("abrams")
+    }
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.LEAPERKIM_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
@@ -145,8 +152,10 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
+
     //private val scope = CoroutineScope(Dispatchers.IO)
     private var sessionStartTimestampMs: Long? = null
+
     @Volatile
     private var lastMajorVersion: Int? = null
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()

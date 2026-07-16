@@ -165,6 +165,40 @@ internal object EucFingerprintDatabase {
                         )
                     ),
                 ),
+                listOf(
+                    GattServiceSpec(
+                        uuid = UUID.fromString("00001800-0000-1000-8000-00805f9b34fb"),
+                        requiredCharacteristicUUIDs = setOf(
+                            UUID.fromString("00002a00-0000-1000-8000-00805f9b34fb"),
+                            UUID.fromString("00002a01-0000-1000-8000-00805f9b34fb"),
+                        )
+                    ),
+                    GattServiceSpec(
+                        uuid = UUID.fromString("00001801-0000-1000-8000-00805f9b34fb"),
+                        requiredCharacteristicUUIDs = setOf(
+                            UUID.fromString("00002a05-0000-1000-8000-00805f9b34fb"),
+                        )
+                    ),
+                    GattServiceSpec(
+                        uuid = UUID.fromString("0000180a-0000-1000-8000-00805f9b34fb"),
+                        requiredCharacteristicUUIDs = setOf(
+                            UUID.fromString("00002a29-0000-1000-8000-00805f9b34fb"),
+                            UUID.fromString("00002a24-0000-1000-8000-00805f9b34fb"),
+                        )
+                    ),
+                    GattServiceSpec(
+                        uuid = UUID.fromString("d0611e78-bbb4-4591-a5f8-487910ae4366"),
+                        requiredCharacteristicUUIDs = setOf(
+                            UUID.fromString("8667556c-9a37-4c91-84ed-54ee27d90049"),
+                        )
+                    ),
+                    GattServiceSpec(
+                        uuid = UUID.fromString("9fa480e0-4967-4542-9390-d343dc5d04ae"),
+                        requiredCharacteristicUUIDs = setOf(
+                            UUID.fromString("af0badb1-5b99-43cd-917a-a77bc549e3cc"),
+                        )
+                    ),
+                )
             )
         ),
 

@@ -10,6 +10,8 @@ class ExtremeBullProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
     override fun matchesDeviceName(deviceName: String): Boolean {
         val lower = deviceName.lowercase()
-        return lower.contains("extreme") || lower.contains("bull")
+        return lower.contains("extreme") || lower.contains("bull") ||
+                lower.contains("commander") || lower.contains("rocket") ||
+                lower.contains("griffin")
     }
 }

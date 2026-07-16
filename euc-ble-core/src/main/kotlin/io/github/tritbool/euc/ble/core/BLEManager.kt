@@ -696,6 +696,12 @@ class BLEManager internal constructor(
                 TAG + ":onServicesDiscovered",
                 "  -> ${service.characteristics.size} characteristics"
             )
+            service.characteristics.forEach { characteristic ->
+                logger.debug(
+                    TAG + ":onServicesDiscovered",
+                    "  -> ${characteristic.uuid}"
+                )
+            }
         }
         val fingerprintMatchRaw = selectByGattFingerprint(gatt.services)
         val fingerprintMatch = fingerprintMatchRaw.first
@@ -728,6 +734,7 @@ class BLEManager internal constructor(
             }
         } else {
             // No fingerprint match — try device name matching before falling back to manual
+            logger.info(TAG,"Trying to get protocol for device ${device.name}")
             val deviceNameMatch = selectByDeviceName(device.name)
             if (deviceNameMatch != null) {
                 deviceNameMatch.getCandidateDataCharacteristicUUIDs().distinct()
@@ -1184,6 +1191,7 @@ class BLEManager internal constructor(
             )
             return false
         }
+        logger.info(TAG,"Applied protocol $protocol")
         setActiveProtocol(protocol, logReason, selectionReason)
         return true
     }
