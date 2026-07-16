@@ -1,7 +1,9 @@
 package io.github.tritbool.euc.ble.protocols
 
+import io.github.tritbool.euc.ble.core.AndroidLogger
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import kotlinx.coroutines.channels.BufferOverflow
@@ -16,9 +18,11 @@ import kotlin.math.roundToInt
 /**
  * Single InMotion protocol entrypoint with auto-detected internal dialects (legacy V1 and V2).
  */
-class InMotionProtocol : EUCProtocol {
+class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtocol {
 
     companion object {
+
+        private const val TAG = "InMotionProtocol"
         private val HEADER = BLEConstants.INMOTION_FRAME_HEADER
         private val LEGACY_TAIL = BLEConstants.INMOTION_LEGACY_TAIL
         private const val FLAG_INITIAL = 0x11
@@ -49,6 +53,7 @@ class InMotionProtocol : EUCProtocol {
         private const val LEGACY_BATTERY_BASE_VOLTAGE = 55.0
         private const val LEGACY_BATTERY_VOLTAGE_RANGE = 30.0
     }
+
 
     override val manufacturer: String = "InMotion"
     override val supportedCommandTypes: Set<CommandType> = setOf(
@@ -121,18 +126,25 @@ class InMotionProtocol : EUCProtocol {
 
     @Volatile
     private var modelName: String = "InMotion"
+
     @Volatile
     private var serialNumber: String? = null
+
     @Volatile
     private var firmwareVersion: String? = null
+
     @Volatile
     private var totalDistanceKm: Double? = null
+
     @Volatile
     private var v2SessionStartTimestampMs: Long? = null
+
     @Volatile
     private var hasSeenV2MainInfo: Boolean = false
+
     @Volatile
     private var hasSeenV2Realtime: Boolean = false
+
     @Volatile
     private var hasSeenLegacyRealtime: Boolean = false
 
@@ -155,6 +167,19 @@ class InMotionProtocol : EUCProtocol {
             _channel.trySend(decoded)
         }
         return lastDecoded
+    }
+
+    fun setDialect(version: Int) {
+        android.util.Log.e("InMotionProtocol", "setDialect called version=$version")
+        when (version) {
+            0, 1, 2 -> {
+                logger.info(TAG,"DIALECT SET TO ${Dialect.entries[version]} ")
+                lastDetectedDialect = Dialect.entries[version]
+            }
+
+            else -> {}
+        }
+
     }
 
     private fun extractV2Frames(chunk: ByteArray): List<ByteArray> {
@@ -308,6 +333,7 @@ class InMotionProtocol : EUCProtocol {
                 lastDetectedDialect = Dialect.V2
                 hasSeenV2Realtime = true
             }
+
             else -> null
         }
     }
@@ -327,6 +353,7 @@ class InMotionProtocol : EUCProtocol {
                 lastDetectedDialect = Dialect.LEGACY_V1
                 hasSeenLegacyRealtime = true
             }
+
             else -> null
         }
     }
@@ -406,9 +433,9 @@ class InMotionProtocol : EUCProtocol {
         if (totalDistance > 0.0) totalDistanceKm = totalDistance
 
         val modeFromLegacy = when {
-            current < 0                                -> "charging"
-            speed != 0.0                               -> "active"
-            else                                       -> "idle"
+            current < 0 -> "charging"
+            speed != 0.0 -> "active"
+            else -> "idle"
         }
 
         return EUCData(
@@ -527,10 +554,10 @@ class InMotionProtocol : EUCProtocol {
             ?.takeIf { it in 0L..604_800L }
         val rideTimeSeconds = rideTimeFromPayload ?: deriveV2RideTimeSeconds(now)
         val modeString = when {
-            isCharging                          -> "charging"
-            (stateByte and 0x01) == 1           -> "active"
-            (stateByte and 0x02) == 2           -> "calibration"
-            else                                -> "idle"
+            isCharging -> "charging"
+            (stateByte and 0x01) == 1 -> "active"
+            (stateByte and 0x02) == 2 -> "calibration"
+            else -> "idle"
         }
 
         return EUCData(

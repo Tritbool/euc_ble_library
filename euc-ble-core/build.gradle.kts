@@ -165,6 +165,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("app.cash.turbine:turbine:1.1.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
+
 }
 
 dokka {
@@ -210,7 +211,7 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates("io.github.tritbool", "euc-ble-library", "0.0.6")
+    coordinates("io.github.tritbool", "euc-ble-library", "0.0.8")
 
     pom {
         name.set("EUC BLE Library")

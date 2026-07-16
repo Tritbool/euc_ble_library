@@ -1,6 +1,9 @@
 package io.github.tritbool.euc.ble
 
 import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
+import io.github.tritbool.euc.ble.core.BLEManagerDeviceNameSelectionTest
+import io.github.tritbool.euc.ble.core.BLEManagerGattFingerprintTest
+import io.github.tritbool.euc.ble.core.BLEManagerProtocolSelectionTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
@@ -38,6 +41,9 @@ import org.junit.platform.suite.api.Suite
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
     BleFrequencyAnalysisTest::class,
+    BLEManagerGattFingerprintTest::class,
+    BLEManagerDeviceNameSelectionTest::class,
+    BLEManagerProtocolSelectionTest::class,
     WheelLogGotwayTest::class,
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,

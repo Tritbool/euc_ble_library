@@ -21,8 +21,9 @@ import java.util.UUID
  */
 data class GattServiceSpec(
     val uuid: UUID,
+    val version:Int = 1,
     val requiredCharacteristicUUIDs: Set<UUID> = emptySet(),
-    val excludedCharacteristicUUIDs: Set<UUID> = emptySet()
+    val excludedCharacteristicUUIDs: Set<UUID> = emptySet(),
 )
 
 /**

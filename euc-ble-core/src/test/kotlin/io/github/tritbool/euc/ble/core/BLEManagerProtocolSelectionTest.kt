@@ -122,7 +122,7 @@ class BLEManagerProtocolSelectionTest {
         })
 
         assertFalse(manager.selectProtocol(beta))
-        assertTrue(errors.single().message!!.contains("unavailable", ignoreCase = true))
+        assertTrue(errors.single().message!!.contains("No connected device available for manual protocol selection", ignoreCase = true))
     }
 
     @Test

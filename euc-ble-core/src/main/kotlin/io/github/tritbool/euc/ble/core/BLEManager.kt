@@ -28,6 +28,7 @@ import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattSignature
+import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,8 +70,13 @@ class BLEManager internal constructor(
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) : BluetoothGattCallback() {
     companion object {
+        private const val TAG = "BLEManager"
         private const val MIN_QUERY_ATTEMPTS = 1
         private const val MIN_QUERY_TIMEOUT_MS = 200L
+
+        val ENABLE_NOTIFICATION_VALUE_COMPAT = byteArrayOf(0x01, 0x00)
+        val ENABLE_INDICATION_VALUE_COMPAT = byteArrayOf(0x02, 0x00)
+        val DISABLE_NOTIFICATION_VALUE_COMPAT = byteArrayOf(0x00, 0x00)
     }
 
     // Configuration
@@ -115,7 +121,8 @@ class BLEManager internal constructor(
 
     // Raw frame capture: every raw BLE characteristic notification is emitted here
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
-        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     /**
@@ -140,7 +147,8 @@ class BLEManager internal constructor(
     val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
     private val _queryTraceFlow = MutableSharedFlow<QueryTraceEvent>(
-        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = _queryTraceFlow.asSharedFlow()
 
@@ -161,13 +169,13 @@ class BLEManager internal constructor(
      * Initialize the BLE Manager
      */
     fun initialize() {
-        logger.info("BLEManager", "Initializing BLE Manager")
+        logger.info(TAG, "Initializing BLE Manager")
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         if (bluetoothAdapter == null) {
-            logger.error("BLEManager", "Bluetooth not supported on this device")
+            logger.error(TAG, "Bluetooth not supported on this device")
             errorCallback?.onError(BLEException("Bluetooth not supported on this device"))
         } else {
-            logger.info("BLEManager", "Bluetooth adapter initialized successfully")
+            logger.info(TAG, "Bluetooth adapter initialized successfully")
         }
     }
 
@@ -178,13 +186,15 @@ class BLEManager internal constructor(
         protocols.add(protocol)
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {
-        protocolSelectionMode = if (mode == ProtocolSelectionMode.FORCED && forcedProtocol == null) {
-            errorCallback?.onError(BLEException("Cannot enable forced protocol mode without a forced protocol"))
-            ProtocolSelectionMode.AUTO
-        } else {
-            mode
-        }
+        protocolSelectionMode =
+            if (mode == ProtocolSelectionMode.FORCED && forcedProtocol == null) {
+                errorCallback?.onError(BLEException("Cannot enable forced protocol mode without a forced protocol"))
+                ProtocolSelectionMode.AUTO
+            } else {
+                mode
+            }
         if (protocolSelectionMode != ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK) {
             awaitingManualProtocolSelection = false
         }
@@ -213,7 +223,11 @@ class BLEManager internal constructor(
             return false
         }
         awaitingManualProtocolSelection = false
-        return activateProtocolIfReady(protocol, ProtocolSelectionReason.MANUAL_FALLBACK, "manual fallback")
+        return activateProtocolIfReady(
+            protocol,
+            ProtocolSelectionReason.MANUAL_FALLBACK,
+            "manual fallback"
+        )
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -241,16 +255,16 @@ class BLEManager internal constructor(
     @RequiresApi(Build.VERSION_CODES.M)
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun startScan() {
-        logger.info("BLEManager", "Starting BLE scan")
+        logger.info(TAG, "Starting BLE scan")
 
         if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {
-            logger.warn("BLEManager", "Cannot scan while connected")
+            logger.warn(TAG, "Cannot scan while connected")
             errorCallback?.onError(BLEException("Cannot scan while connected"))
             return
         }
 
         if (!isBluetoothEnabled()) {
-            logger.error("BLEManager", "Bluetooth is disabled")
+            logger.error(TAG, "Bluetooth is disabled")
             errorCallback?.onError(BLEException("Bluetooth is disabled"))
             return
         }
@@ -267,7 +281,7 @@ class BLEManager internal constructor(
             if (connectionState == BLEConstants.ConnectionState.DISCONNECTED
                 && platformScanCallback != null
             ) {
-                logger.info("BLEManager", "Scan timeout reached")
+                logger.info(TAG, "Scan timeout reached")
                 stopScan()
             }
         }
@@ -537,7 +551,7 @@ class BLEManager internal constructor(
     // BluetoothGattCallback implementations
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-        super.onConnectionStateChange(gatt, status, newState)
+        //super.onConnectionStateChange(gatt, status, newState)
 
         when (newState) {
             BluetoothProfile.STATE_CONNECTED -> {
@@ -633,7 +647,7 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-        super.onServicesDiscovered(gatt, status)
+        //super.onServicesDiscovered(gatt, status)
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -656,16 +670,41 @@ class BLEManager internal constructor(
                 disconnect()
                 return
             }
-            forced.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+            forced.getCandidateDataCharacteristicUUIDs().distinct()
+                .forEach { enableNotifications(it) }
             connectionCallback?.onServicesDiscovered(gatt.services)
-            if (!activateProtocolIfReady(forced, ProtocolSelectionReason.FORCED, "forced override")) {
+            if (!activateProtocolIfReady(
+                    forced,
+                    ProtocolSelectionReason.FORCED,
+                    "forced override"
+                )
+            ) {
                 disconnect()
             }
             return
         }
 
         // Try GATT fingerprint matching — primary automatic selection strategy
-        val fingerprintMatch = selectByGattFingerprint(gatt.services)
+        logger.debug(TAG + ":onServicesDiscovered", "NB Found services: ${gatt.services.size}")
+        logger.debug(TAG + ":onServicesDiscovered", "Services: ${gatt.services}")
+
+
+        gatt.services.forEach { service ->
+            logger.debug(TAG + ":onServicesDiscovered", "Service UUID: ${service.uuid}")
+            // Optional: Log characteristics count
+            logger.debug(
+                TAG + ":onServicesDiscovered",
+                "  -> ${service.characteristics.size} characteristics"
+            )
+        }
+        val fingerprintMatchRaw = selectByGattFingerprint(gatt.services)
+        val fingerprintMatch = fingerprintMatchRaw.first
+        val fingerprintMatchVersion = fingerprintMatchRaw.second
+
+        logger.info(
+            TAG,
+            "FOUND protocol ${fingerprintMatch?.javaClass?.simpleName ?: "NONE"} with version $fingerprintMatchVersion"
+        )
 
         connectionCallback?.onServicesDiscovered(gatt.services)
 
@@ -673,11 +712,17 @@ class BLEManager internal constructor(
             // Refine with device name when a more-specific sub-protocol is registered
             val subclassOverride = selectSubclassByDeviceName(fingerprintMatch, device.name)
             val selected = subclassOverride ?: fingerprintMatch
+
+            if (selected is InMotionProtocol) {
+                logger.info(TAG, "Found inmotion protocol")
+                selected.setDialect(fingerprintMatchVersion)
+            }
             val reason = if (subclassOverride != null) ProtocolSelectionReason.AUTO_DEVICE_NAME
-                         else ProtocolSelectionReason.AUTO_GATT_FINGERPRINT
+            else ProtocolSelectionReason.AUTO_GATT_FINGERPRINT
             val logReason = if (subclassOverride != null) "GATT fingerprint + device name"
-                            else "GATT fingerprint"
-            selected.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+            else "GATT fingerprint"
+            selected.getCandidateDataCharacteristicUUIDs().distinct()
+                .forEach { enableNotifications(it) }
             if (!activateProtocolIfReady(selected, reason, logReason)) {
                 disconnect()
             }
@@ -685,8 +730,14 @@ class BLEManager internal constructor(
             // No fingerprint match — try device name matching before falling back to manual
             val deviceNameMatch = selectByDeviceName(device.name)
             if (deviceNameMatch != null) {
-                deviceNameMatch.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
-                if (!activateProtocolIfReady(deviceNameMatch, ProtocolSelectionReason.AUTO_DEVICE_NAME, "device name")) {
+                deviceNameMatch.getCandidateDataCharacteristicUUIDs().distinct()
+                    .forEach { enableNotifications(it) }
+                if (!activateProtocolIfReady(
+                        deviceNameMatch,
+                        ProtocolSelectionReason.AUTO_DEVICE_NAME,
+                        "device name"
+                    )
+                ) {
                     disconnect()
                 }
             } else {
@@ -694,10 +745,12 @@ class BLEManager internal constructor(
                 when (protocolSelectionMode) {
                     ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK -> {
                         protocols.forEach { proto ->
-                            proto.getCandidateDataCharacteristicUUIDs().distinct().forEach { enableNotifications(it) }
+                            proto.getCandidateDataCharacteristicUUIDs().distinct()
+                                .forEach { enableNotifications(it) }
                         }
                         notifyProtocolSelectionRequired()
                     }
+
                     else -> {
                         errorCallback?.onError(BLEException("No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"))
                         disconnect()
@@ -712,7 +765,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
     ) {
-        super.onCharacteristicChanged(gatt, characteristic, value)
+        //super.onCharacteristicChanged(gatt, characteristic, value)
         val data = value.clone()
         handleIncomingBytes(data)
     }
@@ -722,7 +775,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic
     ) {
-        super.onCharacteristicChanged(gatt, characteristic)
+        //super.onCharacteristicChanged(gatt, characteristic)
         val raw = characteristic.value ?: return
         val data = raw.clone()
         handleIncomingBytes(data)
@@ -745,7 +798,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicWrite(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
-        super.onCharacteristicWrite(gatt, characteristic, status)
+        //super.onCharacteristicWrite(gatt, characteristic, status)
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Characteristic write failed: $status"))
@@ -753,7 +806,7 @@ class BLEManager internal constructor(
     }
 
     override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-        super.onMtuChanged(gatt, mtu, status)
+        //super.onMtuChanged(gatt, mtu, status)
 
         if (status == BluetoothGatt.GATT_SUCCESS) {
             connectionCallback?.onMtuChanged(mtu)
@@ -769,7 +822,7 @@ class BLEManager internal constructor(
             val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)
             val descriptor = char.getDescriptor(cccdUuid) ?: return@let
             val enableValue =
-                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone() // defensive copy
+                ENABLE_NOTIFICATION_VALUE_COMPAT.clone() // defensive copy
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // Use new API 33+ overload
@@ -853,7 +906,7 @@ class BLEManager internal constructor(
         if (currentProtocol === protocol) return
         currentProtocol = protocol
         awaitingManualProtocolSelection = false
-        logger.info("BLEManager", "Selected protocol ${protocol.javaClass.simpleName} via $reason")
+        logger.info(TAG, "Selected protocol ${protocol.javaClass.simpleName} via $reason")
         startPollingOrchestration(protocol)
         startDataFlowCollection(protocol)
         connectionCallback?.onProtocolSelected(buildProtocolSelection(protocol, selectionReason))
@@ -874,24 +927,63 @@ class BLEManager internal constructor(
     internal fun selectByGattFingerprint(
         discoveredServices: List<BluetoothGattService>,
         signaturesProvider: (String) -> List<GattSignature> = EucFingerprintDatabase::getSignatures
-    ): EUCProtocol? {
-        val matches = protocols.filter { protocol ->
+    ): Pair<EUCProtocol?, Int> {
+        val matchesWSign = protocols.map { protocol ->
+            var matches:  Pair<EUCProtocol?, GattSignature?> = Pair(null,null)
             val signatures = signaturesProvider(protocol.javaClass.simpleName)
-            signatures.isNotEmpty() && signatures.any { signature ->
-                matchesGattSignature(discoveredServices, signature)
+            logger.debug(
+                TAG + ":selectByGattFingerprint",
+                "$protocol nb signatures : ${signatures.size}"
+            )
+            signatures.forEach { signature ->
+                logger.debug(
+                    TAG + ":selectByGattFingerprint",
+                    "$protocol SIGNATURE : $signature"
+                )
             }
+            signatures.isNotEmpty() && signatures.any { signature ->
+                logger.debug(
+                    TAG + ":selectByGattFingerprint",
+                    "$protocol TESTING SIGNATURE : $signature"
+                )
+                val match = matchesGattSignature(
+                    discoveredServices,
+                    signature,
+                    protocol.javaClass.simpleName
+                )
+                if (match) {
+                    matches = Pair(protocol, signature)
+                    true
+                } else {
+                    false
+                }
+            }
+            matches
         }
+
+        val matches = matchesWSign.filter { match -> match.first != null }
         return if (matches.size == 1) {
-            logger.info("BLEManager", "GATT fingerprint uniquely matched protocol ${matches.single().javaClass.simpleName}")
-            matches.single()
+            logger.info(
+                TAG + ":selectByGattFingerprint",
+                "GATT fingerprint uniquely matched protocol ${matches.single().first?.javaClass!!.simpleName}"
+            )
+            // return the protocol and the version of the first matching signature
+            Pair(matches.single().first, matches.single().second?.first()!!.version)
         } else {
             if (matches.size > 1) {
                 logger.warn(
-                    "BLEManager",
-                    "GATT fingerprint matched multiple protocols (${matches.joinToString { it.javaClass.simpleName }}); manual selection required"
+                    TAG + ":selectByGattFingerprint",
+                    "GATT fingerprint matched multiple protocols manual selection required"
                 )
+                matches.forEach { match ->
+                    logger.warn(
+                        TAG + ":selectByGattFingerprint",
+                        "GATT fingerprint matched ${match.first?.javaClass!!.simpleName}"
+                    )
+
+                }
             }
-            null
+            Pair(null, 0)
         }
     }
 
@@ -901,14 +993,82 @@ class BLEManager internal constructor(
      */
     private fun matchesGattSignature(
         discoveredServices: List<BluetoothGattService>,
-        signature: GattSignature
+        signature: GattSignature,
+        protocolName: String
     ): Boolean {
         return signature.all { serviceSpec ->
+            logger.debug(
+                TAG + ":matchesGattSignature",
+                "CHECKING SIGNATURE FOR PROTOCOL $protocolName"
+            )
+
+            logger.debug(TAG + ":matchesGattSignature", "discoveredServices UUIDs")
+            discoveredServices.forEach { ds ->
+                logger.debug(TAG + ":matchesGattSignature", "${ds.uuid}")
+            }
+
+            logger.debug(TAG + ":matchesGattSignature", "Spec UUID : ${serviceSpec.uuid}")
+
+            val sf = discoveredServices.find { it.uuid == serviceSpec.uuid }
+            logger.debug(TAG + ":matchesGattSignature", "FOUND SERVICE$sf")
+
             val service = discoveredServices.find { it.uuid == serviceSpec.uuid }
                 ?: return@all false
+
+
+            logger.debug(
+                TAG + ":matchesGattSignature",
+                "$protocolName: FOUND SERVICE : ${serviceSpec.uuid}"
+            )
             val presentCharUUIDs = service.characteristics.map { it.uuid }.toSet()
-            serviceSpec.requiredCharacteristicUUIDs.all { it in presentCharUUIDs } &&
-                serviceSpec.excludedCharacteristicUUIDs.none { it in presentCharUUIDs }
+            logger.debug(
+                TAG + ":matchesGattSignature",
+                "FOUND characteristics: ${presentCharUUIDs}"
+            )
+            val reqs = serviceSpec.requiredCharacteristicUUIDs.size
+
+            logger.debug(
+                TAG + ":matchesGattSignature",
+                "requiredCharacteristicUUIDs list: ${serviceSpec.requiredCharacteristicUUIDs}"
+            )
+            logger.debug(
+                TAG + ":matchesGattSignature",
+                "excludedCharacteristicUUIDs list: ${serviceSpec.excludedCharacteristicUUIDs}"
+            )
+
+            val excls = serviceSpec.excludedCharacteristicUUIDs.size
+            logger.debug(TAG + ":matchesGattSignature", "requiredCharacteristicUUIDs: $reqs")
+            var foundReqs = 0
+            var absentExcls = 0
+            val findReqs = serviceSpec.requiredCharacteristicUUIDs.map { req ->
+                if (req in presentCharUUIDs) {
+                    logger.debug(
+                        TAG + ":matchesGattSignature",
+                        "FOUND REQUIRED CHAR : ${req} ${++foundReqs}/$reqs"
+                    )
+                    true
+                } else {
+                    logger.debug(TAG + ":matchesGattSignature", "COULD NOT FIND: ${req}")
+                    false
+                }
+            }
+
+            val findExcl = serviceSpec.excludedCharacteristicUUIDs.map { req ->
+                if (req in presentCharUUIDs) {
+                    logger.debug(
+                        TAG + ":matchesGattSignature",
+                        "Expected excluded service found: ${req}"
+                    )
+                    false
+                } else {
+                    logger.debug(
+                        TAG + ":matchesGattSignature",
+                        "Excluded service : ${req} ${++absentExcls}/$excls"
+                    )
+                    true
+                }
+            }
+            return@all findReqs.all { it } && findExcl.all { it }
         }
     }
 
@@ -929,19 +1089,19 @@ class BLEManager internal constructor(
     ): EUCProtocol? {
         val matches = protocols.filter { proto ->
             proto.javaClass != baseProtocol.javaClass &&
-            baseProtocol.javaClass.isAssignableFrom(proto.javaClass) &&
-            proto.matchesDeviceName(deviceName)
+                    baseProtocol.javaClass.isAssignableFrom(proto.javaClass) &&
+                    proto.matchesDeviceName(deviceName)
         }
         return if (matches.size == 1) {
             logger.info(
-                "BLEManager",
+                TAG,
                 "Device name '$deviceName' refined fingerprint match to subclass ${matches.single().javaClass.simpleName}"
             )
             matches.single()
         } else {
             if (matches.size > 1) {
                 logger.warn(
-                    "BLEManager",
+                    TAG,
                     "Device name '$deviceName' matched multiple subclass protocols (${matches.joinToString { it.javaClass.simpleName }}); using base protocol"
                 )
             }
@@ -964,14 +1124,14 @@ class BLEManager internal constructor(
         val matches = protocols.filter { it.matchesDeviceName(deviceName) }
         return if (matches.size == 1) {
             logger.info(
-                "BLEManager",
+                TAG,
                 "Device name '$deviceName' matched protocol ${matches.single().javaClass.simpleName}"
             )
             matches.single()
         } else {
             if (matches.size > 1) {
                 logger.warn(
-                    "BLEManager",
+                    TAG,
                     "Device name '$deviceName' matched multiple protocols (${matches.joinToString { it.javaClass.simpleName }}); ambiguous"
                 )
             }
@@ -987,14 +1147,19 @@ class BLEManager internal constructor(
     private fun maybeActivateForcedProtocol(protocol: EUCProtocol? = forcedProtocol): Boolean? {
         if (protocolSelectionMode != ProtocolSelectionMode.FORCED) return null
         val selectedProtocol = protocol ?: return false
-        val servicesReady = currentDevice != null && bluetoothGatt?.services?.isNotEmpty() == true
+        val servicesReady =
+            currentDevice != null && bluetoothGatt?.services?.isNotEmpty() == true
         if (!servicesReady) return null
         selectedProtocol.getCandidateDataCharacteristicUUIDs()
             .distinct()
             .forEach { characteristicUuid ->
                 enableNotifications(characteristicUuid)
             }
-        return activateProtocolIfReady(selectedProtocol, ProtocolSelectionReason.FORCED, "forced override")
+        return activateProtocolIfReady(
+            selectedProtocol,
+            ProtocolSelectionReason.FORCED,
+            "forced override"
+        )
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -1003,9 +1168,10 @@ class BLEManager internal constructor(
         selectionReason: ProtocolSelectionReason,
         logReason: String
     ): Boolean {
-        val hasReadableCharacteristic = protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
-            getCharacteristic(uuid) != null
-        }
+        val hasReadableCharacteristic =
+            protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
+                getCharacteristic(uuid) != null
+            }
         if (!hasReadableCharacteristic) {
             errorCallback?.onError(
                 BLEException("Protocol ${protocolIdentifier(protocol)} data characteristic is unavailable on this device")
