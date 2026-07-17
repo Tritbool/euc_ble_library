@@ -1,5 +1,6 @@
 package io.github.tritbool.euc.ble.protocols
 
+import android.util.Log
 import androidx.annotation.VisibleForTesting
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
@@ -442,42 +443,124 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return combined.ifEmpty { null }
     }
 
+    private fun decodeBegodeEncodedName(data: ByteArray): String {
+        // Format Begode 0x10+char : UNIQUEMENT valide si le paquet est
+        // constitué EXCLUSIVEMENT de paires 0x10+char (hors premier byte de longueur éventuel).
+        // On vérifie d'abord que tous les bytes non-nuls suivent ce pattern.
+        // Un paquet "EXTREME" = 7 chars = 14 bytes de paires 0x10+char,
+        // éventuellement précédés d'un byte de taille.
+        val start = if (data.size % 2 != 0 && data[0].toInt().and(0xFF) == data.size - 1) 1 else 0
+        val slice = data.drop(start)
+        // Valider que TOUS les bytes pairs sont 0x10 et impairs sont printable ASCII
+        if (slice.size < 6) return ""
+        if (slice.size % 2 != 0) return ""
+        for (i in slice.indices step 2) {
+            val prefix = slice[i].toInt().and(0xFF)
+            val char = slice[i + 1].toInt().and(0xFF)
+            if (prefix != 0x10) return ""
+            if (char !in 0x20..0x7E) return ""
+        }
+        val result = slice.filterIndexed { i, _ -> i % 2 == 1 }
+            .map { it.toInt().and(0xFF).toChar() }
+            .joinToString("")
+            .trim()
+        android.util.Log.d("GotwayASCII", "decodeBegodeEncodedName: decoded='$result'")
+        return result
+    }
+
     private fun parseLegacyAsciiMetadata(data: ByteArray) {
         if (data.isEmpty()) return
         if (data.size >= 2 && data[0] == HEADER[0] && data[1] == HEADER[1]) return
-        val message = data.decodeToString().trim()
-        if (message.isEmpty()) return
+
+        android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: rawSize=${data.size} first5=${data.take(5).map { "%02X".format(it) }}")
+
+        // Tentative 1 : décodage ASCII direct (GW/JN/CF/BF et NAME standard)
+        val directMessage = data.decodeToString().trim()
+
+        val message: String = when {
+            directMessage.startsWith("NAME", ignoreCase = true) -> directMessage
+            directMessage.startsWith("GW", ignoreCase = true) -> directMessage
+            directMessage.startsWith("JN", ignoreCase = true) -> directMessage
+            directMessage.startsWith("CF", ignoreCase = true) -> directMessage
+            directMessage.startsWith("BF", ignoreCase = true) -> directMessage
+            else -> {
+                // Tentative 2 : décodage format Begode 0x10+char
+                // Seulement si le paquet est structurellement 100% du format 0x10+char
+                val begodeDecoded = decodeBegodeEncodedName(data)
+                if (begodeDecoded.isNotEmpty()) "NAME$begodeDecoded"
+                else {
+                    android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: UNRECOGNIZED direct='$directMessage'")
+                    return
+                }
+            }
+        }
+
+        android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: PARSED message='$message'")
+
         when {
             message.startsWith("NAME", ignoreCase = true) -> {
-                val name = message.substringAfter("NAME", "").trim()
+                val name = message.substringAfter("NAME", "").trimStart(':', ' ').trim()
                 if (name.isNotEmpty()) {
+                    android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: MODEL found name='$name'")
                     lastKnownModel = name
                 }
             }
-
             message.startsWith("GW", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "Begode"
                 useHwPwm = false
+                android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: FIRMWARE found variant=Begode version=$lastKnownFirmwareVersion")
             }
-
             message.startsWith("JN", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "ExtremeBull"
                 useHwPwm = false
+                android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: FIRMWARE found variant=ExtremeBull version=$lastKnownFirmwareVersion")
             }
-
             message.startsWith("CF", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "Freestyl3r"
                 useHwPwm = true
+                android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: FIRMWARE found variant=Freestyl3r version=$lastKnownFirmwareVersion")
             }
-
             message.startsWith("BF", ignoreCase = true) -> {
                 lastKnownFirmwareVersion = message.substring(2).trim().ifEmpty { null }
                 gotwayFirmwareVariant = "SV"
                 useHwPwm = true
+                android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: FIRMWARE found variant=SV version=$lastKnownFirmwareVersion")
             }
+        }
+    }
+
+    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
+        if (data.isEmpty()) return false
+        if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) return false
+
+        android.util.Log.d("GotwayQueryMatch", "matchesQueryResponse: query=${query.commandType} size=${data.size} data=${data.take(20).map { "%02X".format(it) }}")
+
+        return when (query.commandType) {
+            CommandType.REQUEST_SERIAL -> {
+                val direct = data.decodeToString().trim()
+                if (direct.startsWith("NAME", ignoreCase = true)) {
+                    android.util.Log.d("GotwayQueryMatch", "matchesQueryResponse: REQUEST_SERIAL matched direct NAME")
+                    return true
+                }
+                // Begode 0x10+char : valide seulement si le paquet est structurellement pur
+                val begodeDecoded = decodeBegodeEncodedName(data)
+                val matched = begodeDecoded.isNotEmpty()
+                android.util.Log.d("GotwayQueryMatch", "matchesQueryResponse: REQUEST_SERIAL begodeDecoded='$begodeDecoded' matched=$matched")
+                matched
+            }
+            CommandType.REQUEST_FIRMWARE -> {
+                val str = data.decodeToString().trim()
+                val matched = str.startsWith("GW", ignoreCase = true)
+                        || str.startsWith("JN", ignoreCase = true)
+                        || str.startsWith("CF", ignoreCase = true)
+                        || str.startsWith("BF", ignoreCase = true)
+                android.util.Log.d("GotwayQueryMatch", "matchesQueryResponse: REQUEST_FIRMWARE str='$str' matched=$matched")
+                matched
+            }
+            else -> false
         }
     }
 
@@ -508,30 +591,24 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 ProtocolQuerySpec(
                     id = "gotway.request-model",
                     commandType = CommandType.REQUEST_SERIAL,
-                    maxRetries = 3
+                    initialDelayMs = 1000L,      // laisser la roue finir son burst initial
+                    responseTimeoutMs = 2000L,   // les roues Gotway peuvent être lentes
+                    maxRetries = 5,
+                    retryBackoffMs = 500L
                 ),
                 ProtocolQuerySpec(
                     id = "gotway.request-firmware",
                     commandType = CommandType.REQUEST_FIRMWARE,
-                    initialDelayMs = 200L,
-                    maxRetries = 3
+                    initialDelayMs = 1500L,
+                    responseTimeoutMs = 2000L,
+                    maxRetries = 3,
+                    retryBackoffMs = 500L
                 )
             ),
             periodicQueries = emptyList()
         )
     }
 
-    override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
-        // Gotway responds to "N" and "V" with ASCII strings (not framed telemetry)
-        if (data.isEmpty()) return false
-        // If the response starts with the standard frame header 0x55 0xAA, it's telemetry not a query response
-        if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) return false
-        // ASCII responses to name/version queries
-        return when (query.commandType) {
-            CommandType.REQUEST_SERIAL, CommandType.REQUEST_FIRMWARE -> true
-            else -> false
-        }
-    }
 
     override fun isDeviceReady(data: EUCData): Boolean {
         // Conservative readiness checks: p
