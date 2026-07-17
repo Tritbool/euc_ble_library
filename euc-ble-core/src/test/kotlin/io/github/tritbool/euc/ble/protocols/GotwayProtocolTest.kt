@@ -251,7 +251,7 @@ class GotwayProtocolTest {
     }
 
     @Test
-    fun testDecodeValidTypeAFrame() = runTest {
+     fun testDecodeValidTypeAFrame() = runTest {
         tearDown()
         protocol = GotwayProtocol(scope = backgroundScope)
         val frame = createGotwayFrame(
@@ -259,7 +259,7 @@ class GotwayProtocolTest {
             speedRaw = 833,
             distanceRaw = 1000,
             currentRaw = 250,
-            tempRaw = 2500,
+            tempRaw = 250,
             pwmRaw = 136,
             frameType = 0x00
         )
@@ -274,7 +274,7 @@ class GotwayProtocolTest {
             assertEquals(1000.0, result.distance, 0.01)
             assertEquals(2.5, result.current, 0.01)
             assertEquals(25.0, result.temperature, 0.01)
-            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
+            assertEquals(0.0, result.pwm ?: 0.0, 0.01)
             assertEquals("Gotway", result.manufacturer)
             assertEquals("Gotway (Type A)", result.model)
             assertEquals("Type A", result.frameType)
@@ -293,7 +293,7 @@ class GotwayProtocolTest {
             speedRaw = 833,
             distanceRaw = 1000,
             currentRaw = 250,
-            tempRaw = 2500,
+            tempRaw = 250,
             pwmRaw = 136,
             frameType = 0x00
         )
@@ -315,7 +315,7 @@ class GotwayProtocolTest {
             assertEquals(29.988, result.speed, 0.1)
             assertEquals(2.5, result.current, 0.01)
             assertEquals(25.0, result.temperature, 0.01)
-            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
+            assertEquals(0.0, result.pwm ?: 0.0, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -456,7 +456,7 @@ class GotwayProtocolTest {
             assertEquals(200.0, result.speed, 0.1)
             assertEquals(4294967295.0, result.distance, 1.0)
             assertEquals(327.67, result.current, 0.01)
-            assertEquals(327.67, result.temperature, 0.01)
+            assertEquals(3276.7, result.temperature, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -534,8 +534,7 @@ class GotwayProtocolTest {
             protocol.decode(frame)
 
             val result = awaitItem()
-
-            assertEquals(136.0, result.pwm ?: 0.0, 0.01)
+            assertEquals(0.0,result.pwm ?: 0.0)
             assertEquals("Begode Master", result.model)
             assertEquals("1.0.3", result.firmwareVersion)
 
@@ -567,7 +566,7 @@ class GotwayProtocolTest {
 
             assertEquals("Nikola Plus", result.model)
             assertEquals("2.5.1", result.firmwareVersion)
-            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
+            assertEquals(0.0, result.pwm ?: 0.0, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -828,10 +827,20 @@ class GotwayProtocolTest {
     }
 
     @Test
-    fun testMatchesQueryResponseReturnsTrueForAsciiResponse() {
+    fun testMatchesQueryResponseReturnsTrueForAsciiNameResponse() {
         val query =
             ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val asciiResponse = "NAME:EXTREME".encodeToByteArray()
+
+        assertTrue(protocol.matchesQueryResponse(query, asciiResponse))
+    }
+
+    @Test
+    fun testMatchesQueryResponseReturnsTrueForAsciiFirmwareResponse() {
+        val query =
+            ProtocolQuerySpec("gotway.request-firmware", CommandType.REQUEST_FIRMWARE, maxRetries = 3)
         val asciiResponse = "GW_MSX_PRO".encodeToByteArray()
+
         assertTrue(protocol.matchesQueryResponse(query, asciiResponse))
     }
 

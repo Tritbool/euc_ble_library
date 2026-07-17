@@ -121,6 +121,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
+    private var hasValidPwmFromType7 = false
+
     //private val scope = CoroutineScope(Dispatchers.IO)
     private var lastKnownVoltage: Double? = null
     private var lastKnownCurrent: Double? = null
@@ -262,14 +264,22 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val temperature = tempRaw / 10.0 // Assuming a 1/100 scale
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
+
+        val rawPwmA = ByteUtils.tryGetSignedShortBE(data, 14) ?: 0
         val pwmFromTypeA = if (useHwPwm) {
-            abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble())
+            rawPwmA.toDouble()            // CF / BF / SV : déjà en %, diag interne
         } else {
-            abs((ByteUtils.tryGetSignedShortBE(data, 14) ?: 0).toDouble()) / 10.0
+            rawPwmA / 10.0                // Begode standard : dixièmes de %
         }
-        if (gotwayFirmwareVariant != null) {
-            lastKnownPwm = pwmFromTypeA
+
+// Type A ne sert PAS à publier la PWM utilisateur.
+// On ne met à jour lastKnownPwm depuis Type A que si Type 7 a déjà donné une PWM vraie.
+// Sinon, lastKnownPwm reste null ou vient de Type 7.
+        if (hasValidPwmFromType7) {
+            val pwmAbs = abs(pwmFromTypeA)
+            lastKnownPwm = if (pwmAbs in 0.0..100.0) pwmAbs else lastKnownPwm
         }
+
         val power = voltage * current
         val batteryLevel = estimateBatteryLevel(voltage)
         lastKnownTripDistance = tripDistanceKm
@@ -391,14 +401,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         hasType7Current = true
         lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
-            // WheelLog maps Type 7 PWM raw values as whole-percent units (used as-is),
-            // while Type A fallback values represent tenths of percent.
-            val truePwm = abs(raw.toDouble())
-            // WheelLog only switches to Type 7 as authoritative PWM once a non-zero value is
-            // observed; keep the latest Type A fallback when Type 7 reports zero/unset.
-            if (truePwm > 0.0) {
-                lastKnownPwm = truePwm
+            // Type 7 = vraie PWM entière en %, Begode partage le PWM réel (pas calculé).[web:23][file:16]
+            val truePwmAbs = kotlin.math.abs(raw.toDouble())
+
+            // 0 < PWM ≤ 100 => valeur valide.
+            if (truePwmAbs in 0.0..100.0 && truePwmAbs > 0.0) {
+                lastKnownPwm = truePwmAbs
+                hasValidPwmFromType7 = true
             }
+            // Sinon (0 ou hors plage) => on ne change pas lastKnownPwm, et on NE met PAS PWM à 46 % random.
         }
 
         val voltage = lastKnownVoltage ?: 0.0
@@ -565,7 +576,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         if (data.isEmpty()) return false
         if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) return false
 
-        android.util.Log.d(
+        Log.d(
             "GotwayQueryMatch",
             "matchesQueryResponse: query=${query.commandType} size=${data.size} data=${
                 data.take(20).map { "%02X".format(it) }

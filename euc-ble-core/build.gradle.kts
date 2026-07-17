@@ -60,6 +60,7 @@ android {
 
 
     testOptions {
+        unitTests.isReturnDefaultValues = true
         unitTests.all { testTask ->
             val isCi = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
 
