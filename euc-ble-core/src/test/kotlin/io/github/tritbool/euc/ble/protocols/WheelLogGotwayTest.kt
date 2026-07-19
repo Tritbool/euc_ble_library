@@ -85,14 +85,15 @@ class WheelLogGotwayTest {
         // Wait for async processing to complete (needs time for IO dispatcher)
         delay(3000.milliseconds)
 
-        val bmsData  = protocol.getBMSData()
+        val bmsData = protocol.getBMSData()
         assert(bmsData.isNotEmpty())
 
         // Cancel collector job
         collectorJob.cancel()
     }
+
     @Test
-    fun testLoadAndDecodeRealFramesWithoutHwPWM() = runTest {
+    fun testLoadAndDecodeRealFramesWithoutType7PWM() = runTest {
         val frames = loadGotwayFrames("${resourceDir}RAW_2023_11_24_18_43_22.csv", maxFrames = 1000)
         assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
 
@@ -153,9 +154,21 @@ class WheelLogGotwayTest {
             "Expected non-placeholder telemetry from Type A frames",
             decoded.any { it.frameType.contains("Type A") && it.voltage > 0.0 && abs(it.current) > 0.0 }
         )
+
         assertTrue(
-            "Expected PWM to be absent from Type A frames",
-            decoded.none{ it.frameType.contains("Type A") && it.pwm != null}
+            "Expected NO Type 7 frames",
+            decoded.none { it.frameType.contains("Type 7") }
+        )
+
+        assertTrue(
+            "Expected PWM to be extracted from Type A frames",
+            decoded.any { it.frameType.contains("Type A") && it.pwm != null }
+        )
+
+        assertTrue(
+            "Expected Type A PWM to be valid",
+            decoded.filter { it.frameType.contains("Type A") && it.pwm != null }
+                .all { it.pwm!! in 0.0..100.0 }
         )
 
         // With FrameReassembler, we expect to decode reassembled frames
@@ -173,7 +186,8 @@ class WheelLogGotwayTest {
 
     @Test
     fun testLoadAndDecodeRealFrames() = runTest {
-        val frames = loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
+        val frames =
+            loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
         assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
 
         val decoded = mutableListOf<EUCData>()
@@ -235,7 +249,7 @@ class WheelLogGotwayTest {
         )
         assertTrue(
             "Expected PWM to be decoded from Type 7 frames",
-            decoded.any { it.frameType.contains("Type 7") && (it.pwm ?: 0.0) >= 0.0 }
+            decoded.any { it.frameType.contains("Type 7") && (it.pwm ?: 0.0) in 0.0 .. 100.0 }
         )
 
         // With FrameReassembler, we expect to decode reassembled frames
@@ -395,7 +409,8 @@ class WheelLogGotwayTest {
 
     @Test
     fun testTypeAPwmDecodedFromWheelLogCapture() = runTest {
-        val frames = loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1200)
+        val frames =
+            loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1200)
         assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
 
         val decoded = mutableListOf<EUCData>()
@@ -416,15 +431,12 @@ class WheelLogGotwayTest {
         assertTrue("No Type A frames decoded from WheelLog capture", typeAFrames.isNotEmpty())
 
         typeAFrames.forEach { data ->
-            val expectedPwm = abs(
-                (ByteUtils.tryGetSignedShortBE(data.rawData, typeAPwmOffset) ?: 0).toDouble()
-            ) / 10.0
-            assertNull(data.pwm)
+            assertTrue((data.pwm ?: 0.0) in 0.0..100.0)
         }
         val type7Frames = decoded.filter { it.frameType == "Type 7" }
         assertTrue(
             "Expected at least one Type 7 frame with non-zero PWM",
-            type7Frames.any { (it.pwm ?: 0.0) >= 0.0 })
+            type7Frames.any { (it.pwm ?: 0.0) in 0.0 .. 100.0  })
     }
 
     @Test

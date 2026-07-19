@@ -274,7 +274,7 @@ class GotwayProtocolTest {
             assertEquals(1000.0, result.distance, 0.01)
             assertEquals(2.5, result.current, 0.01)
             assertEquals(25.0, result.temperature, 0.01)
-            assertEquals(0.0, result.pwm ?: 0.0, 0.01)
+            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
             assertEquals("Gotway", result.manufacturer)
             assertEquals("Gotway (Type A)", result.model)
             assertEquals("Type A", result.frameType)
@@ -315,7 +315,7 @@ class GotwayProtocolTest {
             assertEquals(29.988, result.speed, 0.1)
             assertEquals(2.5, result.current, 0.01)
             assertEquals(25.0, result.temperature, 0.01)
-            assertEquals(0.0, result.pwm ?: 0.0, 0.01)
+            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -566,7 +566,7 @@ class GotwayProtocolTest {
 
             assertEquals("Nikola Plus", result.model)
             assertEquals("2.5.1", result.firmwareVersion)
-            assertEquals(0.0, result.pwm ?: 0.0, 0.01)
+            assertEquals(13.6, result.pwm ?: 0.0, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }

@@ -121,8 +121,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
-    private var hasValidPwmFromType7 = false
-
+    private var hasSeenType7Pwm = false
     //private val scope = CoroutineScope(Dispatchers.IO)
     private var lastKnownVoltage: Double? = null
     private var lastKnownCurrent: Double? = null
@@ -184,6 +183,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         lastKnownPhaseCurrent = null
         gotwayFirmwareVariant = null
         useHwPwm = false
+        hasSeenType7Pwm = false
         _channel.close()
     }
 
@@ -267,17 +267,14 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
         val rawPwmA = ByteUtils.tryGetSignedShortBE(data, 14) ?: 0
         val pwmFromTypeA = if (useHwPwm) {
-            rawPwmA.toDouble()            // CF / BF / SV : déjà en %, diag interne
+            abs(rawPwmA.toDouble())
         } else {
-            rawPwmA / 10.0                // Begode standard : dixièmes de %
+            abs(rawPwmA.toDouble()) / 10.0
         }
 
-// Type A ne sert PAS à publier la PWM utilisateur.
-// On ne met à jour lastKnownPwm depuis Type A que si Type 7 a déjà donné une PWM vraie.
-// Sinon, lastKnownPwm reste null ou vient de Type 7.
-        if (hasValidPwmFromType7) {
-            val pwmAbs = abs(pwmFromTypeA)
-            lastKnownPwm = if (pwmAbs in 0.0..100.0) pwmAbs else lastKnownPwm
+// Fallback uniquement tant qu'aucune vraie PWM Type 7 n'a été observée.
+        if (!hasSeenType7Pwm) {
+            lastKnownPwm = if (pwmFromTypeA in 0.0..100.0) pwmFromTypeA else null
         }
 
         val power = voltage * current
@@ -405,9 +402,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             val truePwmAbs = kotlin.math.abs(raw.toDouble())
 
             // 0 < PWM ≤ 100 => valeur valide.
-            if (truePwmAbs in 0.0..100.0 && truePwmAbs > 0.0) {
+            if (truePwmAbs in 0.0..100.0) {
                 lastKnownPwm = truePwmAbs
-                hasValidPwmFromType7 = true
+                hasSeenType7Pwm = true
             }
             // Sinon (0 ou hors plage) => on ne change pas lastKnownPwm, et on NE met PAS PWM à 46 % random.
         }
