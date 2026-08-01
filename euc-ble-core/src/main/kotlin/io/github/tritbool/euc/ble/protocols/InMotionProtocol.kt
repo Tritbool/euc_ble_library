@@ -422,14 +422,6 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return chunk.size >= 2 && chunk[chunk.size - 2] == LEGACY_TAIL[0] && chunk[chunk.size - 1] == LEGACY_TAIL[1]
     }
 
-    private fun isValidChecksum(frame: ByteArray): Boolean {
-        var xor = 0
-        for (i in 2 until frame.lastIndex) {
-            xor = xor xor (frame[i].toInt() and 0xFF)
-        }
-        return xor == (frame.last().toInt() and 0xFF)
-    }
-
     private fun parseV2Frame(frame: ByteArray): EUCData? {
         val flags = frame[2].toInt() and 0xFF
         if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED) return null
