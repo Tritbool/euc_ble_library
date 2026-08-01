@@ -37,6 +37,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val MIN_FRAME_SIZE = 5
         private const val MAX_LEN = 240
 
+        /** InMotion V2 escape marker byte. Any 0xAA or 0xA5 in the payload is
+         *  transmitted as 0xA5 followed by the original byte. */
+        private const val ESCAPE_MARKER = 0xA5
+
         private const val LEGACY_CURRENT_OFFSET = 39
         private const val LEGACY_VOLTAGE_OFFSET = 43
         private const val LEGACY_TEMP_OFFSET = 51
@@ -204,26 +208,147 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 }
 
                 if (v2Buffer.size < MIN_FRAME_SIZE) break
-                val len = v2Buffer[3].toInt() and 0xFF
+
+                // The InMotion V2 wire format escapes 0xAA→{0xA5,0xAA} and 0xA5→{0xA5,0xA5}
+                // inside the payload. The AA AA header bytes and the trailing checksum byte
+                // are NOT escaped. We must unescape the payload to:
+                //   (a) correctly determine the frame boundary (escapes inflate raw byte count)
+                //   (b) verify the checksum, which is computed over the UNESCAPED bytes
+                //   (c) parse field offsets correctly
+
+                // Step 1: unescape the first two payload bytes (FLAG and LEN) to learn the
+                // unescaped payload length. FLAG values (0x11/0x14/0x16) are never escape
+                // markers, so this is safe.
+                val flagLen = unescapeNBytes(v2Buffer, startIdx = 2, count = 2) ?: break
+                val (headerBytes, _) = flagLen
+                val flags = headerBytes[0].toInt() and 0xFF
+                val len = headerBytes[1].toInt() and 0xFF
+
+                if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED) {
+                    v2Buffer.removeAt(0)
+                    continue
+                }
                 if (len !in 1..MAX_LEN) {
                     v2Buffer.removeAt(0)
                     continue
                 }
 
-                val frameSize = 2 + 1 + 1 + len + 1
-                if (v2Buffer.size < frameSize) break
+                // Step 2: find the index of the checksum byte by consuming exactly `len`
+                // unescaped bytes (FLAG and LEN already counted as 2; total = len+2 from pos 2).
+                // We already consumed 2 above, so we need `len` more from where the FLAG/LEN
+                // scan left off. But it's simpler to scan from scratch for all len+2 bytes.
+                val checksumIdx = findChecksumIndex(v2Buffer, startIdx = 2, targetUnescaped = len + 2)
+                if (checksumIdx < 0) break  // frame incomplete, wait for more data
 
-                val frame = ByteArray(frameSize) { i -> v2Buffer[i] }
-                if (!isValidChecksum(frame)) {
+                // Step 3: verify the checksum over the unescaped payload bytes
+                if (!isValidChecksumEscaped(v2Buffer, fromIdx = 2, toIdx = checksumIdx)) {
                     v2Buffer.removeAt(0)
                     continue
                 }
 
-                out.add(frame)
-                repeat(frameSize) { v2Buffer.removeAt(0) }
+                // Step 4: build an unescaped frame for parsing:
+                //   [AA AA] [unescaped FLAG LEN CMD DATA...] [checksum]
+                val unescapedPayload = unescapeRange(v2Buffer, fromIdx = 2, toIdx = checksumIdx)
+                val unescapedFrame = ByteArray(2 + unescapedPayload.size + 1)
+                unescapedFrame[0] = HEADER[0]
+                unescapedFrame[1] = HEADER[1]
+                unescapedPayload.copyInto(unescapedFrame, 2)
+                unescapedFrame[unescapedFrame.size - 1] = v2Buffer[checksumIdx]
+
+                out.add(unescapedFrame)
+                repeat(checksumIdx + 1) { v2Buffer.removeAt(0) }
             }
             return out
         }
+    }
+
+    /**
+     * Unescape exactly [count] bytes starting at [startIdx] in [buffer], handling
+     * 0xA5 escape sequences (0xA5 XX → real byte XX).
+     *
+     * @return Pair(unescaped bytes, raw bytes consumed) or null if buffer has insufficient data.
+     */
+    private fun unescapeNBytes(buffer: List<Byte>, startIdx: Int, count: Int): Pair<ByteArray, Int>? {
+        val result = ByteArray(count)
+        var rawIdx = startIdx
+        var n = 0
+        while (rawIdx < buffer.size && n < count) {
+            val b = buffer[rawIdx].toInt() and 0xFF
+            if (b == ESCAPE_MARKER) {
+                if (rawIdx + 1 >= buffer.size) return null  // incomplete escape
+                result[n] = buffer[rawIdx + 1]
+                rawIdx += 2
+            } else {
+                result[n] = buffer[rawIdx]
+                rawIdx++
+            }
+            n++
+        }
+        if (n < count) return null
+        return Pair(result, rawIdx - startIdx)
+    }
+
+    /**
+     * Scan [buffer] from [startIdx], consuming escape sequences, until [targetUnescaped]
+     * unescaped bytes have been processed. Returns the index of the next byte after the
+     * last unescaped byte (i.e. the checksum byte position), or -1 if insufficient data.
+     */
+    private fun findChecksumIndex(buffer: List<Byte>, startIdx: Int, targetUnescaped: Int): Int {
+        var rawIdx = startIdx
+        var n = 0
+        while (rawIdx < buffer.size && n < targetUnescaped) {
+            val b = buffer[rawIdx].toInt() and 0xFF
+            if (b == ESCAPE_MARKER) {
+                if (rawIdx + 1 >= buffer.size) return -1  // incomplete escape
+                rawIdx += 2
+            } else {
+                rawIdx++
+            }
+            n++
+        }
+        if (n < targetUnescaped) return -1
+        if (rawIdx >= buffer.size) return -1  // checksum byte not yet received
+        return rawIdx
+    }
+
+    /**
+     * Verify the InMotion V2 checksum: XOR of all unescaped bytes in [buffer] from
+     * [fromIdx] to [toIdx]-1 (exclusive), compared to [buffer][toIdx].
+     */
+    private fun isValidChecksumEscaped(buffer: List<Byte>, fromIdx: Int, toIdx: Int): Boolean {
+        var xor = 0
+        var rawIdx = fromIdx
+        while (rawIdx < toIdx) {
+            val b = buffer[rawIdx].toInt() and 0xFF
+            if (b == ESCAPE_MARKER && rawIdx + 1 < toIdx) {
+                xor = xor xor (buffer[rawIdx + 1].toInt() and 0xFF)
+                rawIdx += 2
+            } else {
+                xor = xor xor b
+                rawIdx++
+            }
+        }
+        return xor == (buffer[toIdx].toInt() and 0xFF)
+    }
+
+    /**
+     * Unescape all bytes in [buffer] from [fromIdx] to [toIdx]-1 (exclusive),
+     * collapsing 0xA5 escape sequences into their real byte values.
+     */
+    private fun unescapeRange(buffer: List<Byte>, fromIdx: Int, toIdx: Int): ByteArray {
+        val result = mutableListOf<Byte>()
+        var rawIdx = fromIdx
+        while (rawIdx < toIdx) {
+            val b = buffer[rawIdx].toInt() and 0xFF
+            if (b == ESCAPE_MARKER && rawIdx + 1 < toIdx) {
+                result.add(buffer[rawIdx + 1])
+                rawIdx += 2
+            } else {
+                result.add(buffer[rawIdx])
+                rawIdx++
+            }
+        }
+        return result.toByteArray()
     }
 
     private fun extractLegacyFrames(chunk: ByteArray): List<ByteArray> {
@@ -535,15 +660,27 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
-        val pitchAngle = ByteUtils.tryGetSignedShortLE(payload, 10)?.let { it / 100.0 }
-        val rollAngle = ByteUtils.tryGetSignedShortLE(payload, 72)?.let { it / 90.0 }
-
+        val torque = ByteUtils.tryGetSignedShortLE(payload, 12)?.let { it / 100.0 }
         val pwm = (ByteUtils.tryGetSignedShortLE(payload, 14)?.toDouble() ?: 0.0) / 100.0
+
+        // Pitch and roll angles per the V14 telemetry layout (verified against
+        // eucplanet's InMotionV2Parser reference implementation).
+        val pitchAngle = ByteUtils.tryGetSignedShortLE(payload, 20)?.let { it / 100.0 }
+        val rollAngle = ByteUtils.tryGetSignedShortLE(payload, 22)?.let { it / 100.0 }
+
         val distanceKm = (ByteUtils.getUnsignedShortLE(payload, 28) * 10.0) / 1000.0
 
         val battery1 = ByteUtils.getUnsignedShortLE(payload, 34)
         val battery2 = ByteUtils.getUnsignedShortLE(payload, 36)
-        val battery = ((battery1 + battery2) / 200.0).roundToInt().coerceIn(0, 100)
+        // Use the higher of the two battery banks to match the InMotion app display.
+        // The two banks track independently and averaging reads ~2% low vs the
+        // manufacturer app (per eucplanet research).
+        val battery = (maxOf(battery1, battery2) / 100.0).roundToInt().coerceIn(0, 100)
+
+        // Dynamic speed limit at offset 40 (reported in 0.01 km/h units).
+        val dynSpeedLimit = ByteUtils.tryGetUnsignedShortLE(payload, 40)
+            ?.let { it / 100.0 }
+            ?.takeIf { it > 0.0 }
 
         val mosTemp = decodeTemperature(payload[58])
         val boardTemp = decodeTemperature(payload[59])
@@ -569,6 +706,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             distance = distanceKm,
             power = voltage * current,
             pwm = pwm,
+            torque = torque,
             timestamp = now,
             rawData = rawFrame,
             manufacturer = manufacturer,
@@ -582,6 +720,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             totalDistance = totalDistanceKm,
             angle = pitchAngle,
             roll = rollAngle,
+            speedLimit = dynSpeedLimit,
             mode = modeString,
         )
     }
