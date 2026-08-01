@@ -56,6 +56,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val LEGACY_SPEED_MAX = 80.0
         private const val LEGACY_BATTERY_BASE_VOLTAGE = 55.0
         private const val LEGACY_BATTERY_VOLTAGE_RANGE = 30.0
+
+        /** P6 motor torque constant (N·m per amp of phase current), recovered by
+         *  correlating the InMotion app's Phase Current vs Motor Torque readings
+         *  across a labelled ride. phase_A = torque_Nm / this.
+         *  (Source: eucplanet commit 32385baa, verified over a 75x torque range.) */
+        private const val P6_KT_NM_PER_A = 0.586
     }
 
 
@@ -653,6 +659,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
         val torque = ByteUtils.tryGetSignedShortLE(payload, 12)?.let { it / 100.0 }
+        // Phase current is not transmitted by the P6; the InMotion app derives it from
+        // torque using the motor's torque constant. Verified against a same-ride
+        // video+btsnoop by eucplanet (commit 32385baa): phase = torque / 0.586 Nm/A
+        // reproduces app readings within rounding over a 75x torque range.
+        // Kept signed (negative on regen) to match how current and torque are shown.
+        val phaseCurrent = if (modelName == "InMotion P6") torque?.div(P6_KT_NM_PER_A) else null
         val pwm = (ByteUtils.tryGetSignedShortLE(payload, 14)?.toDouble() ?: 0.0) / 100.0
 
         // Pitch and roll angles per the V14 telemetry layout (verified against
@@ -699,6 +711,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             power = voltage * current,
             pwm = pwm,
             torque = torque,
+            phaseCurrent = phaseCurrent,
             timestamp = now,
             rawData = rawFrame,
             manufacturer = manufacturer,

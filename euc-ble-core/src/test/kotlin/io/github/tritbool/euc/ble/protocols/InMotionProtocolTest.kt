@@ -275,6 +275,50 @@ class InMotionProtocolTest {
         }
     }
 
+    @Test
+    fun p6PhaseCurrentDerivedFromTorque() {
+        // P6 car-type frame: series=13 (0x0D), type=1 → "InMotion P6"
+        // Built from the V9 car-type vector by changing series byte 0x0C→0x0D and
+        // recomputing the XOR checksum.
+        val carTypeFrame = ByteUtils.hexToBytes("aaaa11088201020d0101010094")
+
+        // Realtime frame derived from the V9 vector with torque set to 970 raw
+        // (= 9.70 N·m). Expected phase current: 9.70 / 0.586 ≈ 16.55 A.
+        // Torque is at payload[12..13] (frame bytes 17-18); checksum recomputed.
+        val realtimeFrame = ByteUtils.hexToBytes(
+            "aaaa1457843e1e0c000000000000000000ca03c30000000000ffffd7fe000000" +
+            "000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cd" +
+            "c900ceb0cec8ceb03a640000000000490000000000000000000000a6"
+        )
+
+        protocol.decode(carTypeFrame)
+        val data = protocol.decode(realtimeFrame)
+
+        assertNotNull(data)
+        assertEquals("InMotion P6", data!!.model)
+        assertNotNull(data.phaseCurrent)
+        assertEquals(9.70 / 0.586, data.phaseCurrent!!, 0.05)
+    }
+
+    @Test
+    fun nonP6ModelHasNullPhaseCurrent() {
+        // V9 car-type frame (series=12, type=1); realtime frame with non-zero torque.
+        // phaseCurrent must remain null for non-P6 InMotion V2 wheels.
+        val carTypeFrame = ByteUtils.hexToBytes("aaaa11088201020c0101010095")
+        val realtimeFrame = ByteUtils.hexToBytes(
+            "aaaa1457843e1e0c000000000000000000ca03c30000000000ffffd7fe000000" +
+            "000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cd" +
+            "c900ceb0cec8ceb03a640000000000490000000000000000000000a6"
+        )
+
+        protocol.decode(carTypeFrame)
+        val data = protocol.decode(realtimeFrame)
+
+        assertNotNull(data)
+        assertEquals("InMotion V9", data!!.model)
+        assertEquals(null, data.phaseCurrent)
+    }
+
     private fun loadWheelLogFrames(
         resourcePath: String,
         maxFrames: Int = Int.MAX_VALUE
