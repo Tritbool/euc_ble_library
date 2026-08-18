@@ -1,9 +1,10 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
-import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogResources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,8 +18,6 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -86,42 +85,22 @@ sealed class ProtocolNoDropTestBase {
         resourcePath: String,
         maxFrames: Int = Int.MAX_VALUE
     ): List<ByteArray> {
-        val stream = javaClass.getResourceAsStream(resourcePath)
-            ?: throw IllegalArgumentException("Ressource introuvable : $resourcePath")
-        val frames = mutableListOf<ByteArray>()
-        var malformed = 0
-        BufferedReader(InputStreamReader(stream)).use { reader ->
-            reader.lineSequence().forEach { rawLine ->
-                if (frames.size >= maxFrames) return@forEach
-                val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
-                val idx = line.indexOf(',')
-                if (idx <= 0 || idx >= line.length - 1) return@forEach
-                val hex = line.substring(idx + 1).trim().removeSurrounding("\"")
-                try {
-                    frames.add(ByteUtils.hexToBytes(hex))
-                } catch (_: IllegalArgumentException) {
-                    malformed++
-                }
-            }
-        }
-        val total = frames.size + malformed
-        assertTrue("Aucune ligne parsable dans $resourcePath", total > 0)
-        assertTrue("Trop de lignes malformées : $malformed/$total", malformed <= total / 5)
-        return frames
+        val result = WheelLogCsvLoader.loadBytes(resourcePath, maxFrames)
+        WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
+        return result.frames.map { it.bleData }
     }
 }
 
 @SlowTest
 class GotwayNoDropTest : ProtocolNoDropTestBase(){
-    override val csvResourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv"
+    override val csvResourcePath = WheelLogResources.rawFile("gotway", "RAW_2023_11_25_15_11_39.csv")
     override val minimumExpectedFrameCount = 200
     override fun createProtocol(testScope: CoroutineScope)  = GotwayProtocol(testScope)
 
 }
 @SlowTest
 class KingsongNoDropTest : ProtocolNoDropTestBase() {
-    override val csvResourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv"
+    override val csvResourcePath = WheelLogResources.rawFile("kingsong", "RAW_2023_08_25_15_02_03.csv")
     override val minimumExpectedFrameCount = 200
     override fun createProtocol(testScope: CoroutineScope)  = KingsongProtocol(testScope)
 
@@ -129,7 +108,7 @@ class KingsongNoDropTest : ProtocolNoDropTestBase() {
 }
 @SlowTest
 class InmotionNoDropTest: ProtocolNoDropTestBase(){
-    override val csvResourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv"
+    override val csvResourcePath = WheelLogResources.rawFile("inmotion", "RAW_inmotion_V8S.csv")
     override val minimumExpectedFrameCount = 200
     override fun createProtocol(testScope: CoroutineScope)  = InMotionProtocol()
 
@@ -137,21 +116,21 @@ class InmotionNoDropTest: ProtocolNoDropTestBase(){
 
 @SlowTest
 class LeaperkimNoDropTest : ProtocolNoDropTestBase() {
-    override val csvResourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv"
+    override val csvResourcePath = WheelLogResources.rawFile("leaperkim", "RAW_2026_04_30_07_04_10.csv")
     override val minimumExpectedFrameCount = 200
     override fun createProtocol(testScope: CoroutineScope)  = LeaperkimProtocol(testScope)
 }
 
 @SlowTest
 class NosfetNoDropTest : ProtocolNoDropTestBase() {
-    override val csvResourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv"
+    override val csvResourcePath = WheelLogResources.rawFile("nosfet", "RAW_2026_05_08_18_55_45.csv")
     override val minimumExpectedFrameCount = 200
     override fun createProtocol(testScope: CoroutineScope)  = NosfetProtocol(testScope)
 }
 
 @SlowTest
 class NinebotNoDropTest : ProtocolNoDropTestBase() {
-    override val csvResourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_09_07_11_29_37.csv"
+    override val csvResourcePath = WheelLogResources.rawFile("ninebot", "RAW_2023_09_07_11_29_37.csv")
     override val minimumExpectedFrameCount = 200
     override fun createProtocol(testScope: CoroutineScope) = NinebotProtocol()
 }

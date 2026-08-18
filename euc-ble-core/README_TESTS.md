@@ -11,7 +11,7 @@ Captures are stored as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android) under:
 
 ```
-src/test/resources/bleframes/<brand>/RAWWHEELLOG/
+src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/
 ```
 
 Each CSV row contains the exact byte sequence received from the wheel over BLE. This means:
@@ -33,12 +33,12 @@ resulting `EUCData` fields.
 
 | Test class | Brand | Capture files |
 |---|---|---|
-| `WheelLogGotwayTest` | Gotway / Begode | `bleframes/gotway/RAWWHEELLOG/` |
-| `WheelLogKingsongTest` | KingSong | `bleframes/kingsong/RAWWHEELLOG/` |
-| `WheelLogLeaperkimTest` | Leaperkim / Veteran | `bleframes/leaperkim/RAWWHEELLOG/` |
-| `WheelLogInMotionTest` | InMotion | `bleframes/inmotion/RAWWHEELLOG/` |
-| `WheelLogNinebotTest` | Ninebot | `bleframes/ninebot/RAWWHEELLOG/` |
-| `WheelLogNosfetTest` | Nosfet | `bleframes/nosfet/RAWWHEELLOG/` |
+| `WheelLogGotwayTest` | Gotway / Begode | `ble_frames/gotway/RAW_WHEELLOG/` |
+| `WheelLogKingsongTest` | KingSong | `ble_frames/kingsong/RAW_WHEELLOG/` |
+| `WheelLogLeaperkimTest` | Leaperkim / Veteran | `ble_frames/leaperkim/RAW_WHEELLOG/` |
+| `WheelLogInMotionTest` | InMotion | `ble_frames/inmotion/RAW_WHEELLOG/` |
+| `WheelLogNinebotTest` | Ninebot | `ble_frames/ninebot/RAW_WHEELLOG/` |
+| `WheelLogNosfetTest` | Nosfet | `ble_frames/nosfet/RAW_WHEELLOG/` |
 
 ### Protocol unit tests (edge cases)
 
@@ -128,7 +128,7 @@ euc-ble-core/build/reports/jacoco/focused/html/index.html   # protocols + models
 ## Adding a new protocol or firmware variant
 
 1. Record a BLE session with WheelLog on the target wheel.
-2. Export the raw CSV and drop it in `src/test/resources/bleframes/<brand>/RAWWHEELLOG/`.
+2. Export the raw CSV and drop it in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/`.
 3. Create a `WheelLog<Brand>Test` that loads the file and feeds frames through the protocol decoder.
 4. Add edge-case unit tests for any branching not covered by the capture.
 5. Add a `<Brand>NoDropTest` extending `ProtocolNoDropTestBase`.

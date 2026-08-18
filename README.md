@@ -69,7 +69,7 @@ Most BLE protocol libraries test against hand-crafted byte arrays — frames tha
 This library takes a different approach: protocols are tested against **raw BLE captures recorded from real wheels**,
 replayed offline via JUnit 5 without any Android device or emulator.
 
-Captures are stored in `src/test/resources/bleframes/<brand>/RAWWHEELLOG/` as CSV files exported from
+Captures are stored in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android), a well-established EUC logging app.
 Each CSV row contains the exact byte sequence received from the wheel over BLE.
 

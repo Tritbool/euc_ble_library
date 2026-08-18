@@ -2,11 +2,13 @@ package io.github.tritbool.euc.ble.protocols
 
 import app.cash.turbine.test
 import io.github.tritbool.euc.ble.SlowTest
-import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogFrame
+import io.github.tritbool.euc.ble.test.WheelLogResources
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -20,8 +22,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import kotlin.collections.plusAssign
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -39,7 +39,7 @@ class WheelLogKingsongTest {
         private val EXPECTED_VOLTAGE_RANGE = 60.0..130.0
     }
 
-    private val testDataPath = "/ble_frames/kingsong/RAW_WHEELLOG/"
+    private val testDataPath = WheelLogResources.rawDir("kingsong")
 
     private lateinit var protocol: KingsongProtocol
 
@@ -55,12 +55,12 @@ class WheelLogKingsongTest {
         }
     }
 
-    private fun isA9TelemetryFrame(frame: BleFrame): Boolean {
+    private fun isA9TelemetryFrame(frame: WheelLogFrame): Boolean {
         return frame.bleData.size > 16 && (frame.bleData[16].toInt() and 0xFF) == 0xA9
     }
 
     private suspend fun decodeA9Frames(
-        frames: List<BleFrame>,
+        frames: List<WheelLogFrame>,
         expected:Int=600
     ): List<EUCData> = coroutineScope {
         val telemetryFrames = frames.filter(::isA9TelemetryFrame)
@@ -69,7 +69,8 @@ class WheelLogKingsongTest {
             telemetryFrames.forEach { protocol.decode(it.bleData) }
 
             repeat(expected) {
-                decoded.add(awaitItem())
+                val item = withTimeoutOrNull(150.milliseconds) { awaitItem() } ?: return@repeat
+                decoded.add(item)
             }
             cancelAndIgnoreRemainingEvents()
         }
@@ -222,8 +223,9 @@ class WheelLogKingsongTest {
         val telemetryFrames = mutableListOf<BleFrame>()
         testFiles.forEach { filename ->
             val frames = loadKingsongFrames("$testDataPath/$filename", maxFrames = 4000)
-            telemetryFrames+=frames.filter(::isA9TelemetryFrame)
-            totalFrames += telemetryFrames.size
+            val telemetryFromFile = frames.filter(::isA9TelemetryFrame)
+            telemetryFrames += telemetryFromFile
+            totalFrames += telemetryFromFile.size
 
             val decoded = decodeA9Frames(telemetryFrames,telemetryFrames.size)
             decodedFrames += decoded.size
@@ -273,57 +275,10 @@ class WheelLogKingsongTest {
     /**
      * Load Kingsong frames from WheelLog CSV file
      */
-    private fun loadKingsongFrames(
-        resourcePath: String,
-        maxFrames: Int = Int.MAX_VALUE
-    ): List<BleFrame> {
-        val inputStream = javaClass.getResourceAsStream(resourcePath)
-            ?: throw IllegalArgumentException("Resource not found: $resourcePath")
-
-        val frames = mutableListOf<BleFrame>()
-        val reader = BufferedReader(InputStreamReader(inputStream))
-
-        var line: String?
-        var lineNumber = 0
-
-        while (reader.readLine().also { line = it } != null && frames.size < maxFrames) {
-            lineNumber++
-            line?.let {
-                try {
-                    // Parse the CSV line: timestamp,hex_data
-                    val parts = it.split(",")
-                    if (parts.size >= 2) {
-                        val timestampStr = parts[0].trim()
-                        val hexData = parts[1].trim()
-
-                        // Convert hex string to byte array
-                        val bleData = ByteUtils.hexToBytes(hexData)
-
-                        // Parse timestamp (HH:MM:SS.mmm) to milliseconds since start
-                        val timeParts = timestampStr.split(":", ".")
-                        if (timeParts.size >= 4) {
-                            val milliseconds =
-                                timeParts[0].toInt() * 3600000 +  // hours to ms
-                                        timeParts[1].toInt() * 60000 +   // minutes to ms
-                                        timeParts[2].toInt() * 1000 +    // seconds to ms
-                                        timeParts[3].toInt()             // milliseconds
-
-                            frames.add(
-                                BleFrame(
-                                    timestamp = milliseconds.toLong(),
-                                    bleData = bleData,
-                                    metadata = "Line $lineNumber"
-                                )
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    println("Warning: Could not parse line $lineNumber: ${e.message}")
-                }
-            }
-        }
-
-        return frames
+    private fun loadKingsongFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<WheelLogFrame> {
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
+        WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
+        return result.frames
     }
 
     /**
@@ -366,27 +321,4 @@ class WheelLogKingsongTest {
     /**
      * Data class to represent a BLE frame with metadata
      */
-    data class BleFrame(
-        val timestamp: Long,
-        val bleData: ByteArray,
-        val metadata: String
-    ) {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (javaClass != other?.javaClass) return false
-
-            other as BleFrame
-
-            if (timestamp != other.timestamp) return false
-            if (!bleData.contentEquals(other.bleData)) return false
-
-            return true
-        }
-
-        override fun hashCode(): Int {
-            var result = timestamp.hashCode()
-            result = 31 * result + bleData.contentHashCode()
-            return result
-        }
-    }
 }
