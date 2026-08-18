@@ -169,7 +169,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private var lastKnownBmsTemperatures: List<Double>? = null
 
     @Volatile
-    private var lastKnownBmsCellVoltages: List<Double>? = null
+    private var lastKnownBmsPackVoltages: List<Double>? = null
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
@@ -806,7 +806,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             offset += 8
         }
         if (packVoltages.isNotEmpty()) {
-            lastKnownBmsCellVoltages = packVoltages
+            lastKnownBmsPackVoltages = packVoltages
         }
     }
 
@@ -945,9 +945,23 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val voltage = lastKnownBmsVoltage
         val current = lastKnownBmsCurrent
         val temperatures = lastKnownBmsTemperatures
-        val cellVoltages = lastKnownBmsCellVoltages
-        if (voltage == null && current == null && temperatures.isNullOrEmpty() && cellVoltages.isNullOrEmpty()) {
+        val packVoltages = lastKnownBmsPackVoltages
+        if (voltage == null && current == null && temperatures.isNullOrEmpty() && packVoltages.isNullOrEmpty()) {
             return null
+        }
+        if (!packVoltages.isNullOrEmpty()) {
+            return packVoltages.mapIndexed { index, packVoltage ->
+                BMSData(
+                    bmsIndex = index + 1,
+                    voltage = packVoltage,
+                    current = if (index == 0) current else null,
+                    remainingCapacity = null,
+                    factoryCapacity = null,
+                    cycles = null,
+                    temperatures = if (index == 0) temperatures?.takeIf { it.isNotEmpty() } else null,
+                    cellVoltages = null
+                )
+            }
         }
         return listOf(
             BMSData(
@@ -958,7 +972,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 factoryCapacity = null,
                 cycles = null,
                 temperatures = temperatures?.takeIf { it.isNotEmpty() },
-                cellVoltages = cellVoltages?.takeIf { it.isNotEmpty() }
+                cellVoltages = null
             )
         )
     }
