@@ -160,16 +160,14 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private var hasSeenLegacyRealtime: Boolean = false
 
     @Volatile
-    private var lastKnownBmsVoltage: Double? = null
+    private var lastKnownBmsSnapshot = InMotionBmsSnapshot()
 
-    @Volatile
-    private var lastKnownBmsCurrent: Double? = null
-
-    @Volatile
-    private var lastKnownBmsTemperatures: List<Double>? = null
-
-    @Volatile
-    private var lastKnownBmsPackVoltages: List<Double>? = null
+    private data class InMotionBmsSnapshot(
+        val voltage: Double? = null,
+        val current: Double? = null,
+        val temperatures: List<Double>? = null,
+        val packVoltages: List<Double>? = null
+    )
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
@@ -602,11 +600,13 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             mode = modeFromLegacy,
         )
             .also { decoded ->
-                lastKnownBmsVoltage = decoded.voltage
-                lastKnownBmsCurrent = decoded.current
-                lastKnownBmsTemperatures = listOfNotNull(
-                    decoded.temperature,
-                    decoded.motorTemperature
+                updateBmsSnapshot(
+                    voltage = decoded.voltage,
+                    current = decoded.current,
+                    temperatures = listOfNotNull(
+                        decoded.temperature,
+                        decoded.motorTemperature
+                    )
                 )
             }
     }
@@ -779,12 +779,14 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             mode = modeString,
         )
             .also { decoded ->
-                lastKnownBmsVoltage = decoded.voltage
-                lastKnownBmsCurrent = decoded.current
-                lastKnownBmsTemperatures = listOfNotNull(
-                    decoded.temperature,
-                    decoded.motorTemperature,
-                    decoded.temperature2
+                updateBmsSnapshot(
+                    voltage = decoded.voltage,
+                    current = decoded.current,
+                    temperatures = listOfNotNull(
+                        decoded.temperature,
+                        decoded.motorTemperature,
+                        decoded.temperature2
+                    )
                 )
             }
     }
@@ -806,7 +808,24 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             offset += 8
         }
         if (packVoltages.isNotEmpty()) {
-            lastKnownBmsPackVoltages = packVoltages
+            updateBmsSnapshot(packVoltages = packVoltages)
+        }
+    }
+
+    private fun updateBmsSnapshot(
+        voltage: Double? = null,
+        current: Double? = null,
+        temperatures: List<Double>? = null,
+        packVoltages: List<Double>? = null
+    ) {
+        synchronized(parseLock) {
+            val currentSnapshot = lastKnownBmsSnapshot
+            lastKnownBmsSnapshot = InMotionBmsSnapshot(
+                voltage = voltage ?: currentSnapshot.voltage,
+                current = current ?: currentSnapshot.current,
+                temperatures = (temperatures ?: currentSnapshot.temperatures)?.takeIf { it.isNotEmpty() },
+                packVoltages = (packVoltages ?: currentSnapshot.packVoltages)?.takeIf { it.isNotEmpty() }
+            )
         }
     }
 
@@ -816,6 +835,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun decodeTemperature(raw: Byte): Int = (raw.toInt() and 0xFF) + 80 - 256
 
+    // P6 motor temp uses a signed-byte +80°C encoding in the field consumed here:
+    // 0x00 -> 80°C, 0xB0(-80) -> 0°C, 0xFF(-1) -> 79°C. This intentionally
+    // differs from decodeTemperature(), which assumes an unsigned-byte input.
     private fun decodeP6SignedOffset80Temperature(raw: Int): Double =
         (raw + 80).toDouble()
 
@@ -942,10 +964,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     override fun getBMSData(): List<BMSData>? {
-        val voltage = lastKnownBmsVoltage
-        val current = lastKnownBmsCurrent
-        val temperatures = lastKnownBmsTemperatures
-        val packVoltages = lastKnownBmsPackVoltages
+        val snapshot = lastKnownBmsSnapshot
+        val voltage = snapshot.voltage
+        val current = snapshot.current
+        val temperatures = snapshot.temperatures
+        val packVoltages = snapshot.packVoltages
         if (voltage == null && current == null && temperatures.isNullOrEmpty() && packVoltages.isNullOrEmpty()) {
             return null
         }
