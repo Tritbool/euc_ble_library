@@ -7,6 +7,9 @@ import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogFrame
+import io.github.tritbool.euc.ble.test.WheelLogResources
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
@@ -24,14 +27,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogGotwayTest {
-    private val resourceDir = "/ble_frames/gotway/RAW_WHEELLOG/"
+    private val resourceDir = WheelLogResources.rawDir("gotway")
 
     // Delays match existing WheelLog async decoding tests to ensure capture-based test stability.
     private val collectorSubscriptionDelayMs = 100L
@@ -567,86 +568,9 @@ class WheelLogGotwayTest {
     private fun loadGotwayFrames(
         resourcePath: String,
         maxFrames: Int = Int.MAX_VALUE
-    ): List<BleFrame> {
-        val inputStream = javaClass.getResourceAsStream(resourcePath)
-            ?: throw IllegalArgumentException("Ressource introuvable: $resourcePath")
-
-        val frames = mutableListOf<BleFrame>()
-        BufferedReader(InputStreamReader(inputStream)).use { reader ->
-            var lineNumber = 0
-            reader.lineSequence().forEach { rawLine ->
-                if (frames.size >= maxFrames) return@forEach
-                lineNumber++
-                val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
-
-                // Split uniquement sur la première virgule (timestamp,hexdata)
-                val idx = line.indexOf(',')
-                if (idx <= 0 || idx >= line.length - 1) return@forEach
-
-                val timestampStr = line.substring(0, idx).trim()
-                var hexData = line.substring(idx + 1).trim()
-
-                // Retirer éventuelles quotes autour de la colonne hex
-                if (hexData.startsWith("\"") && hexData.endsWith("\"") && hexData.length >= 2) {
-                    hexData = hexData.substring(1, hexData.length - 1)
-                }
-
-                try {
-                    val bleData = ByteUtils.hexToBytes(hexData)
-                    val timestampMs = parseTimestampToMs(timestampStr)
-                    frames.add(
-                        BleFrame(
-                            timestamp = timestampMs,
-                            bleData = bleData,
-                            metadata = "L$lineNumber"
-                        )
-                    )
-                } catch (e: Exception) {
-                    // ignorer ligne malformée
-                }
-            }
-        }
-        return frames
+    ): List<WheelLogFrame> {
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
+        WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
+        return result.frames
     }
-
-    private fun parseTimestampToMs(ts: String): Long {
-        // Supporte HH:MM:SS.mmm ou MM:SS.mmm ou SS.mmm
-        val cleaned = ts.trim()
-        val parts = cleaned.split(':', '.')
-        return try {
-            when (parts.size) {
-                4 -> {
-                    val h = parts[0].toInt()
-                    val m = parts[1].toInt()
-                    val s = parts[2].toInt()
-                    val ms = parts[3].toInt()
-                    (h * 3600000 + m * 60000 + s * 1000 + ms).toLong()
-                }
-
-                3 -> {
-                    val m = parts[0].toInt()
-                    val s = parts[1].toInt()
-                    val ms = parts[2].toInt()
-                    (m * 60000 + s * 1000 + ms).toLong()
-                }
-
-                2 -> {
-                    val s = parts[0].toInt()
-                    val ms = parts[1].toInt()
-                    (s * 1000 + ms).toLong()
-                }
-
-                else -> cleaned.toLongOrNull() ?: 0L
-            }
-        } catch (e: Exception) {
-            0L
-        }
-    }
-
-    data class BleFrame(
-        val timestamp: Long,
-        val bleData: ByteArray,
-        val metadata: String
-    )
 }

@@ -1,10 +1,10 @@
 package io.github.tritbool.euc.ble.analysis
 
 import io.github.tritbool.euc.ble.SlowTest
+import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogResources
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import kotlin.math.roundToInt
 
 /**
@@ -27,54 +27,10 @@ class BleFrequencyAnalysisTest {
     // Helpers
     // -------------------------------------------------------------------------
 
-    /** Parses a WheelLog timestamp string to milliseconds.
-     *  Supports HH:MM:SS.mmm, MM:SS.mmm, SS.mmm and raw long values. */
-    private fun parseTimestampToMs(ts: String): Long {
-        val cleaned = ts.trim()
-        val parts = cleaned.split(':', '.')
-        return try {
-            when (parts.size) {
-                4 -> {
-                    val h = parts[0].toInt()
-                    val m = parts[1].toInt()
-                    val s = parts[2].toInt()
-                    val ms = parts[3].toInt()
-                    h * 3_600_000L + m * 60_000L + s * 1_000L + ms
-                }
-                3 -> {
-                    val m = parts[0].toInt()
-                    val s = parts[1].toInt()
-                    val ms = parts[2].toInt()
-                    m * 60_000L + s * 1_000L + ms
-                }
-                2 -> {
-                    val s = parts[0].toInt()
-                    val ms = parts[1].toInt()
-                    s * 1_000L + ms
-                }
-                else -> cleaned.toLongOrNull() ?: 0L
-            }
-        } catch (_: Exception) {
-            0L
-        }
-    }
-
     /** Loads all valid timestamps from a WheelLog RAW CSV resource. */
     private fun loadTimestamps(resourcePath: String): List<Long> {
-        val stream = javaClass.getResourceAsStream(resourcePath) ?: return emptyList()
-        val timestamps = mutableListOf<Long>()
-        BufferedReader(InputStreamReader(stream)).use { reader ->
-            reader.lineSequence().forEach { rawLine ->
-                val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
-                val idx = line.indexOf(',')
-                if (idx <= 0) return@forEach
-                try {
-                    timestamps.add(parseTimestampToMs(line.substring(0, idx)))
-                } catch (_: Exception) { /* skip malformed */ }
-            }
-        }
-        return timestamps
+        val result = runCatching { WheelLogCsvLoader.load(resourcePath) }.getOrNull() ?: return emptyList()
+        return result.frames.map { it.timestamp }
     }
 
     data class FrequencyStats(
@@ -211,7 +167,7 @@ class BleFrequencyAnalysisTest {
 
     @Test
     fun analyseBleFrequencyGotway() {
-        val dir = "/ble_frames/gotway/RAW_WHEELLOG/"
+        val dir = WheelLogResources.rawDir("gotway")
         val fallback = listOf(
             "RAW_2023_11_24_18_43_22.csv",
             "RAW_2023_11_25_15_11_39.csv",
@@ -246,7 +202,7 @@ class BleFrequencyAnalysisTest {
 
     @Test
     fun analyseBleFrequencyKingsong() {
-        val dir = "/ble_frames/kingsong/RAW_WHEELLOG/"
+        val dir = WheelLogResources.rawDir("kingsong")
         val fallback = listOf(
             "RAW_2023_08_19_18_34_07.csv",
             "RAW_2023_08_25_15_02_03.csv",
@@ -260,7 +216,7 @@ class BleFrequencyAnalysisTest {
 
     @Test
     fun analyseBleFrequencyNinebot() {
-        val dir = "/ble_frames/ninebot/RAW_WHEELLOG/"
+        val dir = WheelLogResources.rawDir("ninebot")
         val fallback = listOf(
             "RAW_2023_08_21_11_24_37.csv",
             "RAW_2023_09_07_11_18_45.csv",
@@ -273,7 +229,7 @@ class BleFrequencyAnalysisTest {
 
     @Test
     fun analyseBleFrequencyInMotion() {
-        val dir = "/ble_frames/inmotion/RAW_WHEELLOG/"
+        val dir = WheelLogResources.rawDir("inmotion")
         val fallback = listOf(
             "RAW_2026_03_11_08_20_23.csv",
             "RAW_2026_03_11_12_16_00.csv",
@@ -287,7 +243,7 @@ class BleFrequencyAnalysisTest {
 
     @Test
     fun analyseBleFrequencyLeaperkim() {
-        val dir = "/ble_frames/leaperkim/RAW_WHEELLOG/"
+        val dir = WheelLogResources.rawDir("leaperkim")
         val fallback = listOf(
             "RAW_2026_04_30_07_04_10.csv",
             "RAW_2026_04_30_20_08_09.csv"
@@ -298,7 +254,7 @@ class BleFrequencyAnalysisTest {
 
     @Test
     fun analyseBleFrequencyNosfet() {
-        val dir = "/ble_frames/nosfet/RAW_WHEELLOG/"
+        val dir = WheelLogResources.rawDir("nosfet")
         val fallback = listOf(
             "RAW_2026_05_08_18_55_45.csv"
         )

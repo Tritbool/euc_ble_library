@@ -25,5 +25,5 @@ Measured on every push via JaCoCo. Latest values are always in the
 
 Protocol decoders are validated against **raw BLE captures from real wheels**, not hand-crafted
 byte arrays. Captures are CSV files exported from WheelLog and stored in
-`src/test/resources/bleframes/<brand>/RAWWHEELLOG/`. Real bytes mean real edge cases:
+`src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/`. Real bytes mean real edge cases:
 fragmented frames, firmware quirks, and out-of-spec sequences are all represented.

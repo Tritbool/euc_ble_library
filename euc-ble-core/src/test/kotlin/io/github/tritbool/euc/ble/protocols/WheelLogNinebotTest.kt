@@ -1,22 +1,21 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
-import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogResources
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import kotlin.math.abs
 
 @SlowTest
 class WheelLogNinebotTest {
     companion object {
-        private const val MAX_MALFORMED_ROW_RATIO = 0.2
+        private const val MAX_MALFORMED_ROW_RATIO = WheelLogCsvLoader.DEFAULT_MAX_MALFORMED_RATIO
     }
 
-    private val resourceDir = "/ble_frames/ninebot/RAW_WHEELLOG/"
+    private val resourceDir = WheelLogResources.rawDir("ninebot")
 
     private lateinit var protocol: NinebotProtocol
 
@@ -81,35 +80,8 @@ class WheelLogNinebotTest {
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
-        val inputStream = javaClass.getResourceAsStream(resourcePath)
-            ?: throw IllegalArgumentException("Resource not found: $resourcePath")
-
-        val frames = mutableListOf<ByteArray>()
-        var malformedRows = 0
-        BufferedReader(InputStreamReader(inputStream)).use { reader ->
-            reader.lineSequence().forEach { rawLine ->
-                if (frames.size >= maxFrames) return@forEach
-                val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
-
-                val splitIndex = line.indexOf(',')
-                if (splitIndex <= 0 || splitIndex >= line.length - 1) return@forEach
-
-                val hex = line.substring(splitIndex + 1).trim().removeSurrounding("\"")
-                try {
-                    frames.add(ByteUtils.hexToBytes(hex))
-                } catch (_: IllegalArgumentException) {
-                    malformedRows++
-                }
-            }
-        }
-        val totalRows = frames.size + malformedRows
-        assertTrue("No parsable rows found in $resourcePath", totalRows > 0)
-        val maxMalformedRows = (totalRows * MAX_MALFORMED_ROW_RATIO).toInt()
-        assertTrue(
-            "Too many malformed rows in $resourcePath: $malformedRows out of $totalRows (max: $maxMalformedRows)",
-            malformedRows <= maxMalformedRows
-        )
-        return frames
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
+        WheelLogCsvLoader.assertHealthyParse(resourcePath, result, MAX_MALFORMED_ROW_RATIO)
+        return result.frames.map { it.bleData }
     }
 }

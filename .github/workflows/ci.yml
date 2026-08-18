@@ -131,6 +131,56 @@ jobs:
           PY
           cat .coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: WheelLog protocol test summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          reports_dir = Path("euc-ble-core/build/test-results/testDebugUnitTest")
+          out_file = Path(".wheellog-summary.md")
+          files = sorted(reports_dir.glob("TEST-io.github.tritbool.euc.ble.protocols.WheelLog*.xml"))
+
+          if not files:
+              out_file.write_text("## WheelLog protocol test summary\n\nNo WheelLog test reports found.\n")
+              raise SystemExit(0)
+
+          lines = [
+              "## WheelLog protocol test summary",
+              "",
+              "| Test class | Tests | Failed | Skipped | Time (s) |",
+              "|---|---:|---:|---:|---:|",
+          ]
+
+          total_tests = total_failed = total_skipped = 0
+          total_time = 0.0
+
+          for xml_file in files:
+              root = ET.parse(xml_file).getroot()
+              name = root.attrib.get("name", xml_file.stem.replace("TEST-", ""))
+              tests = int(root.attrib.get("tests", "0"))
+              failures = int(root.attrib.get("failures", "0")) + int(root.attrib.get("errors", "0"))
+              skipped = int(root.attrib.get("skipped", "0"))
+              time_s = float(root.attrib.get("time", "0"))
+
+              total_tests += tests
+              total_failed += failures
+              total_skipped += skipped
+              total_time += time_s
+
+              short_name = name.split(".")[-1]
+              lines.append(f"| `{short_name}` | {tests} | {failures} | {skipped} | {time_s:.2f} |")
+
+          lines.extend([
+              "",
+              f"**Totals:** tests={total_tests}, failed={total_failed}, skipped={total_skipped}, time={total_time:.2f}s"
+          ])
+
+          out_file.write_text("\n".join(lines) + "\n")
+          PY
+          cat .wheellog-summary.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

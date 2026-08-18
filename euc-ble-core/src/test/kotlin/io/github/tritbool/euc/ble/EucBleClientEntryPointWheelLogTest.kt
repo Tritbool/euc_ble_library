@@ -2,7 +2,6 @@ package io.github.tritbool.euc.ble
 
 import android.content.Context
 import io.github.tritbool.euc.ble.core.BLEManager
-import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.DataCallback
 import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.models.EUCData
@@ -13,6 +12,8 @@ import io.github.tritbool.euc.ble.protocols.KingsongProtocol
 import io.github.tritbool.euc.ble.protocols.LeaperkimProtocol
 import io.github.tritbool.euc.ble.protocols.NinebotZProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetProtocol
+import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogResources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,8 +25,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
 /**
  * End-to-end decoding tests that verify each registered protocol correctly decodes real BLE
@@ -66,7 +65,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun gotwayProtocolDecodesGotwayFrames() = runTest {
         val decoded = feedFramesWithProtocol<GotwayProtocol>(
-            resourcePath = "/ble_frames/gotway/RAW_WHEELLOG/RAW_2023_11_25_15_11_39.csv",
+            resourcePath = WheelLogResources.rawFile("gotway", "RAW_2023_11_25_15_11_39.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -80,7 +79,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun inMotionProtocolDecodesInMotionV8SFrames() = runTest {
         val decoded = feedFramesWithProtocol<InMotionProtocol>(
-            resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/RAW_inmotion_V8S.csv",
+            resourcePath = WheelLogResources.rawFile("inmotion", "RAW_inmotion_V8S.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -92,7 +91,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun inMotionProtocolDecodesInMotionP6Frames() = runTest {
         val decoded = feedFramesWithProtocol<InMotionProtocol>(
-            resourcePath = "/ble_frames/inmotion/RAW_WHEELLOG/P6_RAW_2026_05_11_14_05_18.csv",
+            resourcePath = WheelLogResources.rawFile("inmotion", "P6_RAW_2026_05_11_14_05_18.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -107,7 +106,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun kingsongProtocolDecodesKingsongFrames() = runTest {
         val decoded = feedFramesWithProtocol<KingsongProtocol>(
-            resourcePath = "/ble_frames/kingsong/RAW_WHEELLOG/RAW_2023_08_25_15_02_03.csv",
+            resourcePath = WheelLogResources.rawFile("kingsong", "RAW_2023_08_25_15_02_03.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -122,7 +121,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun leaperkimProtocolDecodesLeaperkimFrames() = runTest {
         val decoded = feedFramesWithProtocol<LeaperkimProtocol>(
-            resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
+            resourcePath = WheelLogResources.rawFile("leaperkim", "RAW_2026_04_30_07_04_10.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -137,7 +136,7 @@ class EucBleClientEntryPointWheelLogTest {
         // LeaperkimProtocol is used directly here — NosfetProtocol is the right choice when the
         // device has been identified as a Nosfet wheel (see nosfetProtocolDecodesNosfetFrames).
         val decoded = feedFramesWithProtocol<LeaperkimProtocol>(
-            resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
+            resourcePath = WheelLogResources.rawFile("nosfet", "RAW_2026_05_08_18_55_45.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -148,7 +147,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun leaperkimProtocolDecodesPattonFrames() = runTest {
         val decoded = feedFramesWithProtocol<LeaperkimProtocol>(
-            resourcePath = "/ble_frames/leaperkim/RAW_WHEELLOG/RAW_2026_04_30_07_04_10.csv",
+            resourcePath = WheelLogResources.rawFile("leaperkim", "RAW_2026_04_30_07_04_10.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -163,7 +162,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun nosfetProtocolDecodesNosfetFrames() = runTest {
         val decoded = feedFramesWithProtocol<NosfetProtocol>(
-            resourcePath = "/ble_frames/nosfet/RAW_WHEELLOG/RAW_2026_05_08_18_55_45.csv",
+            resourcePath = WheelLogResources.rawFile("nosfet", "RAW_2026_05_08_18_55_45.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -178,7 +177,7 @@ class EucBleClientEntryPointWheelLogTest {
     @Test
     fun ninebotZProtocolDecodesNinebotZFrames() = runTest {
         val decoded = feedFramesWithProtocol<NinebotZProtocol>(
-            resourcePath = "/ble_frames/ninebot/RAW_WHEELLOG/RAW_2023_08_21_11_24_37.csv",
+            resourcePath = WheelLogResources.rawFile("ninebot", "RAW_2023_08_21_11_24_37.csv"),
             maxFrames = 300,
             expectedFrames = 1
         )
@@ -229,20 +228,8 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int): List<ByteArray> {
-        val stream = javaClass.getResourceAsStream(resourcePath)
-            ?: throw IllegalArgumentException("Missing resource $resourcePath")
-        val frames = mutableListOf<ByteArray>()
-        BufferedReader(InputStreamReader(stream)).use { reader ->
-            reader.lineSequence().forEach { rawLine ->
-                if (frames.size >= maxFrames) return@forEach
-                val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
-                val comma = line.indexOf(',')
-                if (comma <= 0 || comma >= line.length - 1) return@forEach
-                val hex = line.substring(comma + 1).trim().removeSurrounding("\"")
-                runCatching { ByteUtils.hexToBytes(hex) }.getOrNull()?.let(frames::add)
-            }
-        }
-        return frames
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
+        WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
+        return result.frames.map { it.bleData }
     }
 }
