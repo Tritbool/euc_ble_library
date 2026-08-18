@@ -159,7 +159,7 @@ class KingsongProtocolTest {
         return data
     }
 
-    // --- Tests for frame 0xB9 (distance/fan/temp2) ---
+    // --- Tests for frame 0xB9 (distance/fan/temperature2) ---
 
     @Test
     fun decodeB9ThenA9IncludesTopSpeedAndFan() = runTest {

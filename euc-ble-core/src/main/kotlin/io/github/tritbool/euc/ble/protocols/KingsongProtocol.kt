@@ -23,7 +23,7 @@ import java.util.UUID
  * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
  * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
  *
- * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/temp2), 0xBB (name/model/version),
+ * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/temperature2), 0xBB (name/model/version),
  * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
  * 0xF1/0xF2 (Smart BMS data).
  */
