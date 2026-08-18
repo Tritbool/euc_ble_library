@@ -14,11 +14,26 @@ object WheelLogResources {
     fun rawFile(brand: String, fileName: String): String = "${rawDir(brand)}$fileName"
 }
 
-data class WheelLogFrame(
-    val timestampMs: Long,
+class WheelLogFrame(
+    val timestamp: Long,
     val bleData: ByteArray,
     val metadata: String
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is WheelLogFrame) return false
+        if (timestamp != other.timestamp) return false
+        if (!bleData.contentEquals(other.bleData)) return false
+        return metadata == other.metadata
+    }
+
+    override fun hashCode(): Int {
+        var result = timestamp.hashCode()
+        result = 31 * result + bleData.contentHashCode()
+        result = 31 * result + metadata.hashCode()
+        return result
+    }
+}
 
 data class WheelLogLoadResult(
     val frames: List<WheelLogFrame>,
@@ -43,37 +58,37 @@ object WheelLogCsvLoader {
 
         BufferedReader(InputStreamReader(stream)).use { reader ->
             var lineNumber = 0
-            reader.lineSequence().forEach { rawLine ->
-                if (frames.size >= maxFrames) return@forEach
+            while (totalRows < maxFrames) {
+                val rawLine = reader.readLine() ?: break
                 lineNumber++
 
                 val line = rawLine.trim()
-                if (line.isEmpty()) return@forEach
+                if (line.isEmpty()) continue
+
+                if (lineNumber == 1 && line.startsWith("timestamp", ignoreCase = true)) {
+                    continue
+                }
 
                 val splitIndex = line.indexOf(',')
                 if (splitIndex <= 0 || splitIndex >= line.length - 1) {
                     malformedRows++
                     totalRows++
-                    return@forEach
+                    continue
                 }
 
                 val ts = line.substring(0, splitIndex).trim()
-                if (lineNumber == 1 && ts.equals("timestamp", ignoreCase = true)) {
-                    return@forEach
-                }
-
                 val hex = line.substring(splitIndex + 1).trim().removeSurrounding("\"")
                 if (hex.isEmpty()) {
                     malformedRows++
                     totalRows++
-                    return@forEach
+                    continue
                 }
 
                 totalRows++
                 try {
                     frames.add(
                         WheelLogFrame(
-                            timestampMs = parseTimestampToMs(ts),
+                            timestamp = parseTimestampToMs(ts),
                             bleData = ByteUtils.hexToBytes(hex),
                             metadata = "L$lineNumber"
                         )
@@ -85,10 +100,6 @@ object WheelLogCsvLoader {
         }
 
         return WheelLogLoadResult(frames = frames, totalRows = totalRows, malformedRows = malformedRows)
-    }
-
-    fun loadBytes(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): WheelLogLoadResult {
-        return load(resourcePath, maxFrames)
     }
 
     fun assertHealthyParse(

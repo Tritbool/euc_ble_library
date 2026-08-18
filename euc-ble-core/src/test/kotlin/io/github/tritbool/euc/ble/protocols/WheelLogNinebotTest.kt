@@ -80,7 +80,7 @@ class WheelLogNinebotTest {
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<ByteArray> {
-        val result = WheelLogCsvLoader.loadBytes(resourcePath, maxFrames)
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
         WheelLogCsvLoader.assertHealthyParse(resourcePath, result, MAX_MALFORMED_ROW_RATIO)
         return result.frames.map { it.bleData }
     }

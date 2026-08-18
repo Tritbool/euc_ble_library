@@ -220,7 +220,7 @@ class WheelLogKingsongTest {
         var totalFrames = 0
         var decodedFrames = 0
         var edgeCasesFound = 0
-        val telemetryFrames = mutableListOf<BleFrame>()
+        val telemetryFrames = mutableListOf<WheelLogFrame>()
         testFiles.forEach { filename ->
             val frames = loadKingsongFrames("$testDataPath/$filename", maxFrames = 4000)
             val telemetryFromFile = frames.filter(::isA9TelemetryFrame)

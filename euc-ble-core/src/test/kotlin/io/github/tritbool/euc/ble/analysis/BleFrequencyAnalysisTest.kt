@@ -30,7 +30,7 @@ class BleFrequencyAnalysisTest {
     /** Loads all valid timestamps from a WheelLog RAW CSV resource. */
     private fun loadTimestamps(resourcePath: String): List<Long> {
         val result = runCatching { WheelLogCsvLoader.load(resourcePath) }.getOrNull() ?: return emptyList()
-        return result.frames.map { it.timestampMs }
+        return result.frames.map { it.timestamp }
     }
 
     data class FrequencyStats(

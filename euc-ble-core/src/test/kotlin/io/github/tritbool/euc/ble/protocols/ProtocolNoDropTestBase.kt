@@ -85,7 +85,7 @@ sealed class ProtocolNoDropTestBase {
         resourcePath: String,
         maxFrames: Int = Int.MAX_VALUE
     ): List<ByteArray> {
-        val result = WheelLogCsvLoader.loadBytes(resourcePath, maxFrames)
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
         WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
         return result.frames.map { it.bleData }
     }

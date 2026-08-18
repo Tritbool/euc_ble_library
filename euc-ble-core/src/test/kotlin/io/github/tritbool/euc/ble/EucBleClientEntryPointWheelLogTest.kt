@@ -228,7 +228,7 @@ class EucBleClientEntryPointWheelLogTest {
     }
 
     private fun loadFrames(resourcePath: String, maxFrames: Int): List<ByteArray> {
-        val result = WheelLogCsvLoader.loadBytes(resourcePath, maxFrames)
+        val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
         WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
         return result.frames.map { it.bleData }
     }
