@@ -62,6 +62,7 @@ class InMotionProtocolTest {
         assertEquals(1.95, decoded.first().pwm ?: -1.0, 0.01)
         assertEquals(29.0, decoded.first().temperature, 0.01)
         assertEquals(25.0, decoded.first().motorTemperature ?: -1.0, 0.01)
+        assertEquals(30.0, decoded.first().temperature2 ?: -1.0, 0.01)
         assertEquals(60, decoded.first().batteryLevel)
         assertEquals(0.06, decoded.first().distance, 0.01)
         assertEquals(252.33, decoded.first().totalDistance ?: -1.0, 0.01)
@@ -298,6 +299,9 @@ class InMotionProtocolTest {
         assertEquals("InMotion P6", data!!.model)
         assertNotNull(data.phaseCurrent)
         assertEquals(9.70 / 0.586, data.phaseCurrent!!, 0.05)
+        assertEquals(25.0, data.temperature, 0.01)
+        assertEquals(80.0, data.motorTemperature ?: -1.0, 0.01)
+        assertEquals(30.0, data.temperature2 ?: -1.0, 0.01)
     }
 
     @Test
@@ -317,6 +321,25 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("InMotion V9", data!!.model)
         assertEquals(null, data.phaseCurrent)
+    }
+
+    @Test
+    fun getBMSDataReturnsPartialInMotionDataWhenTelemetryWasDecoded() {
+        val packets = listOf(
+            "aaaa11088201020c0101010095",
+            "aaaa11178202413134323139353041303030343635460000000000fd",
+            "aaaa11388206222800040719000802212600080101000902230a0004010a0002012401000102010001012501000102010001012f0500050101000000b8",
+            "aaaa1457843e1e0c000000000000000000afffc30000000000ffffd7fe000000000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cdc900ceb0cec8ceb03a6400000000004900000000000000000000003f"
+        )
+        packets.forEach { protocol.decode(ByteUtils.hexToBytes(it)) }
+
+        val bms = protocol.getBMSData()
+        assertNotNull(bms)
+        assertEquals(1, bms!!.size)
+        assertNotNull(bms.first().voltage)
+        assertNotNull(bms.first().current)
+        assertNotNull(bms.first().temperatures)
+        assertTrue((bms.first().temperatures ?: emptyList()).size >= 3)
     }
 
     private fun loadWheelLogFrames(

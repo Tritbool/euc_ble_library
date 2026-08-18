@@ -31,6 +31,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
         private const val COMMAND_MAIN_INFO = 0x02
         private const val COMMAND_REAL_TIME_INFO = 0x04
+        private const val COMMAND_BATTERY_INFO = 0x05
         private const val COMMAND_TOTAL_STATS = 0x11
         private const val COMMAND_CONTROL = 0x60
 
@@ -157,6 +158,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     @Volatile
     private var hasSeenLegacyRealtime: Boolean = false
+
+    @Volatile
+    private var lastKnownBmsVoltage: Double? = null
+
+    @Volatile
+    private var lastKnownBmsCurrent: Double? = null
+
+    @Volatile
+    private var lastKnownBmsTemperatures: List<Double>? = null
+
+    @Volatile
+    private var lastKnownBmsCellVoltages: List<Double>? = null
 
     override fun decode(data: ByteArray): EUCData? {
         if (data.isEmpty()) return null
@@ -457,6 +470,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 hasSeenV2Realtime = true
             }
 
+            COMMAND_BATTERY_INFO -> {
+                lastDetectedDialect = Dialect.V2
+                parseBatteryInfo(payload)
+                null
+            }
+
             else -> null
         }
     }
@@ -582,6 +601,14 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             totalDistance = totalDistanceKm,
             mode = modeFromLegacy,
         )
+            .also { decoded ->
+                lastKnownBmsVoltage = decoded.voltage
+                lastKnownBmsCurrent = decoded.current
+                lastKnownBmsTemperatures = listOfNotNull(
+                    decoded.temperature,
+                    decoded.motorTemperature
+                )
+            }
     }
 
     private fun parseMainInfo(payload: ByteArray) {
@@ -655,6 +682,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun parseRealTime(payload: ByteArray, rawFrame: ByteArray): EUCData? {
         if (payload.size < 78) return null
 
+        val isP6 = modelName == "InMotion P6"
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
@@ -674,12 +702,24 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
         val distanceKm = (ByteUtils.getUnsignedShortLE(payload, 28) * 10.0) / 1000.0
 
-        val battery1 = ByteUtils.getUnsignedShortLE(payload, 34)
-        val battery2 = ByteUtils.getUnsignedShortLE(payload, 36)
-        // Use the higher of the two battery banks to match the InMotion app display.
-        // The two banks track independently and averaging reads ~2% low vs the
-        // manufacturer app (per eucplanet research).
-        val battery = (maxOf(battery1, battery2) / 100.0).roundToInt().coerceIn(0, 100)
+        val battery = if (isP6) {
+            val battery1 = ByteUtils.tryGetUnsignedShortLE(payload, 20)?.let { it / 100.0 }
+            val battery2 = ByteUtils.tryGetUnsignedShortLE(payload, 22)?.let { it / 100.0 }
+            val avg = when {
+                battery1 != null && battery2 != null && (battery1 > 0.0 || battery2 > 0.0) -> (battery1 + battery2) / 2.0
+                battery1 != null && battery1 > 0.0 -> battery1
+                battery2 != null && battery2 > 0.0 -> battery2
+                else -> null
+            }
+            (avg ?: 0.0).roundToInt().coerceIn(0, 100)
+        } else {
+            val battery1 = ByteUtils.getUnsignedShortLE(payload, 34)
+            val battery2 = ByteUtils.getUnsignedShortLE(payload, 36)
+            // Use the higher of the two battery banks to match the InMotion app display.
+            // The two banks track independently and averaging reads ~2% low vs the
+            // manufacturer app (per eucplanet research).
+            (maxOf(battery1, battery2) / 100.0).roundToInt().coerceIn(0, 100)
+        }
 
         // Dynamic speed limit at offset 40 (reported in 0.01 km/h units).
         val dynSpeedLimit = ByteUtils.tryGetUnsignedShortLE(payload, 40)
@@ -688,6 +728,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
         val mosTemp = decodeTemperature(payload[58])
         val boardTemp = decodeTemperature(payload[59])
+        val imuTemp = ByteUtils.tryGetUnsignedByte(payload, 63)?.let { decodeTemperature(it.toByte()) }
+        val p6MotorTemp = if (isP6) {
+            ByteUtils.tryGetSignedByte(payload, 31)?.let { decodeP6SignedOffset80Temperature(it) }
+        } else {
+            null
+        }
+        val telemetryTemp = if (isP6) boardTemp.toDouble() else mosTemp.toDouble()
+        val telemetryMotorTemp = p6MotorTemp ?: boardTemp.toDouble()
+        val telemetryTemp2 = imuTemp?.toDouble()
         val stateByte = payload[74].toInt() and 0xFF
         val isCharging = ((stateByte shr 7) and 0x01) == 1
         val now = System.currentTimeMillis()
@@ -705,7 +754,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             speed = speed,
             voltage = voltage,
             current = current,
-            temperature = mosTemp.toDouble(),
+            temperature = telemetryTemp,
             batteryLevel = battery,
             distance = distanceKm,
             power = voltage * current,
@@ -721,13 +770,23 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             isCharging = isCharging,
             rideTime = rideTimeSeconds,
             cellVoltages = null,
-            motorTemperature = boardTemp.toDouble(),
+            motorTemperature = telemetryMotorTemp,
+            temperature2 = telemetryTemp2,
             totalDistance = totalDistanceKm,
             angle = pitchAngle,
             roll = rollAngle,
             speedLimit = dynSpeedLimit,
             mode = modeString,
         )
+            .also { decoded ->
+                lastKnownBmsVoltage = decoded.voltage
+                lastKnownBmsCurrent = decoded.current
+                lastKnownBmsTemperatures = listOfNotNull(
+                    decoded.temperature,
+                    decoded.motorTemperature,
+                    decoded.temperature2
+                )
+            }
     }
 
     private fun deriveV2RideTimeSeconds(nowMs: Long): Long {
@@ -735,11 +794,30 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return ((nowMs - start) / 1000L).coerceAtLeast(0L)
     }
 
+    private fun parseBatteryInfo(payload: ByteArray) {
+        if (payload.size < 32) return
+        val packVoltages = mutableListOf<Double>()
+        var offset = 0
+        repeat(4) {
+            val packCentiVolts = ByteUtils.tryGetUnsignedShortLE(payload, offset) ?: 0
+            if (packCentiVolts > 0) {
+                packVoltages.add(packCentiVolts / 100.0)
+            }
+            offset += 8
+        }
+        if (packVoltages.isNotEmpty()) {
+            lastKnownBmsCellVoltages = packVoltages
+        }
+    }
+
     private fun allowsActivePolling(): Boolean {
         return lastDetectedDialect != Dialect.LEGACY_V1
     }
 
     private fun decodeTemperature(raw: Byte): Int = (raw.toInt() and 0xFF) + 80 - 256
+
+    private fun decodeP6SignedOffset80Temperature(raw: Int): Double =
+        (raw + 80).toDouble()
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         if (!allowsActivePolling()) return byteArrayOf()
@@ -833,7 +911,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             CommandType.REQUEST_SERIAL,
             CommandType.REQUEST_FIRMWARE -> command == COMMAND_MAIN_INFO
 
-            CommandType.REQUEST_BATTERY_INFO -> command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS
+            CommandType.REQUEST_BATTERY_INFO ->
+                command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
             else -> false
         }
     }
@@ -862,20 +941,27 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         }
     }
 
-    /**
-     * InMotion V2 protocol does not expose individual cell voltage data in the
-     * standard telemetry frames. The P6 has a 56S4P battery configuration (56 cells
-     * in series, 4 in parallel) with nominal voltage of 201.6V (3.6V per cell) and
-     * full charge voltage of 235.2V (4.2V per cell).
-     * 
-     * After analyzing the raw frame data from test resources, no BMS cell voltage
-     * information was found in the available frame types (MAIN_INFO, REAL_TIME_INFO,
-     * TOTAL_STATS). The protocol may not expose individual cell voltages through
-     * the standard BLE interface.
-     * 
-     * Returns null as BMS data is not available through the current protocol implementation.
-     */
-    override fun getBMSData(): List<BMSData>? = null
+    override fun getBMSData(): List<BMSData>? {
+        val voltage = lastKnownBmsVoltage
+        val current = lastKnownBmsCurrent
+        val temperatures = lastKnownBmsTemperatures
+        val cellVoltages = lastKnownBmsCellVoltages
+        if (voltage == null && current == null && temperatures.isNullOrEmpty() && cellVoltages.isNullOrEmpty()) {
+            return null
+        }
+        return listOf(
+            BMSData(
+                bmsIndex = 1,
+                voltage = voltage,
+                current = current,
+                remainingCapacity = null,
+                factoryCapacity = null,
+                cycles = null,
+                temperatures = temperatures?.takeIf { it.isNotEmpty() },
+                cellVoltages = cellVoltages?.takeIf { it.isNotEmpty() }
+            )
+        )
+    }
 
     override fun close() {
         // No resources to clean up
