@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
+import app.cash.turbine.Event
 import app.cash.turbine.test
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
@@ -84,13 +85,15 @@ class WheelLogNosfetTest {
             repeat(MIN_EXPECTED_DECODED_FRAMES) {
                 decoded += awaitItem()
             }
+            val remainingEvents = cancelAndConsumeRemainingEvents()
+            val firstError = remainingEvents.firstOrNull { it is Event.Error }
+            assertTrue("Expected no error events but got: $firstError", firstError == null)
 
             assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
             assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
             assertTrue(decoded.all { it.rideTime >= 0 })
             assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
-            cancelAndIgnoreRemainingEvents()
         }
     }
 
