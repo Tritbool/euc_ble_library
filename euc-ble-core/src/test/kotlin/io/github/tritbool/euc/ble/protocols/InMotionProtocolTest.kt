@@ -3,6 +3,7 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
@@ -364,7 +365,7 @@ class InMotionProtocolTest {
         } catch (_: TimeoutCancellationException) {
             // expected
         }
-        assertTrue(!emitted)
+        assertFalse(emitted)
     }
 
     @Test
