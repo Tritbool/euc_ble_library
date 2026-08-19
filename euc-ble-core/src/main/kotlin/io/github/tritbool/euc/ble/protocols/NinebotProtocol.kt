@@ -446,7 +446,7 @@ class NinebotProtocol : EUCProtocol {
             ?.takeIf { it in -300.0..300.0 }
 
         val cellVoltages = buildList {
-            var offset = 0
+            var offset = 4
             while (offset + 1 < payload.size) {
                 val raw = ByteUtils.tryGetUnsignedShortLE(payload, offset) ?: break
                 if (raw in 2000..5000) add(raw / 1000.0)
