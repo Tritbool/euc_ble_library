@@ -20,6 +20,10 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogNosfetTest {
+    companion object {
+        private const val MIN_EXPECTED_DECODED_FRAMES = 1200
+        private const val MAX_DECODED_FRAMES_TO_COLLECT = 1500
+    }
 
     private val resourceDir = WheelLogResources.rawDir("nosfet")
     private lateinit var protocol: NosfetProtocol
@@ -80,7 +84,7 @@ class WheelLogNosfetTest {
             testScheduler.advanceUntilIdle()
 
             val decoded = mutableListOf<EUCData>()
-            while (decoded.size < 1500) {
+            while (decoded.size < MAX_DECODED_FRAMES_TO_COLLECT) {
                 when (val event = withTimeoutOrNull(150.milliseconds) { awaitEvent() } ?: break) {
                     is Event.Item<EUCData> -> decoded += event.value
                     is Event.Error -> throw event.throwable
@@ -88,7 +92,10 @@ class WheelLogNosfetTest {
                 }
             }
 
-            assertTrue("Expected at least 1200 decoded Nosfet frames, got ${decoded.size}", decoded.size >= 1200)
+            assertTrue(
+                "Expected at least $MIN_EXPECTED_DECODED_FRAMES decoded Nosfet frames, got ${decoded.size}",
+                decoded.size >= MIN_EXPECTED_DECODED_FRAMES
+            )
             assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
             assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
             assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
