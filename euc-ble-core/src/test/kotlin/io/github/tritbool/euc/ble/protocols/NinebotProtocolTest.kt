@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
@@ -98,6 +99,117 @@ class NinebotProtocolTest {
         assertNotNull(decoded)
         assertEquals("N3OTL2047C003", decoded?.serialNumber)
         assertEquals("3.2.1", decoded?.firmwareVersion)
+    }
+
+    @Test
+    fun decodeNinebotZSettingsFramesCarryForwardIntoTelemetryAndSnapshot() {
+        protocol.decode(wheelLogFrame(0x68, "Z-1.0".toByteArray()))
+        protocol.decode(wheelLogFrame(0x70, byteArrayOf(0x01, 0x00)))
+        protocol.decode(wheelLogFrame(0x72, byteArrayOf(0x01, 0x00)))
+        protocol.decode(wheelLogFrame(0x74, byteArrayOf(0x98.toByte(), 0x08))) // 22.00 km/h
+        protocol.decode(wheelLogFrame(0x7C, byteArrayOf(0x05, 0x00)))
+        protocol.decode(wheelLogFrame(0x7D, byteArrayOf(0x66, 0x08))) // 21.50 km/h
+        protocol.decode(wheelLogFrame(0x7E, byteArrayOf(0xFC.toByte(), 0x08))) // 23.00 km/h
+        protocol.decode(wheelLogFrame(0x7F, byteArrayOf(0x92.toByte(), 0x09))) // 24.50 km/h
+        protocol.decode(wheelLogFrame(0xC6, byteArrayOf(0x03)))
+        protocol.decode(wheelLogFrame(0xD2, byteArrayOf(0x2A, 0x00)))
+        protocol.decode(wheelLogFrame(0xD3, byteArrayOf(0x05, 0x00)))
+        protocol.decode(wheelLogFrame(0xF5, byteArrayOf(0x18, 0x00)))
+
+        val payload = ByteArray(32)
+        payload[8] = 88.toByte()
+        writeSignedShortLE(payload, 10, 80)
+        writeIntLE(payload, 14, 42_000)
+        writeShortLE(payload, 22, 215)
+        writeShortLE(payload, 24, 5_620)
+        writeSignedShortLE(payload, 26, 150)
+
+        val decoded = protocol.decode(wheelLogFrame(0xB0, payload))
+        assertNotNull(decoded)
+        assertEquals(22.0, decoded?.speedLimit ?: 0.0, 0.001)
+        assertEquals(5, decoded?.alertFlags)
+        assertEquals(22, decoded?.alarm1Speed)
+        assertEquals(23, decoded?.alarm2Speed)
+        assertEquals(25, decoded?.alarm3Speed)
+        assertEquals(3, decoded?.ledMode)
+        assertEquals(1, decoded?.lightMode)
+        assertEquals(42, decoded?.pedalsMode)
+
+        val snapshot = protocol.getZSettingsSnapshot()
+        assertEquals("Z-1.0", snapshot.bleVersion)
+        assertEquals(1, snapshot.lockState)
+        assertEquals(true, snapshot.limitedModeEnabled)
+        assertEquals(22.0, snapshot.speedLimitKmh ?: 0.0, 0.001)
+        assertEquals(5, snapshot.alarmsArmedMask)
+        assertEquals(22, snapshot.alarm1SpeedKmh)
+        assertEquals(23, snapshot.alarm2SpeedKmh)
+        assertEquals(25, snapshot.alarm3SpeedKmh)
+        assertEquals(3, snapshot.ledMode)
+        assertEquals(5, snapshot.driveFlags)
+        assertEquals(true, snapshot.drlEnabled)
+        assertEquals(true, snapshot.headlightEnabled)
+        assertEquals(3, snapshot.speakerVolumeStep)
+    }
+
+    @Test
+    fun decodeNinebotZAuthAndBmsFramesExposeSnapshotsAndBmsData() {
+        protocol.decode(wheelLogFrame(0x1D, "AUTH-KEY-123".toByteArray()))
+        protocol.decode(
+            wheelLogFrame(
+                0x24,
+                byteArrayOf(
+                    0xE8.toByte(),
+                    0x15,
+                    0x83.toByte(),
+                    0xFF.toByte(),
+                    0x68,
+                    0x10,
+                    0x63,
+                    0x10,
+                    0x5C,
+                    0x10,
+                    0x53,
+                    0x10
+                )
+            )
+        )
+        protocol.decode(
+            wheelLogFrame(
+                0x25,
+                byteArrayOf(
+                    0xD6.toByte(),
+                    0x15,
+                    0x50,
+                    0x00,
+                    0x62,
+                    0x10,
+                    0x61,
+                    0x10,
+                    0x5E,
+                    0x10,
+                    0x58,
+                    0x10
+                )
+            )
+        )
+
+        val snapshot = protocol.getZSettingsSnapshot()
+        assertEquals("AUTH-KEY-123", snapshot.authKeyAscii)
+        assertEquals("415554482D4B45592D313233", snapshot.authKeyHex)
+
+        val bmsSnapshots = protocol.getZBmsSnapshots()
+        assertEquals(2, bmsSnapshots.size)
+        assertEquals(56.08, bmsSnapshots[0].voltage ?: 0.0, 0.001)
+        assertEquals(-1.25, bmsSnapshots[0].current ?: 0.0, 0.001)
+        assertEquals(4.2, bmsSnapshots[0].cellVoltages?.first() ?: 0.0, 0.001)
+        assertFalse(bmsSnapshots[0].rawPayloadHex.isBlank())
+
+        val bmsData = protocol.getBMSData()
+        assertNotNull(bmsData)
+        assertEquals(2, bmsData?.size)
+        assertEquals(1, bmsData?.get(0)?.bmsIndex)
+        assertEquals(2, bmsData?.get(1)?.bmsIndex)
+        assertEquals(4, bmsData?.get(1)?.cellVoltages?.size)
     }
 
     private fun wheelLogFrame(parameter: Int, payload: ByteArray): ByteArray {

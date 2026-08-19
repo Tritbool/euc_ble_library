@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
@@ -20,6 +21,21 @@ class NinebotZProtocol : EUCProtocol {
         private const val WHEELLOG_TELEMETRY_TYPE = 0xB0
         private const val WHEELLOG_SERIAL_TYPE = 0x10
         private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
+        private const val WHEELLOG_AUTH_KEY_TYPE = 0x1D
+        private const val WHEELLOG_BMS1_TYPE = 0x24
+        private const val WHEELLOG_BMS2_TYPE = 0x25
+        private const val WHEELLOG_BLE_VERSION_TYPE = 0x68
+        private const val WHEELLOG_LOCK_MODE_TYPE = 0x70
+        private const val WHEELLOG_LIMITED_MODE_TYPE = 0x72
+        private const val WHEELLOG_SPEED_LIMIT_TYPE = 0x74
+        private const val WHEELLOG_ALARMS_ARMED_TYPE = 0x7C
+        private const val WHEELLOG_ALARM1_TYPE = 0x7D
+        private const val WHEELLOG_ALARM2_TYPE = 0x7E
+        private const val WHEELLOG_ALARM3_TYPE = 0x7F
+        private const val WHEELLOG_LED_MODE_TYPE = 0xC6
+        private const val WHEELLOG_PEDAL_SENSITIVITY_TYPE = 0xD2
+        private const val WHEELLOG_DRIVE_FLAGS_TYPE = 0xD3
+        private const val WHEELLOG_SPEAKER_VOLUME_TYPE = 0xF5
 
         private val WHEELLOG_HEADER: ByteArray = BLEConstants.NINEBOT_WHEELLOG_FRAME_HEADER
 
@@ -70,6 +86,10 @@ class NinebotZProtocol : EUCProtocol {
      * in the `00001800` spec ensures we match NinebotZ and not InMotion V2.
      */
     override fun decode(data: ByteArray): EUCData? = delegate.decode(data)
+
+    fun getZSettingsSnapshot(): NinebotProtocol.ZSettingsSnapshot = delegate.getZSettingsSnapshot()
+    fun getZBmsSnapshots(): List<NinebotProtocol.ZBmsSnapshot> = delegate.getZBmsSnapshots()
+    override fun getBMSData(): List<BMSData>? = delegate.getBMSData()
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {
@@ -165,11 +185,37 @@ class NinebotZProtocol : EUCProtocol {
                 CommandType.REQUEST_SERIAL -> frameType == WHEELLOG_SERIAL_TYPE
                 CommandType.REQUEST_FIRMWARE -> frameType == WHEELLOG_FIRMWARE_TYPE
                 CommandType.REQUEST_BATTERY_INFO -> frameType == WHEELLOG_TELEMETRY_TYPE
-                CommandType.CUSTOM -> true
+                CommandType.CUSTOM -> expectedFrameTypesForQuery(query.id)?.contains(frameType) ?: true
                 else -> false
             }
         }
-        return query.commandType == CommandType.CUSTOM
+        return false
+    }
+
+    private fun expectedFrameTypesForQuery(queryId: String): Set<Int>? = when (queryId) {
+        "ninebot-z.ble-version" -> setOf(WHEELLOG_BLE_VERSION_TYPE)
+        "ninebot-z.auth-key" -> setOf(WHEELLOG_AUTH_KEY_TYPE)
+        "ninebot-z.params-1",
+        "ninebot-z.keepalive" -> setOf(
+            WHEELLOG_LOCK_MODE_TYPE,
+            WHEELLOG_LIMITED_MODE_TYPE,
+            WHEELLOG_SPEED_LIMIT_TYPE,
+            WHEELLOG_ALARMS_ARMED_TYPE,
+            WHEELLOG_ALARM1_TYPE,
+            WHEELLOG_ALARM2_TYPE,
+            WHEELLOG_ALARM3_TYPE
+        )
+
+        "ninebot-z.params-2" -> setOf(
+            WHEELLOG_LED_MODE_TYPE,
+            WHEELLOG_PEDAL_SENSITIVITY_TYPE,
+            WHEELLOG_DRIVE_FLAGS_TYPE,
+            WHEELLOG_SPEAKER_VOLUME_TYPE
+        )
+
+        "ninebot-z.bms1" -> setOf(WHEELLOG_BMS1_TYPE)
+        "ninebot-z.bms2" -> setOf(WHEELLOG_BMS2_TYPE)
+        else -> null
     }
 
     private fun buildActionCommand(code: Int, value: Int): ByteArray {

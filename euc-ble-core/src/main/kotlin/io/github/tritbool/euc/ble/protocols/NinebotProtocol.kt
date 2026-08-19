@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -9,14 +10,41 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import java.util.UUID
 
 /**
  * Ninebot protocol MVP parser for common WheelLog-style telemetry payloads.
  */
 class NinebotProtocol : EUCProtocol {
+
+    data class ZSettingsSnapshot(
+        val bleVersion: String? = null,
+        val authKeyHex: String? = null,
+        val authKeyAscii: String? = null,
+        val lockState: Int? = null,
+        val limitedModeEnabled: Boolean? = null,
+        val speedLimitKmh: Double? = null,
+        val alarmsArmedMask: Int? = null,
+        val alarm1SpeedKmh: Int? = null,
+        val alarm2SpeedKmh: Int? = null,
+        val alarm3SpeedKmh: Int? = null,
+        val ledMode: Int? = null,
+        val driveFlags: Int? = null,
+        val speakerVolumeStep: Int? = null
+    ) {
+        val drlEnabled: Boolean? get() = driveFlags?.let { (it and 0x01) != 0 }
+        val headlightEnabled: Boolean? get() = driveFlags?.let { (it and 0x04) != 0 }
+    }
+
+    data class ZBmsSnapshot(
+        val bmsIndex: Int,
+        val rawPayloadHex: String,
+        val voltage: Double? = null,
+        val current: Double? = null,
+        val cellVoltages: List<Double>? = null
+    )
 
     companion object {
         private const val FRAME_HEADER = 0x55
@@ -32,6 +60,21 @@ class NinebotProtocol : EUCProtocol {
         private const val WHEELLOG_SERIAL_TYPE_PART2 = 0x13
         private const val WHEELLOG_SERIAL_TYPE_PART3 = 0x16
         private const val WHEELLOG_FIRMWARE_TYPE = 0x1A
+        private const val WHEELLOG_AUTH_KEY_TYPE = 0x1D
+        private const val WHEELLOG_BMS1_TYPE = 0x24
+        private const val WHEELLOG_BMS2_TYPE = 0x25
+        private const val WHEELLOG_BLE_VERSION_TYPE = 0x68
+        private const val WHEELLOG_LOCK_MODE_TYPE = 0x70
+        private const val WHEELLOG_LIMITED_MODE_TYPE = 0x72
+        private const val WHEELLOG_SPEED_LIMIT_TYPE = 0x74
+        private const val WHEELLOG_ALARMS_ARMED_TYPE = 0x7C
+        private const val WHEELLOG_ALARM1_TYPE = 0x7D
+        private const val WHEELLOG_ALARM2_TYPE = 0x7E
+        private const val WHEELLOG_ALARM3_TYPE = 0x7F
+        private const val WHEELLOG_LED_MODE_TYPE = 0xC6
+        private const val WHEELLOG_PEDAL_SENSITIVITY_TYPE = 0xD2
+        private const val WHEELLOG_DRIVE_FLAGS_TYPE = 0xD3
+        private const val WHEELLOG_SPEAKER_VOLUME_TYPE = 0xF5
         private const val WHEELLOG_PARTIAL_HEADER_BYTES_TO_KEEP = 1
         private const val MIN_READY_VOLTAGE_V = BLEConstants.MIN_READY_VOLTAGE_V
         private const val MIN_READY_BATTERY_LEVEL = 1
@@ -66,6 +109,21 @@ class NinebotProtocol : EUCProtocol {
     private val serialBuffer = StringBuilder()
     private var serialNumber: String? = null
     private var firmwareVersion: String? = null
+    private var zBleVersion: String? = null
+    private var zAuthKeyHex: String? = null
+    private var zAuthKeyAscii: String? = null
+    private var zLockState: Int? = null
+    private var zLimitedModeEnabled: Boolean? = null
+    private var zSpeedLimit: Double? = null
+    private var zAlarmsArmedMask: Int? = null
+    private var zAlarm1Speed: Int? = null
+    private var zAlarm2Speed: Int? = null
+    private var zAlarm3Speed: Int? = null
+    private var zLedMode: Int? = null
+    private var zPedalSensitivity: Int? = null
+    private var zDriveFlags: Int? = null
+    private var zSpeakerVolumeStep: Int? = null
+    private val zBmsSnapshots = mutableMapOf<Int, ZBmsSnapshot>()
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
@@ -213,6 +271,37 @@ class NinebotProtocol : EUCProtocol {
                 null
             }
 
+            WHEELLOG_AUTH_KEY_TYPE -> {
+                parseWheelLogAuthFrame(frame)
+                null
+            }
+
+            WHEELLOG_BMS1_TYPE,
+            WHEELLOG_BMS2_TYPE -> {
+                parseWheelLogBmsFrame(frameType, frame)
+                null
+            }
+
+            WHEELLOG_BLE_VERSION_TYPE -> {
+                parseWheelLogBleVersionFrame(frame)
+                null
+            }
+
+            WHEELLOG_LOCK_MODE_TYPE,
+            WHEELLOG_LIMITED_MODE_TYPE,
+            WHEELLOG_SPEED_LIMIT_TYPE,
+            WHEELLOG_ALARMS_ARMED_TYPE,
+            WHEELLOG_ALARM1_TYPE,
+            WHEELLOG_ALARM2_TYPE,
+            WHEELLOG_ALARM3_TYPE,
+            WHEELLOG_LED_MODE_TYPE,
+            WHEELLOG_PEDAL_SENSITIVITY_TYPE,
+            WHEELLOG_DRIVE_FLAGS_TYPE,
+            WHEELLOG_SPEAKER_VOLUME_TYPE -> {
+                parseWheelLogSettingsFrame(frameType, frame)
+                null
+            }
+
             else -> null
         }
     }
@@ -259,7 +348,15 @@ class NinebotProtocol : EUCProtocol {
             rideTime = rideTime,
             cellVoltages = null,
             motorTemperature = null,
-            totalDistance = distance
+            totalDistance = distance,
+            alertFlags = zAlarmsArmedMask,
+            speedLimit = zSpeedLimit,
+            alarm1Speed = zAlarm1Speed,
+            alarm2Speed = zAlarm2Speed,
+            alarm3Speed = zAlarm3Speed,
+            ledMode = zLedMode,
+            lightMode = zDriveFlags?.let { if ((it and 0x04) != 0) 1 else 0 },
+            pedalsMode = zPedalSensitivity
         )
     }
 
@@ -318,6 +415,148 @@ class NinebotProtocol : EUCProtocol {
         val minor = (minorBuildByte shr 4) and 0x0F
         val build = minorBuildByte and 0x0F
         firmwareVersion = "$major.$minor.$build"
+    }
+
+    private fun parseWheelLogBleVersionFrame(frame: ByteArray) {
+        val payload = extractWheelLogPayload(frame) ?: return
+        zBleVersion = payload
+            .decodeToString()
+            .trim('\u0000', ' ', '\r', '\n')
+            .ifBlank { null }
+    }
+
+    private fun parseWheelLogAuthFrame(frame: ByteArray) {
+        val payload = extractWheelLogPayload(frame) ?: return
+        zAuthKeyHex = ByteUtils.bytesToHex(payload, separator = "")
+        zAuthKeyAscii = payload
+            .decodeToString()
+            .trim('\u0000', ' ', '\r', '\n')
+            .takeIf { value -> value.isNotEmpty() && value.all { it.code in 32..126 } }
+    }
+
+    private fun parseWheelLogBmsFrame(frameType: Int, frame: ByteArray) {
+        val payload = extractWheelLogPayload(frame) ?: return
+        val bmsIndex = if (frameType == WHEELLOG_BMS1_TYPE) 1 else 2
+        val voltage = ByteUtils.tryGetUnsignedShortLE(payload, 0)
+            ?.div(100.0)
+            ?.takeIf { it in 20.0..200.0 }
+        val current = ByteUtils.tryGetSignedShortLE(payload, 2)
+            ?.toInt()
+            ?.div(100.0)
+            ?.takeIf { it in -300.0..300.0 }
+
+        val cellVoltages = buildList {
+            var offset = 4
+            while (offset + 1 < payload.size) {
+                val raw = ByteUtils.tryGetUnsignedShortLE(payload, offset) ?: break
+                if (raw in 2000..5000) add(raw / 1000.0)
+                offset += 2
+            }
+        }.takeIf { it.size >= 4 }
+
+        zBmsSnapshots[bmsIndex] = ZBmsSnapshot(
+            bmsIndex = bmsIndex,
+            rawPayloadHex = ByteUtils.bytesToHex(payload, separator = ""),
+            voltage = voltage,
+            current = current,
+            cellVoltages = cellVoltages
+        )
+    }
+
+    private fun parseWheelLogSettingsFrame(frameType: Int, frame: ByteArray) {
+        val payload = extractWheelLogPayload(frame) ?: return
+        when (frameType) {
+            WHEELLOG_LOCK_MODE_TYPE -> {
+                zLockState = ByteUtils.tryGetUnsignedByte(payload, 0)
+            }
+
+            WHEELLOG_LIMITED_MODE_TYPE -> {
+                zLimitedModeEnabled = ByteUtils.tryGetUnsignedByte(payload, 0)?.let { it != 0 }
+            }
+
+            WHEELLOG_SPEED_LIMIT_TYPE -> {
+                zSpeedLimit = ByteUtils.tryGetUnsignedShortLE(payload, 0)?.div(100.0)
+            }
+
+            WHEELLOG_ALARMS_ARMED_TYPE -> {
+                zAlarmsArmedMask = ByteUtils.tryGetUnsignedShortLE(payload, 0)
+                    ?: ByteUtils.tryGetUnsignedByte(payload, 0)
+            }
+
+            WHEELLOG_ALARM1_TYPE -> {
+                zAlarm1Speed = ByteUtils.tryGetUnsignedShortLE(payload, 0)?.div(100.0)?.roundToInt()
+            }
+
+            WHEELLOG_ALARM2_TYPE -> {
+                zAlarm2Speed = ByteUtils.tryGetUnsignedShortLE(payload, 0)?.div(100.0)?.roundToInt()
+            }
+
+            WHEELLOG_ALARM3_TYPE -> {
+                zAlarm3Speed = ByteUtils.tryGetUnsignedShortLE(payload, 0)?.div(100.0)?.roundToInt()
+            }
+
+            WHEELLOG_LED_MODE_TYPE -> {
+                zLedMode = ByteUtils.tryGetUnsignedByte(payload, 0)
+            }
+
+            WHEELLOG_PEDAL_SENSITIVITY_TYPE -> {
+                zPedalSensitivity = ByteUtils.tryGetUnsignedShortLE(payload, 0)
+                    ?: ByteUtils.tryGetUnsignedByte(payload, 0)
+            }
+
+            WHEELLOG_DRIVE_FLAGS_TYPE -> {
+                zDriveFlags = ByteUtils.tryGetUnsignedByte(payload, 0)
+            }
+
+            WHEELLOG_SPEAKER_VOLUME_TYPE -> {
+                zSpeakerVolumeStep = ByteUtils.tryGetUnsignedByte(payload, 0)
+                    ?.let { (it ushr 3) and 0x1F }
+            }
+        }
+    }
+
+    private fun extractWheelLogPayload(frame: ByteArray): ByteArray? {
+        val payloadLength = frame[2].toInt() and 0xFF
+        val payloadStart = 7
+        val payloadEnd = (payloadStart + payloadLength).coerceAtMost(frame.size - 2)
+        if (payloadEnd <= payloadStart) return null
+        return frame.copyOfRange(payloadStart, payloadEnd)
+    }
+
+    fun getZSettingsSnapshot(): ZSettingsSnapshot = ZSettingsSnapshot(
+        bleVersion = zBleVersion,
+        authKeyHex = zAuthKeyHex,
+        authKeyAscii = zAuthKeyAscii,
+        lockState = zLockState,
+        limitedModeEnabled = zLimitedModeEnabled,
+        speedLimitKmh = zSpeedLimit,
+        alarmsArmedMask = zAlarmsArmedMask,
+        alarm1SpeedKmh = zAlarm1Speed,
+        alarm2SpeedKmh = zAlarm2Speed,
+        alarm3SpeedKmh = zAlarm3Speed,
+        ledMode = zLedMode,
+        driveFlags = zDriveFlags,
+        speakerVolumeStep = zSpeakerVolumeStep
+    )
+
+    fun getZBmsSnapshots(): List<ZBmsSnapshot> = zBmsSnapshots.values.sortedBy { it.bmsIndex }
+
+    override fun getBMSData(): List<BMSData>? {
+        if (zBmsSnapshots.isEmpty()) return null
+        return zBmsSnapshots.values
+            .sortedBy { it.bmsIndex }
+            .map { snapshot ->
+                BMSData(
+                    bmsIndex = snapshot.bmsIndex,
+                    voltage = snapshot.voltage,
+                    current = snapshot.current,
+                    remainingCapacity = null,
+                    factoryCapacity = null,
+                    cycles = null,
+                    temperatures = null,
+                    cellVoltages = snapshot.cellVoltages
+                )
+            }
     }
 
     private fun inferModel(data: ByteArray): String {
@@ -428,6 +667,24 @@ class NinebotProtocol : EUCProtocol {
     override fun close() {
         wheelLogBuffer.clear()
         serialBuffer.clear()
+        sessionStartTimestampMs = null
+        serialNumber = null
+        firmwareVersion = null
+        zBleVersion = null
+        zAuthKeyHex = null
+        zAuthKeyAscii = null
+        zLockState = null
+        zLimitedModeEnabled = null
+        zSpeedLimit = null
+        zAlarmsArmedMask = null
+        zAlarm1Speed = null
+        zAlarm2Speed = null
+        zAlarm3Speed = null
+        zLedMode = null
+        zPedalSensitivity = null
+        zDriveFlags = null
+        zSpeakerVolumeStep = null
+        zBmsSnapshots.clear()
         _channel.close()
     }
 }

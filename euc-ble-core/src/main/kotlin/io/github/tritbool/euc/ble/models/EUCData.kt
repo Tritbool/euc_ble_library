@@ -40,7 +40,9 @@ package io.github.tritbool.euc.ble.models
  * @param topSpeed Session top speed in km/h, null if unavailable
  * @param fanStatus Fan on/off status, null if unavailable
  * @param chargingStatus Charging status byte, null if unavailable
- * @param temperature2 Secondary temperature (e.g., motor/board), null if unavailable
+ * @param mosfetTemperature MOSFET temperature in degrees Celsius, null if unavailable
+ * @param boardTemperature Controller/board temperature in degrees Celsius, null if unavailable
+ * @param imuTemperature IMU temperature in degrees Celsius, null if unavailable
  * @param cpuLoad CPU load percentage, null if unavailable
  * @param speedLimit Configured speed limit in km/h, null if unavailable
  * @param alarm1Speed Alarm 1 speed threshold, null if unavailable
@@ -53,6 +55,8 @@ package io.github.tritbool.euc.ble.models
  * @param roll Roll angle in degrees, null if unavailable
  * @param torque Estimated torque in Nm, null if unavailable
  * @param mode Ride mode string (e.g. "active", "idle", "charging"), null if unavailable
+ * @param totalRideTimeSeconds Cumulative ride time in seconds decoded from TotalStats, null if unavailable
+ * @param totalPowerOnTimeSeconds Cumulative power-on time in seconds decoded from TotalStats, null if unavailable
  */
 data class EUCData(
     internal val frameType: String = "BASE",
@@ -88,7 +92,9 @@ data class EUCData(
     val topSpeed: Double? = null,           // session top speed in km/h
     val fanStatus: Int? = null,             // fan on/off status
     val chargingStatus: Int? = null,        // charging status byte
-    val temperature2: Double? = null,       // secondary temperature (e.g. motor/board)
+    val mosfetTemperature: Double? = null,  // MOSFET temperature in degrees Celsius
+    val boardTemperature: Double? = null,   // controller/board temperature in degrees Celsius
+    val imuTemperature: Double? = null,     // IMU temperature in degrees Celsius
     val cpuLoad: Int? = null,               // CPU load percentage
     val speedLimit: Double? = null,         // configured speed limit in km/h
     val alarm1Speed: Int? = null,           // alarm 1 speed threshold
@@ -100,7 +106,9 @@ data class EUCData(
     val phaseCurrent: Double? = null,   // Phase current in amps (motor-side), null if unavailable
     val roll: Double? = null,            // Roll angle in degrees, null if unavailable
     val torque: Double? = null,           // Torque estimate (Nm), null if unavailable
-    val mode: String? = null             // Ride mode/state string (e.g. "active", "idle"), null if unavailable
+    val mode: String? = null,            // Ride mode/state string (e.g. "active", "idle"), null if unavailable
+    val totalRideTimeSeconds: Long? = null,    // Cumulative ride time in seconds (from TotalStats), null if unavailable
+    val totalPowerOnTimeSeconds: Long? = null  // Cumulative power-on time in seconds (from TotalStats), null if unavailable
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
