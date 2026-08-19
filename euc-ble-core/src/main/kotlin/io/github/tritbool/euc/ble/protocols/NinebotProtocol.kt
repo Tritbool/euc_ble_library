@@ -667,6 +667,23 @@ class NinebotProtocol : EUCProtocol {
     override fun close() {
         wheelLogBuffer.clear()
         serialBuffer.clear()
+        sessionStartTimestampMs = null
+        serialNumber = null
+        firmwareVersion = null
+        zBleVersion = null
+        zAuthKeyHex = null
+        zAuthKeyAscii = null
+        zLockState = null
+        zLimitedModeEnabled = null
+        zSpeedLimit = null
+        zAlarmsArmedMask = null
+        zAlarm1Speed = null
+        zAlarm2Speed = null
+        zAlarm3Speed = null
+        zLedMode = null
+        zPedalSensitivity = null
+        zDriveFlags = null
+        zSpeakerVolumeStep = null
         zBmsSnapshots.clear()
         _channel.close()
     }
