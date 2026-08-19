@@ -1321,7 +1321,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         var checksum = 0
         for (b in can) checksum = (checksum + (b.toInt() and 0xFF)) and 0xFF
 
-        val out = java.io.ByteArrayOutputStream(can.size + 4)
+        val out = java.io.ByteArrayOutputStream(40)
         out.write(V1_HEADER.toInt() and 0xFF)
         out.write(V1_HEADER.toInt() and 0xFF)
         for (b in can) v1WriteEscaped(out, b)
