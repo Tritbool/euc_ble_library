@@ -991,14 +991,14 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     )
                 )
             }
+    }
 
-            private fun enqueueP6StatsQueryIfDue(force: Boolean = false) {
-                if (lastDetectedDialect != Dialect.V2 || modelName != "InMotion P6") return
-                val now = System.currentTimeMillis()
-                if (!force && now - lastP6StatsQueryAtMs < P6_STATS_QUERY_INTERVAL_MS) return
-                lastP6StatsQueryAtMs = now
-                _writeChannel.trySend(buildMessage(FLAG_EXTENDED, COMMAND_REAL_TIME_INFO, byteArrayOf()))
-            }
+    private fun enqueueP6StatsQueryIfDue(force: Boolean = false) {
+        if (lastDetectedDialect != Dialect.V2 || modelName != "InMotion P6") return
+        val now = System.currentTimeMillis()
+        if (!force && now - lastP6StatsQueryAtMs < P6_STATS_QUERY_INTERVAL_MS) return
+        lastP6StatsQueryAtMs = now
+        _writeChannel.trySend(buildMessage(FLAG_EXTENDED, COMMAND_REAL_TIME_INFO, byteArrayOf()))
     }
 
     private fun deriveV2RideTimeSeconds(nowMs: Long): Long {
