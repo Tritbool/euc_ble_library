@@ -158,6 +158,8 @@ enum class CommandType {
     LIGHT_OFF,
     SET_LIGHT_MODE,
     LIGHT_BRIGHTNESS,
+    /** Set the high beam independently from the low beam (LeaperKim two-frame binary command). */
+    SET_HIGH_BEAM,
     SPEAKER_VOLUME,
     BEEP,
     POWER_OFF,
@@ -165,13 +167,29 @@ enum class CommandType {
     UNLOCK,
     SET_PEDALS_MODE,
     SET_LED_MODE,
+    SET_LED_STROBE,
     SET_SPEED_LIMIT,
     SET_ALARM_SPEED,
     CALIBRATE,
     REQUEST_SERIAL,
     REQUEST_FIRMWARE,
     REQUEST_BATTERY_INFO,
+    REQUEST_BMS_SERIAL,
     RESET_TRIP,
+    /** LeaperKim: pedal zero-point tilt offset, value = tenths of a degree (signed Int). */
+    SET_PEDAL_ANGLE,
+    /** LeaperKim: ride-mode scalar 0..100, value = Int. */
+    SET_RIDE_MODE,
+    /** LeaperKim: maximum PWM percentage 0..100, value = Int. */
+    SET_PWM_LIMIT,
+    /** KingSong: charge cutoff percentage 0..100, value = Int. */
+    SET_CHARGE_LIMIT,
+    /** KingSong: idle auto-poweroff delay in seconds, value = Int. */
+    SET_STANDBY_DELAY,
+    /** KingSong: pedal cutoff lean angle in tenths of a degree, value = Int. */
+    SET_PEDAL_CUTOFF_ANGLE,
+    /** KingSong: pedal pitch trim in tenths of a degree (signed), value = Int. */
+    SET_PEDAL_PITCH_TRIM,
     CUSTOM
 }
 

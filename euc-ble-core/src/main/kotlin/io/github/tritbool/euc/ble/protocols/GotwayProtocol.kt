@@ -229,6 +229,10 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
             0x04 -> parseTypeB(frame)
             0x07 -> parseType7(frame)
+            // SmirnoV firmware tuning frame (tag 0xFF): discard without parsing.
+            // eucplanet explicitly discards this with a log line; our else branch
+            // would silently drop it too, but an explicit case improves observability.
+            0xFF -> null
             else -> null // Ignore unknown frame types from the reassembler
         }
 

@@ -34,14 +34,22 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     EUCProtocol {
     companion object {
         private const val LEAPERKIM_MAX_BMS_CELLS = 42
+        private val LKAP = byteArrayOf(0x4C, 0x6B, 0x41, 0x70)  // "LkAp"
+        private val LDAP = byteArrayOf(0x4C, 0x64, 0x41, 0x70)  // "LdAp"
     }
 
     override val manufacturer: String = "Leaperkim"
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
+        CommandType.SET_HIGH_BEAM,
         CommandType.BEEP,
+        CommandType.LOCK,
+        CommandType.UNLOCK,
         CommandType.SET_PEDALS_MODE,
+        CommandType.SET_PEDAL_ANGLE,
+        CommandType.SET_RIDE_MODE,
+        CommandType.SET_PWM_LIMIT,
         CommandType.RESET_TRIP,
         CommandType.CUSTOM
     )
@@ -158,6 +166,11 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     @Volatile
     private var lastMajorVersion: Int? = null
+    // Last Oryx BMS state-of-charge from a page-2 sub-frame (frame[50]).
+    // Cached and stamped onto every EUCData so battery doesn't flicker back to the
+    // voltage-curve estimate on the other 8 pages (mVer 8 / Oryx only).
+    @Volatile
+    private var lastOryxBatterySoc: Int = -1
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
     private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
@@ -197,6 +210,14 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     private fun processFrame(frame: ByteArray) {
         debugFramesObserved++
+        // Smart-BMS equipped wheels (Lynx S, Patton, Oryx) cycle through four frame layouts.
+        // Frames with LEN == 0x5F carry BMS ADC readings at bytes 4..5, NOT pack voltage.
+        // Parsing them as regular telemetry produces ~3–7 V voltage spikes every ~200 ms.
+        // Skip the telemetry parse and only extract BMS cell data from these frames.
+        if (frame.size > 3 && frame[3] == 0x5F.toByte()) {
+            if (frame.size >= 47) parseSmartBms(frame)
+            return
+        }
         val parsed = parseFrame(frame)
         if (parsed != null) {
             debugFramesParsed++
@@ -250,8 +271,20 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         if (majorVersion >= 5) {
             parseSmartBms(frame)
         }
+        // Oryx (mVer 8) carries its own BMS state-of-charge at byte 50 of page-2 sub-frames
+        // (page identifier at byte 46, cycling 0..8). Cache it and stamp onto every frame so
+        // battery stays steady between page-2 frames instead of flickering to the voltage curve.
+        val pageId = if (frame.size >= 47) ByteUtils.getUnsignedByte(frame, 46) else -1
+        if (majorVersion == 8 && pageId == 2 && frame.size >= 51) {
+            val soc = ByteUtils.getUnsignedByte(frame, 50)
+            if (soc in 0..100) lastOryxBatterySoc = soc
+        }
         val model = modelByMajorVersion(majorVersion)
-        val battery = estimateBatteryPercent(voltageRaw, majorVersion)
+        val battery = if (majorVersion == 8 && lastOryxBatterySoc in 0..100) {
+            lastOryxBatterySoc
+        } else {
+            estimateBatteryPercent(voltageRaw, majorVersion)
+        }
 
         val tripDistanceKm = decodeDistanceKm(distanceRaw)
         val totalDistanceKm = decodeDistanceKm(totalDistanceRaw)
@@ -418,17 +451,31 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         return when (commandType) {
             CommandType.LIGHT_ON -> "SetLightON".encodeToByteArray()
             CommandType.LIGHT_OFF -> "SetLightOFF".encodeToByteArray()
+
+            CommandType.SET_HIGH_BEAM -> {
+                // High beam is a separate light circuit from the ASCII low-beam toggle.
+                // Two vendor frames must be written back-to-back: the LkAp frame followed
+                // immediately by the LdAp companion. We concatenate them here; the BLE
+                // layer splits at the 20-byte ATT boundary before writing.
+                val on = value as? Boolean ?: return byteArrayOf()
+                buildVendorFrame(LKAP, 13, byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte()), (if (on) 0x01 else 0x00).toByte()) +
+                        buildVendorFrame(LDAP, 13, byteArrayOf(0x01, 0x00, 0x80.toByte()), (if (on) 0x01 else 0x00).toByte())
+            }
+
             CommandType.BEEP -> {
                 if ((lastMajorVersion ?: 0) < 3) {
                     "b".encodeToByteArray()
                 } else {
-                    byteArrayOf(
-                        0x4c, 0x6b, 0x41, 0x70, 0x0e, 0x00,
-                        0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01,
-                        0xca.toByte(), 0x87.toByte(), 0xe6.toByte(), 0x6f
-                    )
+                    // Modern beep is a two-frame sequence: LkAp + LdAp companion.
+                    // Both frames are returned concatenated; the BLE layer splits at
+                    // the 20-byte ATT boundary.
+                    buildVendorFrame(LKAP, 14, byteArrayOf(0x00, 0x80.toByte(), 0x80.toByte(), 0x80.toByte()), 0x01) +
+                            buildVendorFrame(LDAP, 14, byteArrayOf(0x00, 0x00, 0x80.toByte(), 0x80.toByte()), 0x01)
                 }
             }
+
+            CommandType.LOCK -> buildLockFrame(locked = true)
+            CommandType.UNLOCK -> buildLockFrame(locked = false)
 
             CommandType.SET_PEDALS_MODE -> {
                 when ((value as? Int)?.coerceIn(0, 2)) {
@@ -437,6 +484,41 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
                     2 -> "SETs".encodeToByteArray()
                     else -> byteArrayOf()
                 }
+            }
+
+            CommandType.SET_PEDAL_ANGLE -> {
+                // Signed tenths-of-a-degree, encoded as a signed i8.
+                // Example: -36 → 0xDC (confirmed from Lynx S capture, slider -3.6°).
+                val tenths = (value as? Int) ?: return byteArrayOf()
+                val clamped = tenths.coerceIn(-128, 127)
+                buildVendorFrame(
+                    LKAP, 16,
+                    byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
+                    clamped.toByte()
+                )
+            }
+
+            CommandType.SET_RIDE_MODE -> {
+                // Ride-mode scalar 0..100.
+                val scalar = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                buildVendorFrame(
+                    LDAP, 15,
+                    byteArrayOf(0x01, 0x02, 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
+                    scalar.toByte()
+                )
+            }
+
+            CommandType.SET_PWM_LIMIT -> {
+                // PWM percentage 0..100.
+                val percent = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                buildVendorFrame(
+                    LDAP, 18,
+                    byteArrayOf(
+                        0x01, 0x02,
+                        0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte()
+                    ),
+                    percent.toByte()
+                )
             }
 
             CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
@@ -450,6 +532,63 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
             else -> byteArrayOf()
         }
+    }
+
+    /**
+     * Build a lock/unlock command frame (25-byte LdAp vendor frame).
+     *
+     * The payload encodes the current wall-clock timestamp (day/hour/minute/second)
+     * followed by the lock state byte. The timestamp must reflect the actual moment
+     * of the write — the wheel validates freshness and rejects frozen timestamps.
+     *
+     * Wire format verified from a Lynx S btsnoop: twenty paired lock/unlock writes
+     * all match within one second of the HCI packet timestamp.
+     */
+    private fun buildLockFrame(locked: Boolean): ByteArray = buildLockFrame(locked, java.util.Calendar.getInstance())
+
+    internal fun buildLockFrame(locked: Boolean, now: java.util.Calendar): ByteArray {
+        val state: Byte = if (locked) 0x01 else 0x00
+        val day = now.get(java.util.Calendar.DAY_OF_MONTH).toByte()
+        val hour = now.get(java.util.Calendar.HOUR_OF_DAY).toByte()
+        val minute = now.get(java.util.Calendar.MINUTE).toByte()
+        val second = now.get(java.util.Calendar.SECOND).toByte()
+        return buildVendorFrame(
+            LDAP, 25,
+            byteArrayOf(
+                0x00, 0x05, 0x1A, 0x06,
+                day, hour, minute, second,
+                0x02, 0x04, 0x0C, 0xAB.toByte(),
+                state, 0x00, 0x00,
+            ),
+            0x00
+        )
+    }
+
+    /**
+     * Build a LeaperKim vendor frame.
+     *
+     * Layout: [magic 4] [totalLen 1] [payloadHead N] [valueByte 1] [CRC32-BE 4]
+     * where totalLen = 4 + 1 + payloadHead.size + 1 + 4.
+     * CRC32 covers everything from magic[0] through the last non-CRC byte.
+     */
+    private fun buildVendorFrame(
+        magic: ByteArray,
+        totalLen: Int,
+        payloadHead: ByteArray,
+        valueByte: Byte
+    ): ByteArray {
+        val out = ByteArray(totalLen)
+        magic.copyInto(out, 0)
+        out[4] = totalLen.toByte()
+        payloadHead.copyInto(out, 5)
+        out[5 + payloadHead.size] = valueByte
+        val crcEnd = totalLen - 4
+        val crc = CRC32().apply { update(out, 0, crcEnd) }.value.toInt()
+        out[crcEnd]     = ((crc ushr 24) and 0xFF).toByte()
+        out[crcEnd + 1] = ((crc ushr 16) and 0xFF).toByte()
+        out[crcEnd + 2] = ((crc ushr 8)  and 0xFF).toByte()
+        out[crcEnd + 3] = (crc           and 0xFF).toByte()
+        return out
     }
 
     override fun isDeviceReady(data: EUCData): Boolean {

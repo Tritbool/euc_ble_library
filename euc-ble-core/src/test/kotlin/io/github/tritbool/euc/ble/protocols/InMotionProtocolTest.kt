@@ -3,9 +3,14 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
+import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -155,11 +160,17 @@ class InMotionProtocolTest {
     fun getPollingPlanHasStartupAndPeriodicQueries() {
         val plan = protocol.getPollingPlan()
         assertTrue(plan.enabled)
-        assertEquals(1, plan.startupQueries.size)
+        // V1 handshake (factory-password + pin) + V2 dialect-probe
+        assertEquals(3, plan.startupQueries.size)
         assertEquals(5, plan.periodicQueries.size)
-        val startup = plan.startupQueries.single()
-        assertEquals("inmotion.dialect-probe", startup.id)
-        assertEquals(CommandType.REQUEST_FIRMWARE, startup.commandType)
+        // V1 handshake frames are the first two startup queries
+        assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
+        assertEquals(CommandType.CUSTOM, plan.startupQueries[0].commandType)
+        assertEquals("inmotion.v1-pin", plan.startupQueries[1].id)
+        assertEquals(CommandType.CUSTOM, plan.startupQueries[1].commandType)
+        val probe = plan.startupQueries[2]
+        assertEquals("inmotion.dialect-probe", probe.id)
+        assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
         assertEquals(4, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
     }
 
@@ -335,6 +346,26 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("InMotion V9", data!!.model)
         assertEquals(null, data.phaseCurrent)
+    }
+
+    @Test
+    fun p6ModelDetectionEnqueuesExtendedRealtimeQueryOnWriteFlow() = runTest {
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020d0101010094"))
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa16010413"), emitted)
+    }
+
+    @Test
+    fun nonP6ModelDoesNotEnqueueExtendedRealtimeQuery() = runTest {
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
+        var emitted = false
+        try {
+            withTimeout(200) { protocol.writeFlow.first() }
+            emitted = true
+        } catch (_: TimeoutCancellationException) {
+            // expected
+        }
+        assertFalse(emitted)
     }
 
     @Test

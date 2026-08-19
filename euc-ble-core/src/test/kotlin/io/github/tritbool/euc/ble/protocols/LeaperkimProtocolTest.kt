@@ -24,11 +24,18 @@ class LeaperkimProtocolTest {
     private val telemetryEmissionTimeoutMs = 5_000L
     private val invalidFrameCheckTimeoutMs = 500L
     private val beepCommandPayload = "b".encodeToByteArray()
-    private val modernBeepCommandPayload = byteArrayOf(
+    private val modernBeepLkApFrame = byteArrayOf(
         0x4c, 0x6b, 0x41, 0x70, 0x0e, 0x00,
         0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01,
         0xca.toByte(), 0x87.toByte(), 0xe6.toByte(), 0x6f
     )
+    private val modernBeepLdApFrame = byteArrayOf(
+        0x4c, 0x64, 0x41, 0x70, 0x0e, 0x00,
+        0x00, 0x80.toByte(), 0x80.toByte(), 0x01,
+        0xf8.toByte(), 0x67, 0x9f.toByte(), 0x85.toByte()
+    )
+    /** Modern beep = LkAp frame followed immediately by LdAp companion. */
+    private val modernBeepCommandPayload = modernBeepLkApFrame + modernBeepLdApFrame
     private lateinit var protocol: LeaperkimProtocol
 
     @BeforeEach
@@ -194,6 +201,157 @@ class LeaperkimProtocolTest {
             assertEquals(40, telemetry.tiltBackSpeed)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun createCommandSetHighBeamOn() {
+        val cmd = protocol.createCommand(CommandType.SET_HIGH_BEAM, true)
+        // Two concatenated vendor frames: LkAp (13 bytes) + LdAp (13 bytes).
+        assertEquals(26, cmd.size)
+        // LkAp magic at offset 0
+        assertArrayEquals(byteArrayOf(0x4c, 0x6b, 0x41, 0x70), cmd.copyOfRange(0, 4))
+        // LdAp magic at offset 13
+        assertArrayEquals(byteArrayOf(0x4c, 0x64, 0x41, 0x70), cmd.copyOfRange(13, 17))
+        // State byte = 0x01 (on) in both frames
+        assertEquals(0x01.toByte(), cmd[8])   // LkAp valueByte
+        assertEquals(0x01.toByte(), cmd[21])  // LdAp valueByte
+    }
+
+    @Test
+    fun createCommandSetHighBeamOff() {
+        val cmd = protocol.createCommand(CommandType.SET_HIGH_BEAM, false)
+        assertEquals(26, cmd.size)
+        // State byte = 0x00 (off) in both frames
+        assertEquals(0x00.toByte(), cmd[8])
+        assertEquals(0x00.toByte(), cmd[21])
+    }
+
+    @Test
+    fun createCommandSetHighBeamBytesMatchCapture() {
+        // Exact wire bytes verified against eucplanet VeteranCommands.setHighBeam capture.
+        val onCmd = protocol.createCommand(CommandType.SET_HIGH_BEAM, true)
+        assertArrayEquals(
+            byteArrayOf(0x4c, 0x6b, 0x41, 0x70, 0x0d, 0x01, 0x80.toByte(), 0x80.toByte(), 0x01,
+                0x57, 0xed.toByte(), 0x3b, 0xd5.toByte()),
+            onCmd.copyOfRange(0, 13)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x4c, 0x64, 0x41, 0x70, 0x0d, 0x01, 0x00, 0x80.toByte(), 0x01,
+                0x6f, 0xf8.toByte(), 0x32, 0xf9.toByte()),
+            onCmd.copyOfRange(13, 26)
+        )
+    }
+
+    @Test
+    fun createCommandLockUsesCorrectTimestamp() {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.DAY_OF_MONTH, 17)
+            set(java.util.Calendar.HOUR_OF_DAY, 15)
+            set(java.util.Calendar.MINUTE, 10)
+            set(java.util.Calendar.SECOND, 9)
+        }
+        val lockCmd = protocol.buildLockFrame(locked = true, now = cal)
+        assertEquals(25, lockCmd.size)
+        // Magic LdAp
+        assertArrayEquals(byteArrayOf(0x4c, 0x64, 0x41, 0x70), lockCmd.copyOfRange(0, 4))
+        // Timestamp bytes at offsets 9..12 (inside payloadHead after magic+len+header)
+        assertEquals(17.toByte(), lockCmd[9])   // day
+        assertEquals(15.toByte(), lockCmd[10])  // hour
+        assertEquals(10.toByte(), lockCmd[11])  // minute
+        assertEquals(9.toByte(),  lockCmd[12])  // second
+        // State byte = 0x01 (locked)
+        assertEquals(0x01.toByte(), lockCmd[17])
+        // Full wire bytes verified against eucplanet VeteranCommands capture
+        assertArrayEquals(
+            byteArrayOf(
+                0x4c, 0x64, 0x41, 0x70, 0x19, 0x00, 0x05, 0x1a, 0x06,
+                0x11, 0x0f, 0x0a, 0x09, 0x02, 0x04, 0x0c, 0xab.toByte(),
+                0x01, 0x00, 0x00, 0x00,
+                0x20, 0xa2.toByte(), 0xa5.toByte(), 0xfa.toByte()
+            ),
+            lockCmd
+        )
+    }
+
+    @Test
+    fun createCommandUnlockBytesMatchCapture() {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.DAY_OF_MONTH, 17)
+            set(java.util.Calendar.HOUR_OF_DAY, 15)
+            set(java.util.Calendar.MINUTE, 10)
+            set(java.util.Calendar.SECOND, 9)
+        }
+        val unlockCmd = protocol.buildLockFrame(locked = false, now = cal)
+        assertEquals(0x00.toByte(), unlockCmd[17])
+        assertArrayEquals(
+            byteArrayOf(
+                0x4c, 0x64, 0x41, 0x70, 0x19, 0x00, 0x05, 0x1a, 0x06,
+                0x11, 0x0f, 0x0a, 0x09, 0x02, 0x04, 0x0c, 0xab.toByte(),
+                0x00, 0x00, 0x00, 0x00,
+                0x98.toByte(), 0x1e, 0xc2.toByte(), 0x9f.toByte()
+            ),
+            unlockCmd
+        )
+    }
+
+    @Test
+    fun createCommandLockDispatchesToBuildLockFrame() {
+        val cmd = protocol.createCommand(CommandType.LOCK, Unit)
+        assertEquals(25, cmd.size)
+        // LdAp magic
+        assertArrayEquals(byteArrayOf(0x4c, 0x64, 0x41, 0x70), cmd.copyOfRange(0, 4))
+        // State byte = 0x01 (locked)
+        assertEquals(0x01.toByte(), cmd[17])
+    }
+
+    @Test
+    fun createCommandUnlockDispatchesToBuildLockFrame() {
+        val cmd = protocol.createCommand(CommandType.UNLOCK, Unit)
+        assertEquals(25, cmd.size)
+        assertEquals(0x00.toByte(), cmd[17])
+    }
+
+    @Test
+    fun createCommandSetPedalAngleBytesMatchCapture() {
+        // -3.6 deg = -36 tenths → signed i8 0xDC, confirmed from Lynx S capture.
+        val cmd = protocol.createCommand(CommandType.SET_PEDAL_ANGLE, -36)
+        assertArrayEquals(
+            byteArrayOf(
+                0x4c, 0x6b, 0x41, 0x70, 0x10, 0x01,
+                0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(),
+                0xdc.toByte(),
+                0x71, 0x82.toByte(), 0xb7.toByte(), 0xf3.toByte()
+            ),
+            cmd
+        )
+    }
+
+    @Test
+    fun createCommandSetRideModeBytesMatchCapture() {
+        val cmd = protocol.createCommand(CommandType.SET_RIDE_MODE, 50)
+        assertArrayEquals(
+            byteArrayOf(
+                0x4c, 0x64, 0x41, 0x70, 0x0f, 0x01, 0x02,
+                0x80.toByte(), 0x80.toByte(), 0x80.toByte(),
+                0x32,
+                0xb2.toByte(), 0x8c.toByte(), 0x8c.toByte(), 0x46
+            ),
+            cmd
+        )
+    }
+
+    @Test
+    fun createCommandSetPwmLimitBytesMatchCapture() {
+        val cmd = protocol.createCommand(CommandType.SET_PWM_LIMIT, 70)
+        assertArrayEquals(
+            byteArrayOf(
+                0x4c, 0x64, 0x41, 0x70, 0x12, 0x01, 0x02,
+                0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(),
+                0x46,
+                0xd8.toByte(), 0x4c, 0xdb.toByte(), 0xb9.toByte()
+            ),
+            cmd
+        )
     }
 
     private suspend fun waitForBmsCellCount(expected: Int) {
