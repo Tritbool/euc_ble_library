@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
+import app.cash.turbine.Event
 import app.cash.turbine.test
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
@@ -80,8 +81,11 @@ class WheelLogNosfetTest {
 
             val decoded = mutableListOf<EUCData>()
             while (decoded.size < 1500) {
-                val item = withTimeoutOrNull(150.milliseconds) { awaitItem() } ?: break
-                decoded += item
+                when (val event = withTimeoutOrNull(150.milliseconds) { awaitEvent() } ?: break) {
+                    is Event.Item<EUCData> -> decoded += event.value
+                    is Event.Error -> throw event.throwable
+                    Event.Complete -> break
+                }
             }
 
             assertTrue("Expected at least 1200 decoded Nosfet frames, got ${decoded.size}", decoded.size >= 1200)
