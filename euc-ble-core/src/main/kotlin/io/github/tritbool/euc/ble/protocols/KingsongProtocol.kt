@@ -169,6 +169,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var lastKnownWheelMaxSpeed: Int? = null
     private var lastKnownWheelDistance: Double? = null
     private var lastKnownTotalDistance: Double? = null
+    private var lastKnownLightMode: Int? = null
 
     // BMS cell data: bmsIndex (1 or 2) -> array of cell voltages
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
@@ -367,7 +368,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 alarm2Speed = lastKnownAlarm2Speed,
                 alarm3Speed = lastKnownAlarm3Speed,
                 wheelMaxSpeed = lastKnownWheelMaxSpeed,
-                wheelDistance = lastKnownWheelDistance
+                wheelDistance = lastKnownWheelDistance,
+                lightMode = lastKnownLightMode
             )
         } catch (_: Exception) {
             return null
@@ -394,6 +396,16 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         }
         if (ensureRange(data, base + 14, 2)) {
             lastKnownMotorTemperature = ByteUtils.getUnsignedShortLE(data, base + 14) / 100.0
+        }
+        // Byte 10 of the 0xB9 frame echoes the current light state from the wheel.
+        // 0x12 = light ON, 0x13 = light OFF, 0x14 = AUTO mode (eucplanet parseLightOn).
+        if (ensureRange(data, base + 10, 1)) {
+            lastKnownLightMode = when (ByteUtils.getUnsignedByte(data, base + 10)) {
+                0x12 -> 1  // ON
+                0x13 -> 0  // OFF
+                0x14 -> 2  // AUTO
+                else -> lastKnownLightMode
+            }
         }
     }
 
@@ -857,9 +869,32 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                     buildLegacyCommand(command = 0x98),
                     initialDelayMs = 400L,
                     maxRetries = 2
+                ),
+                // KingSong firmware stops pushing 0xA9/0xB9 telemetry when the app goes
+                // silent. Sending the start-stream opcode (0x5E) shortly after connecting
+                // re-arms the stream. eucplanet dispatches this ~2.5 s post-connect.
+                ProtocolQuerySpec(
+                    "ks.start-stream",
+                    CommandType.CUSTOM,
+                    buildLegacyCommand(command = 0x5E),
+                    initialDelayMs = 2_500L,
+                    responseTimeoutMs = 500L,
+                    maxRetries = 1
                 )
             ),
-            periodicQueries = emptyList()
+            periodicQueries = listOf(
+                // Keep-alive: a 0x00 ping sent every ~1 s sustains the telemetry stream.
+                // Without it, KingSong firmware stops transmitting after the initial burst.
+                // eucplanet's keepAlive() sends the same 20-byte 0x00 frame at 1 Hz.
+                ProtocolQuerySpec(
+                    "ks.keep-alive",
+                    CommandType.CUSTOM,
+                    buildLegacyCommand(command = 0x00),
+                    intervalMs = 1_000L,
+                    responseTimeoutMs = 500L,
+                    maxRetries = 0
+                )
+            )
         )
     }
 

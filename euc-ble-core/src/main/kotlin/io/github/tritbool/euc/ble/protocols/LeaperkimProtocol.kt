@@ -166,6 +166,11 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     @Volatile
     private var lastMajorVersion: Int? = null
+    // Last Oryx BMS state-of-charge from a page-2 sub-frame (frame[50]).
+    // Cached and stamped onto every EUCData so battery doesn't flicker back to the
+    // voltage-curve estimate on the other 8 pages (mVer 8 / Oryx only).
+    @Volatile
+    private var lastOryxBatterySoc: Int = -1
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
     private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
@@ -205,6 +210,14 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     private fun processFrame(frame: ByteArray) {
         debugFramesObserved++
+        // Smart-BMS equipped wheels (Lynx S, Patton, Oryx) cycle through four frame layouts.
+        // Frames with LEN == 0x5F carry BMS ADC readings at bytes 4..5, NOT pack voltage.
+        // Parsing them as regular telemetry produces ~3–7 V voltage spikes every ~200 ms.
+        // Skip the telemetry parse and only extract BMS cell data from these frames.
+        if (frame.size > 3 && frame[3] == 0x5F.toByte()) {
+            if (frame.size >= 47) parseSmartBms(frame)
+            return
+        }
         val parsed = parseFrame(frame)
         if (parsed != null) {
             debugFramesParsed++
@@ -258,8 +271,20 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         if (majorVersion >= 5) {
             parseSmartBms(frame)
         }
+        // Oryx (mVer 8) carries its own BMS state-of-charge at byte 50 of page-2 sub-frames
+        // (page identifier at byte 46, cycling 0..8). Cache it and stamp onto every frame so
+        // battery stays steady between page-2 frames instead of flickering to the voltage curve.
+        val pageId = if (frame.size >= 47) ByteUtils.getUnsignedByte(frame, 46) else -1
+        if (majorVersion == 8 && pageId == 2 && frame.size >= 51) {
+            val soc = ByteUtils.getUnsignedByte(frame, 50)
+            if (soc in 0..100) lastOryxBatterySoc = soc
+        }
         val model = modelByMajorVersion(majorVersion)
-        val battery = estimateBatteryPercent(voltageRaw, majorVersion)
+        val battery = if (majorVersion == 8 && lastOryxBatterySoc in 0..100) {
+            lastOryxBatterySoc
+        } else {
+            estimateBatteryPercent(voltageRaw, majorVersion)
+        }
 
         val tripDistanceKm = decodeDistanceKm(distanceRaw)
         val totalDistanceKm = decodeDistanceKm(totalDistanceRaw)

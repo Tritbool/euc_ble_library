@@ -155,11 +155,17 @@ class InMotionProtocolTest {
     fun getPollingPlanHasStartupAndPeriodicQueries() {
         val plan = protocol.getPollingPlan()
         assertTrue(plan.enabled)
-        assertEquals(1, plan.startupQueries.size)
+        // V1 handshake (factory-password + pin) + V2 dialect-probe
+        assertEquals(3, plan.startupQueries.size)
         assertEquals(5, plan.periodicQueries.size)
-        val startup = plan.startupQueries.single()
-        assertEquals("inmotion.dialect-probe", startup.id)
-        assertEquals(CommandType.REQUEST_FIRMWARE, startup.commandType)
+        // V1 handshake frames are the first two startup queries
+        assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
+        assertEquals(CommandType.CUSTOM, plan.startupQueries[0].commandType)
+        assertEquals("inmotion.v1-pin", plan.startupQueries[1].id)
+        assertEquals(CommandType.CUSTOM, plan.startupQueries[1].commandType)
+        val probe = plan.startupQueries[2]
+        assertEquals("inmotion.dialect-probe", probe.id)
+        assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
         assertEquals(4, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
     }
 

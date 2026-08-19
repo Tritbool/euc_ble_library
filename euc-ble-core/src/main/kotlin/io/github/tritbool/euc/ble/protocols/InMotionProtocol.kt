@@ -80,6 +80,31 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         )
 
         private val V14_BMS_PACK_ADDRESSES = listOf(0x24, 0x25, 0x26, 0x27)
+
+        // --- InMotion V1 wire-format constants ---
+        // V1 frames: AA AA <escaped 16-byte CAN frame> <escaped checksum> 55 55
+        // CAN ID written little-endian at bytes 0..3 of the 16-byte prefix.
+        // checksum = sum(all 16 CAN bytes) mod 256, also escaped.
+        // Source: eucplanet InMotionV1Protocol.kt + InMotionV1Commands.kt
+
+        private const val V1_HEADER: Byte = 0xAA.toByte()
+        private const val V1_TRAILER: Byte = 0x55.toByte()
+        private const val V1_ESCAPE: Byte = 0xA5.toByte()
+
+        // Metadata bytes fixed for all phone→wheel frames.
+        private const val V1_LEN_NORMAL: Byte = 0x08
+        private const val V1_CHANNEL_PHONE: Byte = 0x05
+        private const val V1_FORMAT_STANDARD: Byte = 0x00
+        private const val V1_TYPE_DATA: Byte = 0x00
+
+        // CAN IDs used by the protocol.
+        private const val V1_CAN_FAST_INFO  = 0x0F550113
+        private const val V1_CAN_HEADLIGHT  = 0x0F55010D
+        private const val V1_CAN_REMOTE_CTRL = 0x0F550116
+        private const val V1_CAN_PIN        = 0x0F550307
+
+        private const val V1_DEFAULT_PIN = "000000"
+        private const val V1_FACTORY_PASSWORD = "INMOTI"
     }
 
 
@@ -1070,6 +1095,22 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return lastDetectedDialect != Dialect.LEGACY_V1
     }
 
+    /**
+     * Command dispatcher for legacy InMotion V1 wheels. Uses V1 CAN frames
+     * wrapped in `AA AA … 55 55` framing (eucplanet InMotionV1Commands).
+     */
+    private fun createV1Command(commandType: CommandType, value: Any): ByteArray {
+        return when (commandType) {
+            CommandType.LIGHT_ON -> buildV1LightFrame(true)
+            CommandType.LIGHT_OFF -> buildV1LightFrame(false)
+            CommandType.BEEP -> buildV1HornFrame()
+            CommandType.LOCK -> buildV1LockFrame(true)
+            CommandType.UNLOCK -> buildV1LockFrame(false)
+            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+            else -> byteArrayOf()
+        }
+    }
+
     private fun decodeTemperature(raw: Byte): Int = (raw.toInt() and 0xFF) + 80 - 256
 
     // P6 motor temp uses a signed-byte +80°C encoding in the field consumed here:
@@ -1079,24 +1120,32 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         (raw + 80).toDouble()
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+        // Route legacy V1 commands through the V1 CAN frame builder.
+        if (lastDetectedDialect == Dialect.LEGACY_V1) {
+            return createV1Command(commandType, value)
+        }
         if (!allowsActivePolling()) return byteArrayOf()
-        // While dialect is unknown, only allow a minimal V2 probe command to avoid
-        // spamming V2-only requests against legacy devices.
-        if (lastDetectedDialect == Dialect.UNKNOWN && commandType != CommandType.REQUEST_FIRMWARE) {
+        // While dialect is unknown, only allow the V2 probe and pre-built CUSTOM frames
+        // (the V1 handshake queries) to avoid spamming V2-only requests against legacy devices.
+        if (lastDetectedDialect == Dialect.UNKNOWN &&
+            commandType != CommandType.REQUEST_FIRMWARE &&
+            commandType != CommandType.CUSTOM) {
             return byteArrayOf()
         }
         return when (commandType) {
-            CommandType.LIGHT_ON -> buildMessage(
-                FLAG_DEFAULT,
-                COMMAND_CONTROL,
-                byteArrayOf(0x50, 0x01)
-            )
+            // V12 HS/HT/PRO/S use a two-beam form [0x50, low, high]; the standard
+            // single-byte form is silently ignored on those models (eucplanet InMotionV2Adapter).
+            CommandType.LIGHT_ON -> if (isV12Model()) {
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x01, 0x01))
+            } else {
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x01))
+            }
 
-            CommandType.LIGHT_OFF -> buildMessage(
-                FLAG_DEFAULT,
-                COMMAND_CONTROL,
-                byteArrayOf(0x50, 0x00)
-            )
+            CommandType.LIGHT_OFF -> if (isV12Model()) {
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x00, 0x00))
+            } else {
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x00))
+            }
 
             CommandType.LIGHT_BRIGHTNESS -> {
                 val brightness = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
@@ -1145,10 +1194,30 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
+                // V1 PIN handshake: sent before any V2 probe so locked V1 wheels unlock
+                // and begin streaming. V2 wheels ignore these frames (different framing).
+                // eucplanet InMotionV1Adapter.initSequence() sends exactly these three
+                // frames before polling begins.
+                ProtocolQuerySpec(
+                    id = "inmotion.v1-factory-password",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV1FactoryPasswordFrame(),
+                    initialDelayMs = 0L,
+                    responseTimeoutMs = 400L,
+                    maxRetries = 2
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.v1-pin",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV1PinFrame(),
+                    initialDelayMs = 50L,
+                    responseTimeoutMs = 400L,
+                    maxRetries = 2
+                ),
                 ProtocolQuerySpec(
                     id = "inmotion.dialect-probe",
                     commandType = CommandType.REQUEST_FIRMWARE,
-                    initialDelayMs = 0L,
+                    initialDelayMs = 150L,
                     responseTimeoutMs = 800L,
                     maxRetries = 1
                 )
@@ -1227,6 +1296,80 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
         buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO, byteArrayOf(packAddress.toByte(), 0x02))
+
+    // --- InMotion V1 frame builder -----------------------------------------
+
+    /**
+     * Build a V1 BLE frame from a 32-bit CAN ID and an 8-byte payload:
+     * `AA AA <escaped 16-byte CAN prefix> <escaped checksum> 55 55`.
+     *
+     * Ported from eucplanet InMotionV1Protocol.buildFrame() / wrap().
+     */
+    private fun buildV1Frame(canId: Int, data: ByteArray): ByteArray {
+        require(data.size == 8) { "V1 CAN data must be 8 bytes" }
+        val can = ByteArray(16)
+        can[0] = (canId and 0xFF).toByte()
+        can[1] = ((canId ushr 8) and 0xFF).toByte()
+        can[2] = ((canId ushr 16) and 0xFF).toByte()
+        can[3] = ((canId ushr 24) and 0xFF).toByte()
+        data.copyInto(can, 4)
+        can[12] = V1_LEN_NORMAL
+        can[13] = V1_CHANNEL_PHONE
+        can[14] = V1_FORMAT_STANDARD
+        can[15] = V1_TYPE_DATA
+
+        var checksum = 0
+        for (b in can) checksum = (checksum + (b.toInt() and 0xFF)) and 0xFF
+
+        val out = java.io.ByteArrayOutputStream(can.size + 4)
+        out.write(V1_HEADER.toInt() and 0xFF)
+        out.write(V1_HEADER.toInt() and 0xFF)
+        for (b in can) v1WriteEscaped(out, b)
+        v1WriteEscaped(out, checksum.toByte())
+        out.write(V1_TRAILER.toInt() and 0xFF)
+        out.write(V1_TRAILER.toInt() and 0xFF)
+        return out.toByteArray()
+    }
+
+    private fun v1WriteEscaped(out: java.io.ByteArrayOutputStream, b: Byte) {
+        when (b) {
+            V1_HEADER, V1_TRAILER, V1_ESCAPE -> {
+                out.write(V1_ESCAPE.toInt() and 0xFF)
+                out.write(b.toInt() and 0xFF)
+            }
+            else -> out.write(b.toInt() and 0xFF)
+        }
+    }
+
+    /** Factory handshake password frame ("INMOTI"); must be sent first on every connect. */
+    private fun buildV1FactoryPasswordFrame(): ByteArray = buildV1PasswordFrame(V1_FACTORY_PASSWORD)
+
+    /** User PIN frame (default "000000"); sent after the factory password. */
+    private fun buildV1PinFrame(pin: String = V1_DEFAULT_PIN): ByteArray = buildV1PasswordFrame(pin)
+
+    private fun buildV1PasswordFrame(password: String): ByteArray {
+        val data = ByteArray(8)
+        for (i in 0 until minOf(6, password.length)) data[i] = password[i].code.toByte()
+        return buildV1Frame(V1_CAN_PIN, data)
+    }
+
+    /** Fast-info query: fills the payload with 0xFF per the V1 spec. */
+    private fun buildV1FastInfoFrame(): ByteArray =
+        buildV1Frame(V1_CAN_FAST_INFO, ByteArray(8) { 0xFF.toByte() })
+
+    /** Headlight on/off command for V1 wheels. */
+    private fun buildV1LightFrame(on: Boolean): ByteArray =
+        buildV1Frame(V1_CAN_HEADLIGHT, byteArrayOf(if (on) 0x01 else 0x00, 0, 0, 0, 0, 0, 0, 0))
+
+    /** Horn / beep command for V1 wheels using the dedicated opcode (V8F / V8S / V10 / Glide 3).
+     *  Wheels without the dedicated horn opcode silently ignore it. */
+    private fun buildV1HornFrame(): ByteArray =
+        buildV1Frame(V1_CAN_REMOTE_CTRL, byteArrayOf(0xB2.toByte(), 0, 0, 0, 0x11, 0, 0, 0))
+
+    /** Software lock command for V1 wheels (sub-commands 0x03 / 0x04 of the remote-control group). */
+    private fun buildV1LockFrame(locked: Boolean): ByteArray =
+        buildV1Frame(V1_CAN_REMOTE_CTRL,
+            byteArrayOf(0xB2.toByte(), 0, 0, 0, if (locked) 0x03 else 0x04, 0, 0, 0))
 
     private fun buildMessage(flag: Int, command: Int, data: ByteArray): ByteArray {
         val len = data.size + 1
