@@ -1,7 +1,6 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
-import app.cash.turbine.Event
 import app.cash.turbine.test
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
@@ -11,7 +10,6 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -85,10 +83,10 @@ class WheelLogNosfetTest {
 
             val decoded = mutableListOf<EUCData>()
             while (decoded.size < MAX_DECODED_FRAMES_TO_COLLECT) {
-                when (val event = withTimeoutOrNull(150.milliseconds) { awaitEvent() } ?: break) {
-                    is Event.Item<EUCData> -> decoded += event.value
-                    is Event.Error -> throw event.throwable
-                    Event.Complete -> break
+                try {
+                    decoded += awaitItem()
+                } catch (_: AssertionError) {
+                    break
                 }
             }
 
