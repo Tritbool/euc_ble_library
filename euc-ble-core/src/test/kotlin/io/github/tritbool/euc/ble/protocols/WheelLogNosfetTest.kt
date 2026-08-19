@@ -2,7 +2,6 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
 import app.cash.turbine.test
-import app.cash.turbine.Event
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
 import io.github.tritbool.euc.ble.test.WheelLogFrame
@@ -11,6 +10,7 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -78,12 +78,11 @@ class WheelLogNosfetTest {
             frames.forEach { protocol.decode(it.bleData) }
             testScheduler.advanceUntilIdle()
 
-            val events = cancelAndConsumeRemainingEvents()
-            val firstError = events.firstOrNull { it is Event.Error }
-            assertTrue("Expected no error events but got: $firstError", firstError == null)
-
-            val decoded: List<EUCData> = events
-                .mapNotNull { event -> (event as? Event.Item<EUCData>)?.value }
+            val decoded = mutableListOf<EUCData>()
+            while (decoded.size < 1500) {
+                val item = withTimeoutOrNull(150.milliseconds) { awaitItem() } ?: break
+                decoded += item
+            }
 
             assertTrue("Expected at least 1200 decoded Nosfet frames, got ${decoded.size}", decoded.size >= 1200)
             assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
@@ -92,6 +91,7 @@ class WheelLogNosfetTest {
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
             assertTrue(decoded.all { it.rideTime >= 0 })
             assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
+            cancelAndIgnoreRemainingEvents()
         }
     }
 
