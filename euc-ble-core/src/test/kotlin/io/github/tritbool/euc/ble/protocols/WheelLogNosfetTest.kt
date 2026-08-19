@@ -96,7 +96,6 @@ class WheelLogNosfetTest {
                 "Expected at least $MIN_EXPECTED_DECODED_FRAMES decoded Nosfet frames, got ${decoded.size}",
                 decoded.size >= MIN_EXPECTED_DECODED_FRAMES
             )
-            assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
             assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
             assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
