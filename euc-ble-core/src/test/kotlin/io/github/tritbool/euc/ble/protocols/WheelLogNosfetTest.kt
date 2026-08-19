@@ -80,7 +80,7 @@ class WheelLogNosfetTest {
 
             val events = cancelAndConsumeRemainingEvents()
             val firstError = events.firstOrNull { it is Event.Error }
-            assertTrue("Flow emitted error event: $firstError", firstError == null)
+            assertTrue("Expected no error events but got: $firstError", firstError == null)
 
             val decoded: List<EUCData> = events
                 .mapNotNull { event -> (event as? Event.Item<EUCData>)?.value }
