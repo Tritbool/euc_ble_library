@@ -1075,9 +1075,10 @@ class GotwayProtocolTest {
             assertEquals(5.00, r2.current, 0.01)  // batterie != phase
             cancelAndIgnoreRemainingEvents()
         }
-    // -------------------------------------------------------------------------
-    // Fix 2: Begode/Gotway imperial-units transparent conversion
-    // -------------------------------------------------------------------------
+        // -------------------------------------------------------------------------
+        // Fix 2: Begode/Gotway imperial-units transparent conversion
+        // -------------------------------------------------------------------------
+    }
 
     @Test
     fun imperialModeConvertsSpeedAndDistanceToKm() = runTest {

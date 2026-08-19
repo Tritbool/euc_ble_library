@@ -538,7 +538,7 @@ class InMotionProtocolTest {
             val realtimeFrame = buildV2ResponseFrame(flag = 0x14, command = 0x04, payload = v12Payload)
             val data = protocol.decode(realtimeFrame)
 
-            assertNotNull(data, "Expected non-null EUCData for $expectedName")
+            assertNotNull("Expected non-null EUCData for $expectedName", data)
             assertEquals(expectedName, data!!.model)
         }
     }
