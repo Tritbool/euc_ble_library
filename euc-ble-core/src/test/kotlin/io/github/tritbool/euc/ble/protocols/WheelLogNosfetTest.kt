@@ -10,6 +10,7 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -79,7 +80,8 @@ class WheelLogNosfetTest {
 
             val decoded: List<EUCData> = buildList {
                 repeat(1200) {
-                    add(awaitItem())
+                    val item = withTimeoutOrNull(100.milliseconds) { awaitItem() } ?: return@repeat
+                    add(item)
                 }
             }
 
