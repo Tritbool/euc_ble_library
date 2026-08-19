@@ -80,7 +80,7 @@ class WheelLogNosfetTest {
 
             val decoded: List<EUCData> = buildList {
                 repeat(1200) {
-                    val item = withTimeoutOrNull(100.milliseconds) { awaitItem() } ?: return@repeat
+                    val item = withTimeoutOrNull(100.milliseconds) { awaitItem() } ?: return@buildList
                     add(item)
                 }
             }
