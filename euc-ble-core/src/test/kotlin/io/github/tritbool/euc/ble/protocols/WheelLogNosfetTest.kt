@@ -20,7 +20,6 @@ import kotlin.time.Duration.Companion.milliseconds
 class WheelLogNosfetTest {
     companion object {
         private const val MIN_EXPECTED_DECODED_FRAMES = 1200
-        private const val MAX_DECODED_FRAMES_TO_COLLECT = 1500
     }
 
     private val resourceDir = WheelLogResources.rawDir("nosfet")
@@ -82,18 +81,10 @@ class WheelLogNosfetTest {
             testScheduler.advanceUntilIdle()
 
             val decoded = mutableListOf<EUCData>()
-            while (decoded.size < MAX_DECODED_FRAMES_TO_COLLECT) {
-                try {
-                    decoded += awaitItem()
-                } catch (_: AssertionError) {
-                    break
-                }
+            repeat(MIN_EXPECTED_DECODED_FRAMES) {
+                decoded += awaitItem()
             }
 
-            assertTrue(
-                "Expected at least $MIN_EXPECTED_DECODED_FRAMES decoded Nosfet frames, got ${decoded.size}",
-                decoded.size >= MIN_EXPECTED_DECODED_FRAMES
-            )
             assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
             assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
