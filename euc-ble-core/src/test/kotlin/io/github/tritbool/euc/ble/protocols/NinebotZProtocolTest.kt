@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
@@ -128,6 +129,42 @@ class NinebotZProtocolTest {
         assertEquals(5, snapshot.driveFlags)
         assertEquals(true, snapshot.drlEnabled)
         assertEquals(true, snapshot.headlightEnabled)
+    }
+
+    @Test
+    fun decodeNinebotZAuthAndBmsFramesExposeDataThroughWrapper() {
+        protocol.decode(wheelLogFrame(0x1D, "AUTH-Z".toByteArray()))
+        protocol.decode(wheelLogFrame(0x24, byteArrayOf(0xD0.toByte(), 0x15, 0x64, 0x00, 0x68, 0x10, 0x64, 0x10, 0x60, 0x10, 0x5C, 0x10)))
+
+        val settings = protocol.getZSettingsSnapshot()
+        assertEquals("AUTH-Z", settings.authKeyAscii)
+        assertEquals("415554482D5A", settings.authKeyHex)
+
+        val bmsSnapshots = protocol.getZBmsSnapshots()
+        assertEquals(1, bmsSnapshots.size)
+        assertEquals(55.84, bmsSnapshots[0].voltage ?: 0.0, 0.001)
+        assertEquals(1.0, bmsSnapshots[0].current ?: 0.0, 0.001)
+        assertEquals(4, bmsSnapshots[0].cellVoltages?.size)
+
+        val bmsData = protocol.getBMSData()
+        assertNotNull(bmsData)
+        assertEquals(1, bmsData?.size)
+        assertEquals(1, bmsData?.first()?.bmsIndex)
+    }
+
+    @Test
+    fun matchesQueryResponseUsesSpecificFrameTypesForKnownCustomQueries() {
+        val plan = protocol.getPollingPlan()
+        val authQuery = plan.startupQueries.first { it.id == "ninebot-z.auth-key" }
+        val bms1Query = plan.startupQueries.first { it.id == "ninebot-z.bms1" }
+        val params1Query = plan.startupQueries.first { it.id == "ninebot-z.params-1" }
+
+        assertTrue(protocol.matchesQueryResponse(authQuery, wheelLogFrame(0x1D, byteArrayOf(0x01))))
+        assertFalse(protocol.matchesQueryResponse(authQuery, wheelLogFrame(0x70, byteArrayOf(0x01))))
+        assertTrue(protocol.matchesQueryResponse(bms1Query, wheelLogFrame(0x24, byteArrayOf(0x01, 0x00))))
+        assertFalse(protocol.matchesQueryResponse(bms1Query, wheelLogFrame(0x25, byteArrayOf(0x01, 0x00))))
+        assertTrue(protocol.matchesQueryResponse(params1Query, wheelLogFrame(0x7D, byteArrayOf(0x66, 0x08))))
+        assertFalse(protocol.matchesQueryResponse(params1Query, wheelLogFrame(0xC6, byteArrayOf(0x03))))
     }
 
     private fun wheelLogFrame(parameter: Int, payload: ByteArray): ByteArray {

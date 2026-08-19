@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
+import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import org.junit.jupiter.api.AfterEach
@@ -148,6 +149,67 @@ class NinebotProtocolTest {
         assertEquals(true, snapshot.drlEnabled)
         assertEquals(true, snapshot.headlightEnabled)
         assertEquals(3, snapshot.speakerVolumeStep)
+    }
+
+    @Test
+    fun decodeNinebotZAuthAndBmsFramesExposeSnapshotsAndBmsData() {
+        protocol.decode(wheelLogFrame(0x1D, "AUTH-KEY-123".toByteArray()))
+        protocol.decode(
+            wheelLogFrame(
+                0x24,
+                byteArrayOf(
+                    0xE8.toByte(),
+                    0x15,
+                    0x83.toByte(),
+                    0xFF.toByte(),
+                    0x68,
+                    0x10,
+                    0x63,
+                    0x10,
+                    0x5C,
+                    0x10,
+                    0x53,
+                    0x10
+                )
+            )
+        )
+        protocol.decode(
+            wheelLogFrame(
+                0x25,
+                byteArrayOf(
+                    0xD6.toByte(),
+                    0x15,
+                    0x50,
+                    0x00,
+                    0x62,
+                    0x10,
+                    0x61,
+                    0x10,
+                    0x5E,
+                    0x10,
+                    0x58,
+                    0x10
+                )
+            )
+        )
+
+        val snapshot = protocol.getZSettingsSnapshot()
+        assertEquals("AUTH-KEY-123", snapshot.authKeyAscii)
+        assertEquals("415554482D4B45592D313233", snapshot.authKeyHex)
+
+        val bmsSnapshots = protocol.getZBmsSnapshots()
+        assertEquals(2, bmsSnapshots.size)
+        assertEquals(56.08, bmsSnapshots[0].voltage ?: 0.0, 0.001)
+        assertEquals(-1.25, bmsSnapshots[0].current ?: 0.0, 0.001)
+        assertEquals(4.2, bmsSnapshots[0].cellVoltages?.first() ?: 0.0, 0.001)
+        assertFalse(bmsSnapshots[0].rawPayloadHex.isBlank())
+
+        val bmsData = protocol.getBMSData()
+        assertNotNull(bmsData)
+        assertEquals(2, bmsData?.size)
+        assertEquals(1, bmsData?.get(0)?.bmsIndex)
+        assertEquals(2, bmsData?.get(1)?.bmsIndex)
+        assertEquals(4, bmsData?.get(1)?.cellVoltages?.size)
     }
 
     private fun wheelLogFrame(parameter: Int, payload: ByteArray): ByteArray {
