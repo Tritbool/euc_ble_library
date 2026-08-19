@@ -263,7 +263,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val frameVariant = ByteUtils.tryGetUnsignedByte(data, 19)
         val rawTripDistanceKm = when (frameVariant) {
             0x18 -> ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
-            else -> ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()
+            else -> ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()?.div(1000.0)
         } ?: return null
         // Apply imperial conversion to distance as well.
         val tripDistanceKm = if (wheelInMiles) rawTripDistanceKm * MILES_TO_KM else rawTripDistanceKm

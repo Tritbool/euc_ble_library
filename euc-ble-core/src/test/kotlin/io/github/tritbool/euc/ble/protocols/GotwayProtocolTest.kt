@@ -271,7 +271,7 @@ class GotwayProtocolTest {
 
             assertEquals(67.2, result.voltage, 0.01)
             assertEquals(29.988, result.speed, 0.1)
-            assertEquals(1000.0, result.distance, 0.01)
+            assertEquals(1.0, result.distance, 0.01)
             assertEquals(2.5, result.current, 0.01)
             assertEquals(25.0, result.temperature, 0.01)
             assertEquals(13.6, result.pwm ?: 0.0, 0.01)
@@ -306,7 +306,7 @@ class GotwayProtocolTest {
             protocol.decode(frame)
             val result = awaitItem()
 
-            assertEquals(1000.0, result.distance, 0.01)
+            assertEquals(1.0, result.distance, 0.01)
             assertEquals(123456.0, result.totalDistance ?: 0.0, 0.01)
             assertEquals("Gotway", result.manufacturer)
             assertEquals("Type B", result.frameType)
@@ -454,7 +454,7 @@ class GotwayProtocolTest {
 
             assertEquals(300.0, result.voltage, 0.01)
             assertEquals(200.0, result.speed, 0.1)
-            assertEquals(4294967295.0, result.distance, 1.0)
+            assertEquals(4294967.295, result.distance, 1.0)
             assertEquals(327.67, result.current, 0.01)
             assertEquals(3276.7, result.temperature, 0.01)
 
@@ -624,7 +624,7 @@ class GotwayProtocolTest {
             val result = awaitItem()
 
             assertEquals(67.2, result.voltage, 0.01)
-            assertEquals(1000.0, result.distance, 0.01)
+            assertEquals(1.0, result.distance, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -689,7 +689,7 @@ class GotwayProtocolTest {
             val result = awaitItem()
 
             assertEquals(67.2, result.voltage, 0.01)
-            assertEquals(1000.0, result.distance, 0.01)
+            assertEquals(1.0, result.distance, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }
