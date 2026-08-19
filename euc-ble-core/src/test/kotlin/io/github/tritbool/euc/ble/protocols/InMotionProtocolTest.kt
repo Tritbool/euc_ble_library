@@ -6,6 +6,10 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -341,6 +345,26 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals("InMotion V9", data!!.model)
         assertEquals(null, data.phaseCurrent)
+    }
+
+    @Test
+    fun p6ModelDetectionEnqueuesExtendedRealtimeQueryOnWriteFlow() = runTest {
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020d0101010094"))
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa16010413"), emitted)
+    }
+
+    @Test
+    fun nonP6ModelDoesNotEnqueueExtendedRealtimeQuery() = runTest {
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
+        var emitted = false
+        try {
+            withTimeout(200) { protocol.writeFlow.first() }
+            emitted = true
+        } catch (_: TimeoutCancellationException) {
+            // expected
+        }
+        assertTrue(!emitted)
     }
 
     @Test

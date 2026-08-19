@@ -63,6 +63,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
          *  across a labelled ride. phase_A = torque_Nm / this.
          *  (Source: eucplanet commit 32385baa, verified over a 75x torque range.) */
         private const val P6_KT_NM_PER_A = 0.586
+        private const val P6_STATS_QUERY_INTERVAL_MS = 4_000L
 
         /** Minimum realtime payload size for V14/P6/V13/V11 (78 bytes). */
         private const val V2_REALTIME_MIN_SIZE = 78
@@ -161,6 +162,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
+    private val _writeChannel = Channel<ByteArray>(capacity = Channel.UNLIMITED)
+    override val writeFlow: Flow<ByteArray> = _writeChannel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
         extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
@@ -210,6 +213,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     @Volatile
     private var totalPowerOnTimeSeconds: Long? = null
+
+    @Volatile
+    private var lastP6StatsQueryAtMs: Long = 0L
 
     private data class InMotionBmsSnapshot(
         val voltage: Double? = null,
@@ -690,6 +696,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                         series == 13 && type == 1 -> "InMotion P6"
                         else -> "InMotion $series.$type"
                     }
+                    enqueueP6StatsQueryIfDue(force = true)
                 }
             }
 
@@ -872,6 +879,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         if (payload.size < V2_REALTIME_MIN_SIZE) return null
 
         val isP6 = modelName == "InMotion P6"
+        if (isP6) enqueueP6StatsQueryIfDue()
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
         val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
@@ -982,6 +990,14 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                         decoded.imuTemperature
                     )
                 )
+            }
+
+            private fun enqueueP6StatsQueryIfDue(force: Boolean = false) {
+                if (lastDetectedDialect != Dialect.V2 || modelName != "InMotion P6") return
+                val now = System.currentTimeMillis()
+                if (!force && now - lastP6StatsQueryAtMs < P6_STATS_QUERY_INTERVAL_MS) return
+                lastP6StatsQueryAtMs = now
+                _writeChannel.trySend(buildMessage(FLAG_EXTENDED, COMMAND_REAL_TIME_INFO, byteArrayOf()))
             }
     }
 
