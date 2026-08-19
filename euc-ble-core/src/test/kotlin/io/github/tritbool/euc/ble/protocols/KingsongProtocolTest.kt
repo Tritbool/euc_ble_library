@@ -96,6 +96,102 @@ class KingsongProtocolTest {
         )
     }
 
+    @Test
+    fun createCommandSetLedStrobe() {
+        // Opcode 0x53, mode at offset 2, standard trailer.
+        val expected = createLegacyCommand(command = 0x53, payload2 = 3)
+        assertArrayEquals(expected, protocol.createCommand(CommandType.SET_LED_STROBE, 3))
+    }
+
+    @Test
+    fun createCommandRequestBmsSerialHasZeroedTrailer() {
+        val cmd = protocol.createCommand(CommandType.REQUEST_BMS_SERIAL, Unit)
+        // AA 55 header
+        assertEquals(0xAA.toByte(), cmd[0])
+        assertEquals(0x55.toByte(), cmd[1])
+        // Opcode 0xE1 at offset 16
+        assertEquals(0xE1.toByte(), cmd[16])
+        // Trailer bytes 17..19 must be 0x00 (BMS query protocol)
+        assertEquals(0x00.toByte(), cmd[17])
+        assertEquals(0x00.toByte(), cmd[18])
+        assertEquals(0x00.toByte(), cmd[19])
+    }
+
+    @Test
+    fun createCommandSetChargeLimitBytesMatchSpec() {
+        // Opcode 0x8A, sub 0x09 at offset 2, value u16 LE at offsets 4..5.
+        val cmd = protocol.createCommand(CommandType.SET_CHARGE_LIMIT, 80)
+        assertEquals(0x8A.toByte(), cmd[16])
+        assertEquals(0x09.toByte(), cmd[2])
+        assertEquals(80.toByte(), cmd[4])   // value_lo
+        assertEquals(0x00.toByte(), cmd[5]) // value_hi
+        assertArrayEquals(
+            byteArrayOf(
+                0xaa.toByte(), 0x55, 0x09, 0x00, 0x50, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x8a.toByte(), 0x14, 0x5a, 0x5a
+            ),
+            cmd
+        )
+    }
+
+    @Test
+    fun createCommandSetStandbyDelayBytesMatchSpec() {
+        // Opcode 0x3F, sub 0x01 at offset 2, value 3600 u16 LE at offsets 4..5.
+        val cmd = protocol.createCommand(CommandType.SET_STANDBY_DELAY, 3600)
+        assertEquals(0x3F.toByte(), cmd[16])
+        assertEquals(0x01.toByte(), cmd[2])
+        // 3600 = 0x0E10, LE → 0x10 0x0E
+        assertEquals(0x10.toByte(), cmd[4])
+        assertEquals(0x0E.toByte(), cmd[5])
+        assertArrayEquals(
+            byteArrayOf(
+                0xaa.toByte(), 0x55, 0x01, 0x00, 0x10, 0x0e,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x3f, 0x14, 0x5a, 0x5a
+            ),
+            cmd
+        )
+    }
+
+    @Test
+    fun createCommandSetPedalCutoffAngleBytesMatchSpec() {
+        // Opcode 0x8A, sub 0x03, value 450 tenths (45.0°) u16 LE.
+        val cmd = protocol.createCommand(CommandType.SET_PEDAL_CUTOFF_ANGLE, 450)
+        assertEquals(0x8A.toByte(), cmd[16])
+        assertEquals(0x03.toByte(), cmd[2])
+        // 450 = 0x01C2, LE → 0xC2 0x01
+        assertEquals(0xC2.toByte(), cmd[4])
+        assertEquals(0x01.toByte(), cmd[5])
+        assertArrayEquals(
+            byteArrayOf(
+                0xaa.toByte(), 0x55, 0x03, 0x00, 0xc2.toByte(), 0x01,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x8a.toByte(), 0x14, 0x5a, 0x5a
+            ),
+            cmd
+        )
+    }
+
+    @Test
+    fun createCommandSetPedalPitchTrimBytesMatchSpec() {
+        // Opcode 0x8A, sub 0x01, value -32 tenths (-3.2°) signed u16 LE (two's complement).
+        // -32 → 0xFFE0, LE → 0xE0 0xFF
+        val cmd = protocol.createCommand(CommandType.SET_PEDAL_PITCH_TRIM, -32)
+        assertEquals(0x8A.toByte(), cmd[16])
+        assertEquals(0x01.toByte(), cmd[2])
+        assertEquals(0xE0.toByte(), cmd[4])
+        assertEquals(0xFF.toByte(), cmd[5])
+        assertArrayEquals(
+            byteArrayOf(
+                0xaa.toByte(), 0x55, 0x01, 0x00, 0xe0.toByte(), 0xff.toByte(),
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x8a.toByte(), 0x14, 0x5a, 0x5a
+            ),
+            cmd
+        )
+    }
+
     private fun createA9Frame(
         voltageRaw: Int = 8400,
         speedRaw: Int = 1250,

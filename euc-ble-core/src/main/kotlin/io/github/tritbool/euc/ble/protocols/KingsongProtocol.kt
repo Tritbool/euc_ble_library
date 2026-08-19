@@ -106,11 +106,17 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         CommandType.POWER_OFF,
         CommandType.SET_PEDALS_MODE,
         CommandType.SET_LED_MODE,
+        CommandType.SET_LED_STROBE,
         CommandType.SET_SPEED_LIMIT,
         CommandType.SET_ALARM_SPEED,
         CommandType.CALIBRATE,
         CommandType.REQUEST_SERIAL,
-        CommandType.REQUEST_FIRMWARE
+        CommandType.REQUEST_FIRMWARE,
+        CommandType.REQUEST_BMS_SERIAL,
+        CommandType.SET_CHARGE_LIMIT,
+        CommandType.SET_STANDBY_DELAY,
+        CommandType.SET_PEDAL_CUTOFF_ANGLE,
+        CommandType.SET_PEDAL_PITCH_TRIM
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
@@ -696,6 +702,42 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             CommandType.REQUEST_SERIAL -> buildLegacyCommand(command = 0x63)
             CommandType.REQUEST_FIRMWARE -> buildLegacyCommand(command = 0x9B)
 
+            CommandType.REQUEST_BMS_SERIAL -> buildBmsQuery(type = 0xE1)
+
+            CommandType.SET_LED_STROBE -> {
+                val mode = (value as? Int)?.and(0xFF) ?: return byteArrayOf()
+                buildLegacyCommand(command = 0x53, payload2 = mode)
+            }
+
+            CommandType.SET_CHARGE_LIMIT -> {
+                // Charge cutoff percentage 0..100.
+                // Wire: opcode 0x8A, sub-byte 0x09 at offset 2, value u16 LE at offsets 4..5.
+                val pct = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                buildWheelParamCommand(subByte = 0x09, value16 = pct)
+            }
+
+            CommandType.SET_STANDBY_DELAY -> {
+                // Idle auto-poweroff delay in seconds.
+                // Wire: opcode 0x3F, sub-byte 0x01 at offset 2, value u16 LE at offsets 4..5.
+                val seconds = (value as? Int)?.coerceIn(0, 65535) ?: return byteArrayOf()
+                buildStandbyCommand(seconds = seconds)
+            }
+
+            CommandType.SET_PEDAL_CUTOFF_ANGLE -> {
+                // Pedal cutoff lean angle in tenths of a degree (unsigned).
+                // Wire: opcode 0x8A, sub-byte 0x03 at offset 2, value u16 LE at offsets 4..5.
+                val tenths = (value as? Int)?.coerceIn(0, 65535) ?: return byteArrayOf()
+                buildWheelParamCommand(subByte = 0x03, value16 = tenths)
+            }
+
+            CommandType.SET_PEDAL_PITCH_TRIM -> {
+                // Pedal pitch trim in tenths of a degree (signed, two's complement).
+                // Wire: opcode 0x8A, sub-byte 0x01 at offset 2, value u16 LE at offsets 4..5.
+                val tenths = (value as? Int)?.coerceIn(-32768, 32767) ?: return byteArrayOf()
+                val raw = if (tenths < 0) tenths + 0x10000 else tenths
+                buildWheelParamCommand(subByte = 0x01, value16 = raw)
+            }
+
             else -> byteArrayOf()
         }
     }
@@ -717,6 +759,60 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         data[4] = alarm2.toByte()
         data[6] = alarm3.toByte()
         data[8] = maxSpeed.toByte()
+        return data
+    }
+
+    /**
+     * Build a WHEEL_PARAM command (opcode 0x8A).
+     *
+     * Layout: AA 55 [subByte] 00 [value_lo] [value_hi] 00 ... 8A 14 5A 5A
+     *
+     * Used for charge limit (sub 0x09), pedal cutoff angle (sub 0x03), and
+     * pedal pitch trim (sub 0x01). The 16-bit value is little-endian at
+     * offsets 4..5.
+     */
+    private fun buildWheelParamCommand(subByte: Int, value16: Int): ByteArray {
+        val data = byteArrayOf(
+            0xAA.toByte(), 0x55.toByte(), 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x8A.toByte(), 0x14, 0x5A, 0x5A
+        )
+        data[2] = subByte.toByte()
+        data[4] = (value16 and 0xFF).toByte()
+        data[5] = ((value16 shr 8) and 0xFF).toByte()
+        return data
+    }
+
+    /**
+     * Build a STANDBY command (opcode 0x3F).
+     *
+     * Layout: AA 55 01 00 [seconds_lo] [seconds_hi] 00 ... 3F 14 5A 5A
+     */
+    private fun buildStandbyCommand(seconds: Int): ByteArray {
+        val data = byteArrayOf(
+            0xAA.toByte(), 0x55.toByte(), 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x3F, 0x14, 0x5A, 0x5A
+        )
+        data[4] = (seconds and 0xFF).toByte()
+        data[5] = ((seconds shr 8) and 0xFF).toByte()
+        return data
+    }
+
+    /**
+     * Build a BMS query frame. Per the KingSong spec, BMS request frames use a zeroed
+     * trailer (offsets 17..19 = 0x00) instead of the standard 0x14 0x5A 0x5A.
+     */
+    private fun buildBmsQuery(type: Int): ByteArray {
+        val data = ByteArray(20)
+        data[0] = 0xAA.toByte()
+        data[1] = 0x55.toByte()
+        data[16] = type.toByte()
+        // Trailer bytes intentionally left as 0x00.
         return data
     }
 
