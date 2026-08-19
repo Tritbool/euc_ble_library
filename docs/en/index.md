@@ -201,6 +201,13 @@ The Dokka reference is automatically regenerated on every push to `main` and pub
 
 ---
 
+## Thanks to them
+
+- [WheelLog](https://github.com/Wheellog/Wheellog.Android)
+- [eried/eucplanet](https://github.com/eried/eucplanet)
+
+---
+
 ## Contributing
 
 Issues, PRs, and additional WheelLog captures (new wheels, new firmwares, tricky edge cases) are all welcome.  
