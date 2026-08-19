@@ -435,15 +435,21 @@ class InMotionProtocolTest {
     private fun buildV2ResponseFrame(flag: Int, command: Int, payload: ByteArray): ByteArray {
         val cmdByte = (command or 0x80)
         val len = payload.size + 1
-        val body = ByteArray(3 + payload.size)
-        body[0] = flag.toByte()
-        body[1] = len.toByte()
-        body[2] = cmdByte.toByte()
-        payload.copyInto(body, destinationOffset = 3)
-        var xor = 0
-        for (b in body) xor = xor xor (b.toInt() and 0xFF)
-        val checksum = xor.toByte()
-        return byteArrayOf(0xAA.toByte(), 0xAA.toByte()) + body + byteArrayOf(checksum)
+        // Checksum is XOR over all unescaped bytes: flag, len, cmdByte, payload...
+        var xor = flag xor len xor cmdByte
+        for (b in payload) xor = xor xor (b.toInt() and 0xFF)
+        val checksum = (xor and 0xFF).toByte()
+        // Build the wire frame: header (not escaped), FLAG + LEN (not escaped), then
+        // escaped CMD + payload bytes (0xA5→{0xA5,0xA5}, 0xAA→{0xA5,0xAA}), then checksum.
+        val result = mutableListOf<Byte>(0xAA.toByte(), 0xAA.toByte(), flag.toByte(), len.toByte())
+        val escapable = byteArrayOf(cmdByte.toByte()) + payload
+        for (b in escapable) {
+            val v = b.toInt() and 0xFF
+            if (v == 0xA5 || v == 0xAA) result.add(0xA5.toByte())
+            result.add(b)
+        }
+        result.add(checksum)
+        return result.toByteArray()
     }
 
     /** Build a model-identify (MAIN_INFO) frame for the given series/type. */

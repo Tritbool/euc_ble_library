@@ -1306,8 +1306,14 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val packAddress = request[5].toInt() and 0xFF
         val subCommand = request[6].toInt() and 0xFF
         if (packAddress !in V14_BMS_PACK_ADDRESSES || subCommand != 0x02) return false
-        if (command != packAddress || data.size < 7) return false
-        return (data[5].toInt() and 0xFF) == 0x02 && (data[6].toInt() and 0xFF) == 0x82
+        if (command != packAddress) return false
+        // The cmd byte at position 4 may be escaped as {0xA5, cmdByte} when the response
+        // bit causes cmdByte == 0xA5 (e.g. command 0x25 → 0xA5). In that case the first
+        // payload byte is at position 6; otherwise it is at position 5.
+        val payloadOffset = if (data.size > 4 && (data[4].toInt() and 0xFF) == 0xA5) 6 else 5
+        if (data.size < payloadOffset + 2) return false
+        return (data[payloadOffset].toInt() and 0xFF) == 0x02 &&
+            (data[payloadOffset + 1].toInt() and 0xFF) == 0x82
     }
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
