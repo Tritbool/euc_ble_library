@@ -198,7 +198,12 @@ La référence Dokka est regénérée automatiquement à chaque push sur `main` 
 
 ---
 
-## Contribuer
+## Merci à eux
+
+- [WheelLog](https://github.com/Wheellog/Wheellog.Android)
+- [eried/eucplanet](https://github.com/eried/eucplanet)
+
+## Contribuer (pour ceux qui viendront après)
 
 Toute issue, PR ou capture WheelLog supplémentaire (nouvelle roue, nouveau firmware, edge case) est la bienvenue.  
 Voir le dépôt : <https://github.com/Tritbool/euc_ble_library>.
