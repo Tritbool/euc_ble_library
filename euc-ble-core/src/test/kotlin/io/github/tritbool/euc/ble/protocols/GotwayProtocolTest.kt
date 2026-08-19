@@ -369,7 +369,7 @@ class GotwayProtocolTest {
 
         val frame = createGotwayFrameTypeB(
             distanceRaw = 321,
-            tiltBackSpeed = 120
+            tiltBackSpeed = 210
         )
 
         protocol.dataFlow.test {
@@ -1075,7 +1075,129 @@ class GotwayProtocolTest {
             assertEquals(5.00, r2.current, 0.01)  // batterie != phase
             cancelAndIgnoreRemainingEvents()
         }
+    // -------------------------------------------------------------------------
+    // Fix 2: Begode/Gotway imperial-units transparent conversion
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun imperialModeConvertsSpeedAndDistanceToKm() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        // Settings word bit 0 = 1 → miles mode
+        val milesSettings = 0b0000_0001
+        val typeBFrame = createGotwayFrameTypeB(
+            distanceRaw = 0,
+            settings = milesSettings
+        )
+        // rawSpeed = 278 → 278 × 3.6 / 100 = 10.008 mph
+        // expected in km = 10.008 × 1.60934 ≈ 16.11 km/h
+        val rawSpeed = 278
+        val typeAFrame = createGotwayFrame(
+            voltageRaw = 6000,
+            speedRaw = rawSpeed,
+            distanceRaw = 100,   // 100 m  → in miles = 0.1 miles → in km ≈ 0.1609 km
+            currentRaw = 100,
+            tempRaw = 250
+        )
+
+        protocol.dataFlow.test {
+            // Latch miles mode via Type B
+            protocol.decode(typeBFrame)
+            awaitItem() // consume Type B result
+
+            // Then decode Type A — speed and distance should be converted
+            protocol.decode(typeAFrame)
+            val result = awaitItem()
+
+            val rawSpeedKmh = rawSpeed * 3.6 / 100
+            val expectedSpeedKm = rawSpeedKmh * 1.60934
+            assertEquals(expectedSpeedKm, result.speed, 0.1)
+
+            // Distance: raw 100 / 1000 = 0.1 miles → × 1.60934 = 0.16093 km
+            assertEquals(0.1 * 1.60934, result.distance, 0.01)
+
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
+    @Test
+    fun metricModeAfterImperialEmitsMetricValues() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val milesSettings = 0b0000_0001
+        val metricSettings = 0b0000_0000
+
+        val typeBMiles = createGotwayFrameTypeB(distanceRaw = 0, settings = milesSettings)
+        val typeBMetric = createGotwayFrameTypeB(distanceRaw = 0, settings = metricSettings)
+        val typeAFrame = createGotwayFrame(
+            voltageRaw = 6000,
+            speedRaw = 278,
+            distanceRaw = 100,
+            currentRaw = 100,
+            tempRaw = 250
+        )
+
+        protocol.dataFlow.test {
+            // First latch miles mode
+            protocol.decode(typeBMiles)
+            awaitItem()
+
+            // Then switch to metric
+            protocol.decode(typeBMetric)
+            awaitItem()
+
+            // Now Type A should be metric (no × 1.60934)
+            protocol.decode(typeAFrame)
+            val result = awaitItem()
+
+            val expectedSpeedKm = 278 * 3.6 / 100   // raw → km/h with no miles conversion
+            assertEquals(expectedSpeedKm, result.speed, 0.1)
+            assertEquals(0.1, result.distance, 0.01)   // raw 100 / 1000 = 0.1 km
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Fix 3: Begode/Gotway tiltback sentinel raised from 100 to 200
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun tiltBackSpeedOf120IsNoLongerDropped() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val frame = createGotwayFrameTypeB(
+            distanceRaw = 0,
+            tiltBackSpeed = 120
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(frame)
+            val result = awaitItem()
+            assertEquals(120, result.tiltBackSpeed)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun tiltBackSpeedOf210IsStillDroppedAsOutOfRange() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val frame = createGotwayFrameTypeB(
+            distanceRaw = 0,
+            tiltBackSpeed = 210
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(frame)
+            val result = awaitItem()
+            assertNull(result.tiltBackSpeed)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 
 }

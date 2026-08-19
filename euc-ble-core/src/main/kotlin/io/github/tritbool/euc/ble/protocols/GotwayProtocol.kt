@@ -108,6 +108,12 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         private const val MIN_BATTERY_VOLTAGE = 52.0
         private const val MAX_BATTERY_VOLTAGE = 134.4
         private const val MAX_BMS_CELL_SLOTS = 56
+        /** Conversion factor for wheels that have been set to imperial units by the
+         *  Begode app. When the imperial flag is set in a Type-B frame the wheel
+         *  transmits speed in mph and trip distance in miles on every subsequent
+         *  Type-A frame; we multiply by this constant to convert back to km/h and
+         *  km so all downstream consumers always receive metric values. */
+        private const val MILES_TO_KM = 1.60934
     }
 
     private val frameParser = FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
@@ -140,6 +146,10 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var gotwayFirmwareVariant: String? = null
     private var useHwPwm = false
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+    /** True when the wheel has reported imperial-units mode via bit 0 of the Type-B
+     *  settings word. Latched on every Type-B frame and applied in parseTypeA to
+     *  convert mph→km/h and miles→km transparently. */
+    private var wheelInMiles = false
 
     init {
         // Start observing frames asynchronously
@@ -229,7 +239,11 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private fun parseTypeA(data: ByteArray): EUCData? {
 
         val speedRaw = ByteUtils.tryGetSignedShortBE(data, 4)?.toInt() ?: return null
-        val speed = abs((speedRaw * 3.6) / 100.0)
+        val rawSpeedKmh = abs((speedRaw * 3.6) / 100.0)
+        // Apply imperial conversion: when the Begode app is set to mph the wheel
+        // transmits speed in mph on the wire even though the spec says km/h. Multiply
+        // by MILES_TO_KM so all downstream consumers always receive km/h.
+        val speed = if (wheelInMiles) rawSpeedKmh * MILES_TO_KM else rawSpeedKmh
         if (abs(speed) > 200.0) return null  // frame corrompue ou sentinel
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
@@ -243,10 +257,12 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         if (voltage > 300.0) return null  // pareil pour voltage
 
         val frameVariant = ByteUtils.tryGetUnsignedByte(data, 19)
-        val tripDistanceKm = when (frameVariant) {
+        val rawTripDistanceKm = when (frameVariant) {
             0x18 -> ByteUtils.tryGetUnsignedShortBE(data, 8)?.toDouble()?.div(1000.0)
             else -> ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()
         } ?: return null
+        // Apply imperial conversion to distance as well.
+        val tripDistanceKm = if (wheelInMiles) rawTripDistanceKm * MILES_TO_KM else rawTripDistanceKm
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
 
         // phaseCurrent: courant moteur, toujours positif (valeur absolue en A)
@@ -317,9 +333,14 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val alarmMode = settings?.let { (it shr 10) and 0x03 }
         val rollAngleMode = settings?.let { (it shr 7) and 0x03 }
         val usesMiles = settings?.let { (it and 0x01) == 1 }
+        // Latch the imperial flag so parseTypeA can convert speed/distance on every
+        // subsequent frame without repeating the detection logic there.
+        wheelInMiles = usesMiles == true
         val autoPowerOffMinutes = ByteUtils.tryGetUnsignedShortBE(data, 8)
-        // Legacy parser ignores values >= 100, treating them as unset/invalid in this field.
-        val tiltBackSpeed = ByteUtils.tryGetUnsignedShortBE(data, 10)?.takeIf { it < 100 }
+        // Sentinel raised from 100 to 200: modern high-speed wheels (Master Pro, XWay,
+        // MSX HS) legitimately set tiltback thresholds above 100 km/h, so the old
+        // `< 100` guard incorrectly discarded valid settings for those models.
+        val tiltBackSpeed = ByteUtils.tryGetUnsignedShortBE(data, 10)?.takeIf { it < 200 }
         val ledMode = ByteUtils.tryGetUnsignedByte(data, 13)
         val alertFlags = ByteUtils.tryGetUnsignedByte(data, 14)
         val lightMode = ByteUtils.tryGetUnsignedByte(data, 15)?.and(0x03)
