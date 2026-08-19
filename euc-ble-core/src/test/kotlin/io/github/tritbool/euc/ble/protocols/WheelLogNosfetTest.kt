@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
 import app.cash.turbine.test
+import app.cash.turbine.Event
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
 import io.github.tritbool.euc.ble.test.WheelLogFrame
@@ -77,8 +78,12 @@ class WheelLogNosfetTest {
             frames.forEach { protocol.decode(it.bleData) }
             testScheduler.advanceUntilIdle()
 
-            val decoded: List<EUCData> = cancelAndConsumeRemainingEvents()
-                .mapNotNull { event -> (event as? app.cash.turbine.Event.Item<EUCData>)?.value }
+            val events = cancelAndConsumeRemainingEvents()
+            val firstError = events.firstOrNull { it is Event.Error }
+            assertTrue("Flow emitted error event: $firstError", firstError == null)
+
+            val decoded: List<EUCData> = events
+                .mapNotNull { event -> (event as? Event.Item<EUCData>)?.value }
                 .take(1200)
 
             assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
