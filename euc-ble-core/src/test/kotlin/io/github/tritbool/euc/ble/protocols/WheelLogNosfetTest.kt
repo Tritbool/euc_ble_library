@@ -1,8 +1,8 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.SlowTest
-import app.cash.turbine.test
 import app.cash.turbine.Event
+import app.cash.turbine.test
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
 import io.github.tritbool.euc.ble.test.WheelLogFrame
@@ -19,6 +19,9 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @SlowTest
 class WheelLogNosfetTest {
+    companion object {
+        private const val MIN_EXPECTED_DECODED_FRAMES = 1200
+    }
 
     private val resourceDir = WheelLogResources.rawDir("nosfet")
     private lateinit var protocol: NosfetProtocol
@@ -78,15 +81,14 @@ class WheelLogNosfetTest {
             frames.forEach { protocol.decode(it.bleData) }
             testScheduler.advanceUntilIdle()
 
-            val events = cancelAndConsumeRemainingEvents()
-            val firstError = events.firstOrNull { it is Event.Error }
+            val decoded = mutableListOf<EUCData>()
+            repeat(MIN_EXPECTED_DECODED_FRAMES) {
+                decoded += awaitItem()
+            }
+            val remainingEvents = cancelAndConsumeRemainingEvents()
+            val firstError = remainingEvents.firstOrNull { it is Event.Error }
             assertTrue("Expected no error events but got: $firstError", firstError == null)
 
-            val decoded: List<EUCData> = events
-                .mapNotNull { event -> (event as? Event.Item<EUCData>)?.value }
-
-            assertTrue("Expected at least 1200 decoded Nosfet frames, got ${decoded.size}", decoded.size >= 1200)
-            assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
             assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
             assertTrue(decoded.any { it.model.contains("Nosfet", ignoreCase = true) })
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
