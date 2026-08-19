@@ -102,6 +102,34 @@ class NinebotZProtocolTest {
         assertEquals("3.2.1", decoded?.firmwareVersion)
     }
 
+    @Test
+    fun decodeNinebotZSettingsFramesUpdateDelegateSnapshot() {
+        protocol.decode(wheelLogFrame(0x74, byteArrayOf(0x98.toByte(), 0x08)))
+        protocol.decode(wheelLogFrame(0x7D, byteArrayOf(0x66, 0x08)))
+        protocol.decode(wheelLogFrame(0xD3, byteArrayOf(0x05, 0x00)))
+
+        val payload = ByteArray(32)
+        payload[8] = 90.toByte()
+        writeSignedShortLE(payload, 10, 50)
+        writeIntLE(payload, 14, 10_000)
+        writeShortLE(payload, 22, 200)
+        writeShortLE(payload, 24, 5_500)
+        writeSignedShortLE(payload, 26, 100)
+
+        val decoded = protocol.decode(wheelLogFrame(0xB0, payload))
+        assertNotNull(decoded)
+        assertEquals(22.0, decoded?.speedLimit ?: 0.0, 0.001)
+        assertEquals(22, decoded?.alarm1Speed)
+        assertEquals(1, decoded?.lightMode)
+
+        val snapshot = protocol.getZSettingsSnapshot()
+        assertEquals(22.0, snapshot.speedLimitKmh ?: 0.0, 0.001)
+        assertEquals(22, snapshot.alarm1SpeedKmh)
+        assertEquals(5, snapshot.driveFlags)
+        assertEquals(true, snapshot.drlEnabled)
+        assertEquals(true, snapshot.headlightEnabled)
+    }
+
     private fun wheelLogFrame(parameter: Int, payload: ByteArray): ByteArray {
         return byteArrayOf(
             0x5A,

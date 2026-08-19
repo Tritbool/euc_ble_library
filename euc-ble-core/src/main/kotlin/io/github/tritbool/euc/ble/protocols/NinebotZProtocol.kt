@@ -71,6 +71,8 @@ class NinebotZProtocol : EUCProtocol {
      */
     override fun decode(data: ByteArray): EUCData? = delegate.decode(data)
 
+    fun getZSettingsSnapshot(): NinebotProtocol.ZSettingsSnapshot = delegate.getZSettingsSnapshot()
+
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {
             CommandType.LIGHT_ON -> buildActionCommand(0x50, 0x01)

@@ -100,6 +100,56 @@ class NinebotProtocolTest {
         assertEquals("3.2.1", decoded?.firmwareVersion)
     }
 
+    @Test
+    fun decodeNinebotZSettingsFramesCarryForwardIntoTelemetryAndSnapshot() {
+        protocol.decode(wheelLogFrame(0x68, "Z-1.0".toByteArray()))
+        protocol.decode(wheelLogFrame(0x70, byteArrayOf(0x01, 0x00)))
+        protocol.decode(wheelLogFrame(0x72, byteArrayOf(0x01, 0x00)))
+        protocol.decode(wheelLogFrame(0x74, byteArrayOf(0x98.toByte(), 0x08))) // 22.00 km/h
+        protocol.decode(wheelLogFrame(0x7C, byteArrayOf(0x05, 0x00)))
+        protocol.decode(wheelLogFrame(0x7D, byteArrayOf(0x66, 0x08))) // 21.50 km/h
+        protocol.decode(wheelLogFrame(0x7E, byteArrayOf(0xFC.toByte(), 0x08))) // 23.00 km/h
+        protocol.decode(wheelLogFrame(0x7F, byteArrayOf(0x92.toByte(), 0x09))) // 24.50 km/h
+        protocol.decode(wheelLogFrame(0xC6, byteArrayOf(0x03)))
+        protocol.decode(wheelLogFrame(0xD2, byteArrayOf(0x2A, 0x00)))
+        protocol.decode(wheelLogFrame(0xD3, byteArrayOf(0x05, 0x00)))
+        protocol.decode(wheelLogFrame(0xF5, byteArrayOf(0x18, 0x00)))
+
+        val payload = ByteArray(32)
+        payload[8] = 88.toByte()
+        writeSignedShortLE(payload, 10, 80)
+        writeIntLE(payload, 14, 42_000)
+        writeShortLE(payload, 22, 215)
+        writeShortLE(payload, 24, 5_620)
+        writeSignedShortLE(payload, 26, 150)
+
+        val decoded = protocol.decode(wheelLogFrame(0xB0, payload))
+        assertNotNull(decoded)
+        assertEquals(22.0, decoded?.speedLimit ?: 0.0, 0.001)
+        assertEquals(5, decoded?.alertFlags)
+        assertEquals(22, decoded?.alarm1Speed)
+        assertEquals(23, decoded?.alarm2Speed)
+        assertEquals(25, decoded?.alarm3Speed)
+        assertEquals(3, decoded?.ledMode)
+        assertEquals(1, decoded?.lightMode)
+        assertEquals(42, decoded?.pedalsMode)
+
+        val snapshot = protocol.getZSettingsSnapshot()
+        assertEquals("Z-1.0", snapshot.bleVersion)
+        assertEquals(1, snapshot.lockState)
+        assertEquals(true, snapshot.limitedModeEnabled)
+        assertEquals(22.0, snapshot.speedLimitKmh ?: 0.0, 0.001)
+        assertEquals(5, snapshot.alarmsArmedMask)
+        assertEquals(22, snapshot.alarm1SpeedKmh)
+        assertEquals(23, snapshot.alarm2SpeedKmh)
+        assertEquals(25, snapshot.alarm3SpeedKmh)
+        assertEquals(3, snapshot.ledMode)
+        assertEquals(5, snapshot.driveFlags)
+        assertEquals(true, snapshot.drlEnabled)
+        assertEquals(true, snapshot.headlightEnabled)
+        assertEquals(3, snapshot.speakerVolumeStep)
+    }
+
     private fun wheelLogFrame(parameter: Int, payload: ByteArray): ByteArray {
         return byteArrayOf(
             0x5A,
