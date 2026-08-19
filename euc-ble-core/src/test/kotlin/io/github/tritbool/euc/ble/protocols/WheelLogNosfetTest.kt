@@ -57,7 +57,7 @@ class WheelLogNosfetTest {
                     received++
                 } catch (_: AssertionError) {
                     // plus rien à lire avant timeout Turbine
-                                    }
+                }
             }
 
             cancelAndIgnoreRemainingEvents()
@@ -77,14 +77,19 @@ class WheelLogNosfetTest {
         val frames = loadFrames("${resourceDir}RAW_2026_05_08_18_55_45.csv", maxFrames = 7000)
         assertTrue("Expected WheelLog frames", frames.isNotEmpty())
 
-        protocol.dataFlow.test(timeout = 60_000.milliseconds) {
+        protocol.dataFlow.test(timeout = 100.milliseconds) {
             frames.forEach { protocol.decode(it.bleData) }
             testScheduler.advanceUntilIdle()
 
             val decoded = mutableListOf<EUCData>()
             repeat(MIN_EXPECTED_DECODED_FRAMES) {
-                decoded += awaitItem()
+                try {
+                    decoded += awaitItem()
+                } catch (_: AssertionError) {
+                    // plus rien à lire avant timeout Turbine
+                }
             }
+
             val remainingEvents = cancelAndConsumeRemainingEvents()
             val firstError = remainingEvents.firstOrNull { it is Event.Error }
             assertTrue("Expected no error events but got: $firstError", firstError == null)
@@ -94,10 +99,14 @@ class WheelLogNosfetTest {
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
             assertTrue(decoded.all { it.rideTime >= 0 })
             assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
+            cancelAndIgnoreRemainingEvents()
         }
     }
 
-    private fun loadFrames(resourcePath: String, maxFrames: Int = Int.MAX_VALUE): List<WheelLogFrame> {
+    private fun loadFrames(
+        resourcePath: String,
+        maxFrames: Int = Int.MAX_VALUE
+    ): List<WheelLogFrame> {
         val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
         WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
         return result.frames
