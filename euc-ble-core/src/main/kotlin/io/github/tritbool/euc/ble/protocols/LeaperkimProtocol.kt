@@ -433,8 +433,8 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
                 // immediately by the LdAp companion. We concatenate them here; the BLE
                 // layer splits at the 20-byte ATT boundary before writing.
                 val on = value as? Boolean ?: return byteArrayOf()
-                buildVendorFrame(LKAP, 13, byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte()), if (on) 0x01 else 0x00) +
-                        buildVendorFrame(LDAP, 13, byteArrayOf(0x01, 0x00, 0x80.toByte()), if (on) 0x01 else 0x00)
+                buildVendorFrame(LKAP, 13, byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte()), (if (on) 0x01 else 0x00).toByte()) +
+                        buildVendorFrame(LDAP, 13, byteArrayOf(0x01, 0x00, 0x80.toByte()), (if (on) 0x01 else 0x00).toByte())
             }
 
             CommandType.BEEP -> {
