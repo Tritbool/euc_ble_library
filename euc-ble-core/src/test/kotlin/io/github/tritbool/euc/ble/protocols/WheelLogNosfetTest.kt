@@ -10,7 +10,6 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -78,12 +77,9 @@ class WheelLogNosfetTest {
             frames.forEach { protocol.decode(it.bleData) }
             testScheduler.advanceUntilIdle()
 
-            val decoded: List<EUCData> = buildList {
-                repeat(1200) {
-                    val item = withTimeoutOrNull(100.milliseconds) { awaitItem() } ?: return@buildList
-                    add(item)
-                }
-            }
+            val decoded: List<EUCData> = cancelAndConsumeRemainingEvents()
+                .mapNotNull { event -> (event as? app.cash.turbine.Event.Item<EUCData>)?.value }
+                .take(1200)
 
             assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
             assertTrue(decoded.all { it.manufacturer.equals("Nosfet", ignoreCase = true) })
@@ -91,8 +87,6 @@ class WheelLogNosfetTest {
             assertTrue(decoded.all { it.batteryLevel in 0..100 })
             assertTrue(decoded.all { it.rideTime >= 0 })
             assertTrue(decoded.all { abs(it.power - (it.voltage * it.current)) < 0.5 })
-
-            cancelAndIgnoreRemainingEvents()
         }
     }
 
