@@ -156,10 +156,11 @@ class InMotionProtocolTest {
         val plan = protocol.getPollingPlan()
         assertTrue(plan.enabled)
         assertEquals(1, plan.startupQueries.size)
-        assertTrue(plan.periodicQueries.isNotEmpty())
+        assertEquals(5, plan.periodicQueries.size)
         val startup = plan.startupQueries.single()
         assertEquals("inmotion.dialect-probe", startup.id)
         assertEquals(CommandType.REQUEST_FIRMWARE, startup.commandType)
+        assertEquals(4, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
     }
 
     @Test
@@ -172,6 +173,18 @@ class InMotionProtocolTest {
         protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
         val realtime = protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
         assertTrue(realtime.isNotEmpty())
+    }
+
+    @Test
+    fun createCommandSupportsCustomV14PackQueriesAfterV2Detected() {
+        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
+        val query = protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-1-cells" }
+
+        assertEquals(CommandType.CUSTOM, query.commandType)
+        assertArrayEquals(
+            query.value as ByteArray,
+            protocol.createCommand(query.commandType, query.value)
+        )
     }
 
     @Test
@@ -343,6 +356,41 @@ class InMotionProtocolTest {
         assertTrue((bms.first().temperatures ?: emptyList()).size >= 3)
     }
 
+    @Test
+    fun decodeV14PackCellResponsesExposeOneBmsEntryPerPack() {
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2))
+
+        val pack1Query = protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-1-cells" }
+        val pack2Query = protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-2-cells" }
+        val pack1Response = buildV2ResponseFrame(
+            flag = 0x16,
+            command = 0x24,
+            payload = buildV14PackCellsPayload(4100)
+        )
+        val pack2Response = buildV2ResponseFrame(
+            flag = 0x16,
+            command = 0x25,
+            payload = buildV14PackCellsPayload(4200)
+        )
+
+        assertTrue(protocol.matchesQueryResponse(pack1Query, pack1Response))
+        assertEquals(false, protocol.matchesQueryResponse(pack1Query, pack2Response))
+        assertTrue(protocol.matchesQueryResponse(pack2Query, pack2Response))
+
+        protocol.decode(pack1Response)
+        protocol.decode(pack2Response)
+
+        val bms = protocol.getBMSData()
+        assertNotNull(bms)
+        assertEquals(2, bms!!.size)
+        assertEquals(1, bms[0].bmsIndex)
+        assertEquals(2, bms[1].bmsIndex)
+        assertEquals(32, bms[0].cellVoltages?.size)
+        assertEquals(32, bms[1].cellVoltages?.size)
+        assertEquals(4.100, bms[0].cellVoltages?.first() ?: 0.0, 0.001)
+        assertEquals(4.200, bms[1].cellVoltages?.first() ?: 0.0, 0.001)
+    }
+
     // -------------------------------------------------------------------------
     // Fix 1: InMotion V12 telemetry routing
     // -------------------------------------------------------------------------
@@ -375,6 +423,19 @@ class InMotionProtocolTest {
             0x01.toByte(), 0x01.toByte(), 0x00.toByte()
         )
         return buildV2ResponseFrame(flag = 0x11, command = 0x02, payload = payload)
+    }
+
+    private fun buildV14PackCellsPayload(startCellMillivolts: Int): ByteArray {
+        val payload = ByteArray(2 + 64)
+        payload[0] = 0x02
+        payload[1] = 0x82.toByte()
+        repeat(32) { index ->
+            val value = startCellMillivolts + index
+            val offset = 2 + index * 2
+            payload[offset] = (value and 0xFF).toByte()
+            payload[offset + 1] = ((value shr 8) and 0xFF).toByte()
+        }
+        return payload
     }
 
     @Test

@@ -78,6 +78,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             "InMotion V12 PRO",
             "InMotion V12S"
         )
+
+        private val V14_BMS_PACK_ADDRESSES = listOf(0x24, 0x25, 0x26, 0x27)
     }
 
 
@@ -92,7 +94,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         CommandType.POWER_OFF,
         CommandType.REQUEST_SERIAL,
         CommandType.REQUEST_FIRMWARE,
-        CommandType.REQUEST_BATTERY_INFO
+        CommandType.REQUEST_BATTERY_INFO,
+        CommandType.CUSTOM
     )
 
     override fun getServiceUUID(): UUID {
@@ -188,7 +191,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val current: Double? = null,
         val temperatures: List<Double>? = null,
         val packVoltages: List<Double>? = null,
-        val cellVoltages: List<Double>? = null
+        val cellVoltages: List<Double>? = null,
+        val packCellVoltages: Map<Int, List<Double>> = emptyMap()
     )
 
     override fun decode(data: ByteArray): EUCData? {
@@ -496,6 +500,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 null
             }
 
+            in V14_BMS_PACK_ADDRESSES -> {
+                lastDetectedDialect = Dialect.V2
+                parseV14PackCellsResponse(command, payload)
+                null
+            }
+
             else -> null
         }
     }
@@ -786,7 +796,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         }
 
         val now = System.currentTimeMillis()
-        val cellVoltages = lastKnownBmsSnapshot.cellVoltages
+        val cellVoltages = getCombinedCellVoltages(lastKnownBmsSnapshot)
 
         return EUCData(
             speed = speed,
@@ -922,7 +932,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             firmwareVersion = firmwareVersion,
             isCharging = isCharging,
             rideTime = rideTimeSeconds,
-            cellVoltages = lastKnownBmsSnapshot.cellVoltages,
+            cellVoltages = getCombinedCellVoltages(lastKnownBmsSnapshot),
             motorTemperature = telemetryMotorTemp,
             mosfetTemperature = mosTemp.toDouble(),
             boardTemperature = boardTemp.toDouble(),
@@ -1014,12 +1024,19 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return cells
     }
 
+    private fun parseV14PackCellsResponse(command: Int, payload: ByteArray) {
+        val cells = parseV14PackCells(payload) ?: return
+        val packIndex = (command - V14_BMS_PACK_ADDRESSES.first()) + 1
+        updateBmsSnapshot(packCellVoltages = mapOf(packIndex to cells))
+    }
+
     private fun updateBmsSnapshot(
         voltage: Double? = null,
         current: Double? = null,
         temperatures: List<Double>? = null,
         packVoltages: List<Double>? = null,
-        cellVoltages: List<Double>? = null
+        cellVoltages: List<Double>? = null,
+        packCellVoltages: Map<Int, List<Double>>? = null
     ) {
         synchronized(parseLock) {
             val currentSnapshot = lastKnownBmsSnapshot
@@ -1028,9 +1045,25 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 current = current ?: currentSnapshot.current,
                 temperatures = (temperatures ?: currentSnapshot.temperatures)?.takeIf { it.isNotEmpty() },
                 packVoltages = (packVoltages ?: currentSnapshot.packVoltages)?.takeIf { it.isNotEmpty() },
-                cellVoltages = (cellVoltages ?: currentSnapshot.cellVoltages)?.takeIf { it.isNotEmpty() }
+                cellVoltages = (cellVoltages ?: currentSnapshot.cellVoltages)?.takeIf { it.isNotEmpty() },
+                packCellVoltages = if (packCellVoltages.isNullOrEmpty()) {
+                    currentSnapshot.packCellVoltages
+                } else {
+                    currentSnapshot.packCellVoltages + packCellVoltages
+                }
             )
         }
+    }
+
+    private fun getCombinedCellVoltages(snapshot: InMotionBmsSnapshot): List<Double>? {
+        if (snapshot.packCellVoltages.isNotEmpty()) {
+            return snapshot.packCellVoltages
+                .toSortedMap()
+                .values
+                .flatten()
+                .takeIf { it.isNotEmpty() }
+        }
+        return snapshot.cellVoltages?.takeIf { it.isNotEmpty() }
     }
 
     private fun allowsActivePolling(): Boolean {
@@ -1097,6 +1130,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 byteArrayOf()
             )
 
+            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+
             else -> byteArrayOf()
         }
     }
@@ -1125,6 +1160,42 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     intervalMs = 1_000L,
                     responseTimeoutMs = 1_200L,
                     maxRetries = 1
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.v14-pack-1-cells",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV14PackCellsQuery(0x24),
+                    initialDelayMs = 1_000L,
+                    intervalMs = 4_000L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 1
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.v14-pack-2-cells",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV14PackCellsQuery(0x25),
+                    initialDelayMs = 2_000L,
+                    intervalMs = 4_000L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 1
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.v14-pack-3-cells",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV14PackCellsQuery(0x26),
+                    initialDelayMs = 3_000L,
+                    intervalMs = 4_000L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 1
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.v14-pack-4-cells",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV14PackCellsQuery(0x27),
+                    initialDelayMs = 4_000L,
+                    intervalMs = 4_000L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 1
                 )
             )
         )
@@ -1139,9 +1210,23 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
             CommandType.REQUEST_BATTERY_INFO ->
                 command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
+            CommandType.CUSTOM -> matchesCustomQueryResponse(query, command, data)
             else -> false
         }
     }
+
+    private fun matchesCustomQueryResponse(query: ProtocolQuerySpec, command: Int, data: ByteArray): Boolean {
+        val request = query.value as? ByteArray ?: return false
+        if (request.size < 7 || request[4].toInt() and 0xFF != COMMAND_MAIN_INFO) return false
+        val packAddress = request[5].toInt() and 0xFF
+        val subCommand = request[6].toInt() and 0xFF
+        if (packAddress !in V14_BMS_PACK_ADDRESSES || subCommand != 0x02) return false
+        if (command != packAddress || data.size < 7) return false
+        return (data[5].toInt() and 0xFF) == 0x02 && (data[6].toInt() and 0xFF) == 0x82
+    }
+
+    private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
+        buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO, byteArrayOf(packAddress.toByte(), 0x02))
 
     private fun buildMessage(flag: Int, command: Int, data: ByteArray): ByteArray {
         val len = data.size + 1
@@ -1173,11 +1258,26 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val current = snapshot.current
         val temperatures = snapshot.temperatures
         val packVoltages = snapshot.packVoltages
-        val cellVoltages = snapshot.cellVoltages
+        val cellVoltages = getCombinedCellVoltages(snapshot)
+        val packCellVoltages = snapshot.packCellVoltages
         if (voltage == null && current == null && temperatures.isNullOrEmpty()
             && packVoltages.isNullOrEmpty() && cellVoltages.isNullOrEmpty()
         ) {
             return null
+        }
+        if (packCellVoltages.isNotEmpty()) {
+            return packCellVoltages.toSortedMap().map { (index, cells) ->
+                BMSData(
+                    bmsIndex = index,
+                    voltage = packVoltages?.getOrNull(index - 1),
+                    current = if (index == 1) current else null,
+                    remainingCapacity = null,
+                    factoryCapacity = null,
+                    cycles = null,
+                    temperatures = if (index == 1) temperatures?.takeIf { it.isNotEmpty() } else null,
+                    cellVoltages = cells
+                )
+            }
         }
         // V14 per-cell path: return one BMSData entry with all 32 cell voltages.
         if (!cellVoltages.isNullOrEmpty()) {
