@@ -23,7 +23,7 @@ import java.util.UUID
  * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
  * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
  *
- * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/temperature2), 0xBB (name/model/version),
+ * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/motorTemperature), 0xBB (name/model/version),
  * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
  * 0xF1/0xF2 (Smart BMS data).
  */
@@ -154,7 +154,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var lastKnownTopSpeed: Double? = null
     private var lastKnownFanStatus: Int? = null
     private var lastKnownChargingStatus: Int? = null
-    private var lastKnownTemperature2: Double? = null
+    private var lastKnownMotorTemperature: Double? = null
     private var lastKnownCpuLoad: Int? = null
     private var lastKnownSpeedLimit: Double? = null
     private var lastKnownAlarm1Speed: Int? = null
@@ -350,12 +350,11 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 isCharging = isCharging,
                 rideTime = rideTimeSeconds,
                 cellVoltages = getCombinedCellVoltages(),
-                motorTemperature = null,
+                motorTemperature = lastKnownMotorTemperature,
                 totalDistance = lastKnownTotalDistance,
                 topSpeed = lastKnownTopSpeed,
                 fanStatus = lastKnownFanStatus,
                 chargingStatus = lastKnownChargingStatus,
-                temperature2 = lastKnownTemperature2,
                 cpuLoad = lastKnownCpuLoad,
                 speedLimit = lastKnownSpeedLimit,
                 alarm1Speed = lastKnownAlarm1Speed,
@@ -370,9 +369,9 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     /**
-     * Frame 0xB9: Distance/Time/Fan/ChargingStatus/Temperature2
+     * Frame 0xB9: Distance/Time/Fan/ChargingStatus/MotorTemperature
      * Legacy: wheelDistance(uint32 LE @2), topSpeed(uint16 LE @8), fanStatus(@12),
-     *         chargingStatus(@13), temperature2(uint16 LE @14)
+     *         chargingStatus(@13), motorTemperature(uint16 LE @14)
      */
     private fun parseTypeB9(data: ByteArray, base: Int) {
         if (ensureRange(data, base + 2, 4)) {
@@ -388,7 +387,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             lastKnownChargingStatus = ByteUtils.getUnsignedByte(data, base + 13)
         }
         if (ensureRange(data, base + 14, 2)) {
-            lastKnownTemperature2 = ByteUtils.getUnsignedShortLE(data, base + 14) / 100.0
+            lastKnownMotorTemperature = ByteUtils.getUnsignedShortLE(data, base + 14) / 100.0
         }
     }
 

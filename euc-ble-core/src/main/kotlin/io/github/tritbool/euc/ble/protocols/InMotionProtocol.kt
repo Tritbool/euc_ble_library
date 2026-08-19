@@ -736,7 +736,6 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         }
         val telemetryTemp = if (isP6) boardTemp.toDouble() else mosTemp.toDouble()
         val telemetryMotorTemp = p6MotorTemp ?: boardTemp.toDouble()
-        val telemetryTemp2 = imuTemp?.toDouble()
         val stateByte = payload[74].toInt() and 0xFF
         val isCharging = ((stateByte shr 7) and 0x01) == 1
         val now = System.currentTimeMillis()
@@ -771,7 +770,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             rideTime = rideTimeSeconds,
             cellVoltages = null,
             motorTemperature = telemetryMotorTemp,
-            temperature2 = telemetryTemp2,
+            mosfetTemperature = mosTemp.toDouble(),
+            boardTemperature = boardTemp.toDouble(),
+            imuTemperature = imuTemp?.toDouble(),
             totalDistance = totalDistanceKm,
             angle = pitchAngle,
             roll = rollAngle,
@@ -785,7 +786,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     temperatures = listOfNotNull(
                         decoded.temperature,
                         decoded.motorTemperature,
-                        decoded.temperature2
+                        decoded.mosfetTemperature,
+                        decoded.boardTemperature,
+                        decoded.imuTemperature
                     )
                 )
             }

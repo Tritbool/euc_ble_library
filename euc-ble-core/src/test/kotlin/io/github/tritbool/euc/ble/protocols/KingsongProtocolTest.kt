@@ -159,7 +159,7 @@ class KingsongProtocolTest {
         return data
     }
 
-    // --- Tests for frame 0xB9 (distance/fan/temperature2) ---
+    // --- Tests for frame 0xB9 (distance/fan/motorTemperature) ---
 
     @Test
     fun decodeB9ThenA9IncludesTopSpeedAndFan() = runTest {
@@ -173,7 +173,7 @@ class KingsongProtocolTest {
                     topSpeedRaw = 3500,
                     fanStatus = 1,
                     chargingStatus = 0,
-                    temperature2Raw = 4200
+                    motorTemperatureRaw = 4200
                 )
             )
             protocol.decode(createA9Frame())
@@ -181,7 +181,7 @@ class KingsongProtocolTest {
             assertEquals(35.0, data.topSpeed ?: -1.0, 0.01)
             assertEquals(1, data.fanStatus)
             assertEquals(0, data.chargingStatus)
-            assertEquals(42.0, data.temperature2 ?: -1.0, 0.01)
+            assertEquals(42.0, data.motorTemperature ?: -1.0, 0.01)
             assertEquals(5000.0, data.wheelDistance ?: -1.0, 0.01)
             cancelAndIgnoreRemainingEvents()
         }
@@ -720,7 +720,7 @@ class KingsongProtocolTest {
         topSpeedRaw: Int = 2000,
         fanStatus: Int = 0,
         chargingStatus: Int = 0,
-        temperature2Raw: Int = 3000
+        motorTemperatureRaw: Int = 3000
     ): ByteArray {
         val frame = ByteArray(20)
         frame[0] = 0xAA.toByte()
@@ -733,8 +733,8 @@ class KingsongProtocolTest {
         frame[9] = ((topSpeedRaw shr 8) and 0xFF).toByte()
         frame[12] = fanStatus.toByte()
         frame[13] = chargingStatus.toByte()
-        frame[14] = (temperature2Raw and 0xFF).toByte()
-        frame[15] = ((temperature2Raw shr 8) and 0xFF).toByte()
+        frame[14] = (motorTemperatureRaw and 0xFF).toByte()
+        frame[15] = ((motorTemperatureRaw shr 8) and 0xFF).toByte()
         frame[16] = 0xB9.toByte()
         return frame
     }
