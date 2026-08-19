@@ -84,7 +84,6 @@ class WheelLogNosfetTest {
 
             val decoded: List<EUCData> = events
                 .mapNotNull { event -> (event as? Event.Item<EUCData>)?.value }
-                .take(1200)
 
             assertTrue("Expected at least 1200 decoded Nosfet frames, got ${decoded.size}", decoded.size >= 1200)
             assertTrue("Expected decoded Nosfet telemetry", decoded.isNotEmpty())
