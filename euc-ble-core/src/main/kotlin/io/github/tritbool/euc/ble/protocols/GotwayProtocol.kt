@@ -281,7 +281,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         }
         val current = lastKnownCurrent ?: (currentRaw / 100.0)
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
-        val temperature = tempRaw / 10.0 // Assuming a 1/100 scale
+        val temperature = decodeBoardTemperature(tempRaw)
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
 
@@ -314,7 +314,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = lastKnownModel ?: "Gotway (Type A)",
+            model = resolveModelName(),
             serialNumber = null,
             firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,
             isCharging = false, // Not available in this frame
@@ -369,7 +369,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = lastKnownModel ?: "Gotway (Type B)",
+            model = resolveModelName(),
             serialNumber = null,
             firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,
             isCharging = false,
@@ -451,7 +451,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             timestamp = System.currentTimeMillis(),
             rawData = data,
             manufacturer = manufacturer,
-            model = lastKnownModel ?: "Gotway (Type 7)",
+            model = resolveModelName(),
             serialNumber = null,
             firmwareVersion = lastKnownFirmwareVersion ?: gotwayFirmwareVariant,
             isCharging = false,
@@ -468,6 +468,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
             .toInt()
             .coerceIn(0, 100)
+    }
+
+    private fun decodeBoardTemperature(tempRaw: Int): Double {
+        val legacyTenths = tempRaw / 10.0
+        if (legacyTenths in -40.0..125.0) return legacyTenths
+
+        // Newer Begode boards often expose MPU-like raw temperature values.
+        val mpuConverted = (tempRaw / 340.0) + 36.53
+        return if (mpuConverted in -40.0..125.0) mpuConverted else legacyTenths
     }
 
     private fun getCombinedCellVoltages(): List<Double>? {
@@ -503,9 +512,33 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return result
     }
 
+    private fun extractMetadataMessageFromAsciiPayload(data: ByteArray): String? {
+        val asciiPayload = buildString(data.size) {
+            data.forEach { byte ->
+                val code = byte.toInt() and 0xFF
+                append(if (code in 0x20..0x7E) code.toChar() else ' ')
+            }
+        }
+
+        val nameMatch =
+            Regex("(?i)\\bNAME\\s*[: ]?\\s*([A-Za-z0-9][A-Za-z0-9 _.-]{0,40})").find(asciiPayload)
+        if (nameMatch != null) {
+            return "NAME:${nameMatch.groupValues[1].trim()}"
+        }
+
+        val firmwareMatch =
+            Regex("(?i)\\b(GW|JN|CF|BF)\\s*[: ]?\\s*([A-Za-z0-9._-]{1,32})").find(asciiPayload)
+        if (firmwareMatch != null) {
+            val prefix = firmwareMatch.groupValues[1].uppercase()
+            val version = firmwareMatch.groupValues[2].trim()
+            return "$prefix$version"
+        }
+
+        return null
+    }
+
     private fun parseLegacyAsciiMetadata(data: ByteArray) {
         if (data.isEmpty()) return
-        if (data.size >= 2 && data[0] == HEADER[0] && data[1] == HEADER[1]) return
 
         android.util.Log.d(
             "GotwayASCII",
@@ -523,6 +556,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             directMessage.startsWith("JN", ignoreCase = true) -> directMessage
             directMessage.startsWith("CF", ignoreCase = true) -> directMessage
             directMessage.startsWith("BF", ignoreCase = true) -> directMessage
+            extractMetadataMessageFromAsciiPayload(data) != null ->
+                extractMetadataMessageFromAsciiPayload(data)!!
             else -> {
                 // Tentative 2 : décodage format Begode 0x10+char
                 // Seulement si le paquet est structurellement 100% du format 0x10+char
@@ -594,9 +629,17 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         }
     }
 
+    private fun resolveModelName(): String {
+        lastKnownModel?.let { return it }
+        return when (gotwayFirmwareVariant) {
+            "Begode" -> "Begode"
+            "ExtremeBull" -> "ExtremeBull"
+            else -> "Gotway"
+        }
+    }
+
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
         if (data.isEmpty()) return false
-        if (data.size >= 2 && data[0] == 0x55.toByte() && data[1] == 0xAA.toByte()) return false
 
         Log.d(
             "GotwayQueryMatch",
@@ -615,6 +658,14 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                     )
                     return true
                 }
+                val embedded = extractMetadataMessageFromAsciiPayload(data)
+                if (embedded?.startsWith("NAME", ignoreCase = true) == true) {
+                    android.util.Log.d(
+                        "GotwayQueryMatch",
+                        "matchesQueryResponse: REQUEST_SERIAL matched embedded NAME"
+                    )
+                    return true
+                }
                 // Begode 0x10+char : valide seulement si le paquet est structurellement pur
                 val begodeDecoded = decodeBegodeEncodedName(data)
                 val matched = begodeDecoded.isNotEmpty()
@@ -627,10 +678,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
             CommandType.REQUEST_FIRMWARE -> {
                 val str = data.decodeToString().trim()
+                val embedded = extractMetadataMessageFromAsciiPayload(data)
                 val matched = str.startsWith("GW", ignoreCase = true)
                         || str.startsWith("JN", ignoreCase = true)
                         || str.startsWith("CF", ignoreCase = true)
                         || str.startsWith("BF", ignoreCase = true)
+                        || embedded?.startsWith("GW", true) == true
+                        || embedded?.startsWith("JN", true) == true
+                        || embedded?.startsWith("CF", true) == true
+                        || embedded?.startsWith("BF", true) == true
                 android.util.Log.d(
                     "GotwayQueryMatch",
                     "matchesQueryResponse: REQUEST_FIRMWARE str='$str' matched=$matched"
