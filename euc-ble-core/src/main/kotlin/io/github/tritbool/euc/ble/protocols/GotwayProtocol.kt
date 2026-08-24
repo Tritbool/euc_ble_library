@@ -281,7 +281,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         }
         val current = lastKnownCurrent ?: (currentRaw / 100.0)
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
-        val temperature = decodeBoardTemperature(tempRaw)
+        val temperature = decodeBoardTemperature(tempRaw.toInt())
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
 
