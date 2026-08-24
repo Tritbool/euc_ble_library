@@ -281,7 +281,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         }
         val current = lastKnownCurrent ?: (currentRaw / 100.0)
         val tempRaw = ByteUtils.tryGetSignedShortBE(data, 12) ?: return null
-        val temperature = tempRaw / 10.0 // Assuming a 1/100 scale
+        val temperature = decodeBoardTemperature(tempRaw)
         lastKnownSpeed = speed
         lastKnownTemperature = temperature
 
@@ -468,6 +468,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
             .toInt()
             .coerceIn(0, 100)
+    }
+
+    private fun decodeBoardTemperature(tempRaw: Int): Double {
+        val legacyTenths = tempRaw / 10.0
+        if (legacyTenths in -40.0..125.0) return legacyTenths
+
+        // Newer Begode boards often expose MPU-like raw temperature values.
+        val mpuConverted = (tempRaw / 340.0) + 36.53
+        return if (mpuConverted in -40.0..125.0) mpuConverted else legacyTenths
     }
 
     private fun getCombinedCellVoltages(): List<Double>? {

@@ -284,6 +284,31 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun testDecodeTypeATemperatureUsesMpuFallbackForExtremeStyleRaw() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val frame = createGotwayFrame(
+            voltageRaw = 13030,
+            speedRaw = 0,
+            distanceRaw = 116,
+            currentRaw = 2047,
+            tempRaw = -2268,
+            pwmRaw = 4264,
+            frameType = 0x00
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(frame)
+            val result = awaitItem()
+
+            assertEquals(29.86, result.temperature, 0.2)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun testDecodeValidTypeBFrame() = runTest {
         tearDown()
         protocol = GotwayProtocol(scope = backgroundScope)
