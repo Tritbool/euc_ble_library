@@ -108,6 +108,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         private const val MIN_BATTERY_VOLTAGE = 52.0
         private const val MAX_BATTERY_VOLTAGE = 134.4
         private const val MAX_BMS_CELL_SLOTS = 56
+        private val FIRMWARE_PREFIXES = listOf("GW", "JN", "CF", "BF")
+        private val WRAPPED_METADATA_FIRST_BYTES =
+            setOf('N'.code, 'G'.code, 'J'.code, 'C'.code, 'B'.code)
         /** Conversion factor for wheels that have been set to imperial units by the
          *  Begode app. When the imperial flag is set in a Type-B frame the wheel
          *  transmits speed in mph and trip distance in miles on every subsequent
@@ -512,29 +515,45 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return result
     }
 
-    private fun extractMetadataMessageFromAsciiPayload(data: ByteArray): String? {
-        val asciiPayload = buildString(data.size) {
-            data.forEach { byte ->
-                val code = byte.toInt() and 0xFF
-                append(if (code in 0x20..0x7E) code.toChar() else ' ')
+    private fun startsWithFrameHeader(data: ByteArray): Boolean {
+        return data.size >= 2 && data[0] == HEADER[0] && data[1] == HEADER[1]
+    }
+
+    private fun parseDirectMetadataMessage(message: String): String? {
+        return when {
+            message.startsWith("NAME", ignoreCase = true) -> message
+            FIRMWARE_PREFIXES.any { message.startsWith(it, ignoreCase = true) } -> message
+            else -> null
+        }
+    }
+
+    private fun extractWrappedMetadataMessage(data: ByteArray): String? {
+        if (!startsWithFrameHeader(data) || data.size <= 2) return null
+        val payload = data.copyOfRange(2, data.size)
+        val firstByte = payload.first().toInt() and 0xFF
+
+        if (firstByte in WRAPPED_METADATA_FIRST_BYTES) {
+            parseDirectMetadataMessage(payload.decodeToString().trim())?.let { return it }
+        }
+
+        if (payload.size > 1 && payload[0] == 0x10.toByte()) {
+            // Some wrapped metadata responses arrive as 55 AA + 0x10 marker + ASCII payload.
+            // Accept that specific shim to preserve the pre-regression name/firmware retrieval path.
+            parseDirectMetadataMessage(payload.copyOfRange(1, payload.size).decodeToString().trim())?.let {
+                return it
             }
         }
 
-        val nameMatch =
-            Regex("(?i)\\bNAME\\s*[: ]?\\s*([A-Za-z0-9][A-Za-z0-9 _.-]{0,40})").find(asciiPayload)
-        if (nameMatch != null) {
-            return "NAME:${nameMatch.groupValues[1].trim()}"
-        }
+        if (firstByte != 0x10) return null
 
-        val firmwareMatch =
-            Regex("(?i)\\b(GW|JN|CF|BF)\\s*[: ]?\\s*([A-Za-z0-9._-]{1,32})").find(asciiPayload)
-        if (firmwareMatch != null) {
-            val prefix = firmwareMatch.groupValues[1].uppercase()
-            val version = firmwareMatch.groupValues[2].trim()
-            return "$prefix$version"
-        }
+        val begodeDecoded = decodeBegodeEncodedName(payload)
+        return if (begodeDecoded.isNotEmpty()) "NAME$begodeDecoded" else null
+    }
 
-        return null
+    private fun isFirmwareMetadataMessage(message: String?): Boolean {
+        return message?.let {
+            FIRMWARE_PREFIXES.any { prefix -> it.startsWith(prefix, ignoreCase = true) }
+        } == true
     }
 
     private fun parseLegacyAsciiMetadata(data: ByteArray) {
@@ -550,15 +569,11 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         // Tentative 1 : décodage ASCII direct (GW/JN/CF/BF et NAME standard)
         val directMessage = data.decodeToString().trim()
 
-        val message: String = when {
-            directMessage.startsWith("NAME", ignoreCase = true) -> directMessage
-            directMessage.startsWith("GW", ignoreCase = true) -> directMessage
-            directMessage.startsWith("JN", ignoreCase = true) -> directMessage
-            directMessage.startsWith("CF", ignoreCase = true) -> directMessage
-            directMessage.startsWith("BF", ignoreCase = true) -> directMessage
-            extractMetadataMessageFromAsciiPayload(data) != null ->
-                extractMetadataMessageFromAsciiPayload(data)!!
-            else -> {
+        val message: String = parseDirectMetadataMessage(directMessage)
+            ?: extractWrappedMetadataMessage(data)
+            ?: run {
+                if (startsWithFrameHeader(data)) return
+
                 // Tentative 2 : décodage format Begode 0x10+char
                 // Seulement si le paquet est structurellement 100% du format 0x10+char
                 val begodeDecoded = decodeBegodeEncodedName(data)
@@ -571,7 +586,6 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                     return
                 }
             }
-        }
 
         android.util.Log.d("GotwayASCII", "parseLegacyAsciiMetadata: PARSED message='$message'")
 
@@ -650,22 +664,23 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
         return when (query.commandType) {
             CommandType.REQUEST_SERIAL -> {
-                val direct = data.decodeToString().trim()
-                if (direct.startsWith("NAME", ignoreCase = true)) {
+                val direct = parseDirectMetadataMessage(data.decodeToString().trim())
+                if (direct?.startsWith("NAME", ignoreCase = true) == true) {
                     android.util.Log.d(
                         "GotwayQueryMatch",
                         "matchesQueryResponse: REQUEST_SERIAL matched direct NAME"
                     )
                     return true
                 }
-                val embedded = extractMetadataMessageFromAsciiPayload(data)
-                if (embedded?.startsWith("NAME", ignoreCase = true) == true) {
+                val wrapped = extractWrappedMetadataMessage(data)
+                if (wrapped?.startsWith("NAME", ignoreCase = true) == true) {
                     android.util.Log.d(
                         "GotwayQueryMatch",
-                        "matchesQueryResponse: REQUEST_SERIAL matched embedded NAME"
+                        "matchesQueryResponse: REQUEST_SERIAL matched wrapped NAME"
                     )
                     return true
                 }
+                if (startsWithFrameHeader(data)) return false
                 // Begode 0x10+char : valide seulement si le paquet est structurellement pur
                 val begodeDecoded = decodeBegodeEncodedName(data)
                 val matched = begodeDecoded.isNotEmpty()
@@ -677,19 +692,12 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             }
 
             CommandType.REQUEST_FIRMWARE -> {
-                val str = data.decodeToString().trim()
-                val embedded = extractMetadataMessageFromAsciiPayload(data)
-                val matched = str.startsWith("GW", ignoreCase = true)
-                        || str.startsWith("JN", ignoreCase = true)
-                        || str.startsWith("CF", ignoreCase = true)
-                        || str.startsWith("BF", ignoreCase = true)
-                        || embedded?.startsWith("GW", true) == true
-                        || embedded?.startsWith("JN", true) == true
-                        || embedded?.startsWith("CF", true) == true
-                        || embedded?.startsWith("BF", true) == true
+                val direct = parseDirectMetadataMessage(data.decodeToString().trim())
+                val wrapped = extractWrappedMetadataMessage(data)
+                val matched = isFirmwareMetadataMessage(direct) || isFirmwareMetadataMessage(wrapped)
                 android.util.Log.d(
                     "GotwayQueryMatch",
-                    "matchesQueryResponse: REQUEST_FIRMWARE str='$str' matched=$matched"
+                    "matchesQueryResponse: REQUEST_FIRMWARE direct='$direct' wrapped='$wrapped' matched=$matched"
                 )
                 matched
             }
