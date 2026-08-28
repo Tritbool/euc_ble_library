@@ -109,6 +109,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         private const val MAX_BATTERY_VOLTAGE = 134.4
         private const val MAX_BMS_CELL_SLOTS = 56
         private val FIRMWARE_PREFIXES = listOf("GW", "JN", "CF", "BF")
+        private val WRAPPED_METADATA_FIRST_BYTES =
+            setOf('N'.code, 'G'.code, 'J'.code, 'C'.code, 'B'.code)
         /** Conversion factor for wheels that have been set to imperial units by the
          *  Begode app. When the imperial flag is set in a Type-B frame the wheel
          *  transmits speed in mph and trip distance in miles on every subsequent
@@ -530,7 +532,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val payload = data.copyOfRange(2, data.size)
         val firstByte = payload.first().toInt() and 0xFF
 
-        if (firstByte in setOf('N'.code, 'G'.code, 'J'.code, 'C'.code, 'B'.code)) {
+        if (firstByte in WRAPPED_METADATA_FIRST_BYTES) {
             parseDirectMetadataMessage(payload.decodeToString().trim())?.let { return it }
         }
 
