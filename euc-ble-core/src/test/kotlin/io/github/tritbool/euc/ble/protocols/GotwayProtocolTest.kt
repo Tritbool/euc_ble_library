@@ -656,6 +656,32 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun testDecodeIgnoresHeaderWrappedGarbageBeforeAsciiMetadata() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val mixedPayload = byteArrayOf(0x55.toByte(), 0xAA.toByte(), 0x00.toByte(), 0x00.toByte()) +
+            "NAME:EXTREME".encodeToByteArray()
+        protocol.decode(mixedPayload)
+
+        val typeA = createGotwayFrame(
+            voltageRaw = 13030,
+            speedRaw = 0,
+            distanceRaw = 116,
+            currentRaw = 2047,
+            tempRaw = -2268,
+            frameType = 0x00
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(typeA)
+            val result = awaitItem()
+            assertEquals("Gotway", result.model)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun testDecodeType7UsesLatestType1VoltageAndPublishesMotorTemperature() = runTest {
         tearDown()
         protocol = GotwayProtocol(scope = backgroundScope)
@@ -943,6 +969,16 @@ class GotwayProtocolTest {
         val embeddedFirmwareResponse = byteArrayOf(0x55.toByte(), 0xAA.toByte()) + "CF1.2.3".encodeToByteArray()
 
         assertTrue(protocol.matchesQueryResponse(query, embeddedFirmwareResponse))
+    }
+
+    @Test
+    fun testMatchesQueryResponseReturnsFalseForHeaderWrappedGarbageBeforeMetadata() {
+        val query =
+            ProtocolQuerySpec("gotway.request-model", CommandType.REQUEST_SERIAL, maxRetries = 3)
+        val payload = byteArrayOf(0x55.toByte(), 0xAA.toByte(), 0x00.toByte(), 0x00.toByte()) +
+            "NAME:EXTREME".encodeToByteArray()
+
+        assertFalse(protocol.matchesQueryResponse(query, payload))
     }
 
     @Test
