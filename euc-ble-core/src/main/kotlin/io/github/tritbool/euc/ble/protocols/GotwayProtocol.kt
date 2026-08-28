@@ -533,9 +533,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
         parseDirectMetadataMessage(payload.decodeToString().trim())?.let { return it }
 
-        if (payload.size > 1) {
-            // Some wrapped metadata responses arrive as 55 AA + 1 marker byte + ASCII payload.
-            // Accept that single-byte shim to preserve the pre-regression name/firmware retrieval path.
+        if (payload.size > 1 && payload[0] == 0x10.toByte()) {
+            // Some wrapped metadata responses arrive as 55 AA + 0x10 marker + ASCII payload.
+            // Accept that specific shim to preserve the pre-regression name/firmware retrieval path.
             parseDirectMetadataMessage(payload.copyOfRange(1, payload.size).decodeToString().trim())?.let {
                 return it
             }
