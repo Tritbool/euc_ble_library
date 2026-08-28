@@ -108,6 +108,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         private const val MIN_BATTERY_VOLTAGE = 52.0
         private const val MAX_BATTERY_VOLTAGE = 134.4
         private const val MAX_BMS_CELL_SLOTS = 56
+        private val FIRMWARE_PREFIXES = listOf("GW", "JN", "CF", "BF")
         /** Conversion factor for wheels that have been set to imperial units by the
          *  Begode app. When the imperial flag is set in a Type-B frame the wheel
          *  transmits speed in mph and trip distance in miles on every subsequent
@@ -519,10 +520,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private fun parseDirectMetadataMessage(message: String): String? {
         return when {
             message.startsWith("NAME", ignoreCase = true) -> message
-            message.startsWith("GW", ignoreCase = true) -> message
-            message.startsWith("JN", ignoreCase = true) -> message
-            message.startsWith("CF", ignoreCase = true) -> message
-            message.startsWith("BF", ignoreCase = true) -> message
+            FIRMWARE_PREFIXES.any { message.startsWith(it, ignoreCase = true) } -> message
             else -> null
         }
     }
@@ -530,8 +528,11 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private fun extractWrappedMetadataMessage(data: ByteArray): String? {
         if (!startsWithFrameHeader(data) || data.size <= 2) return null
         val payload = data.copyOfRange(2, data.size)
+        val firstByte = payload.first().toInt() and 0xFF
 
-        parseDirectMetadataMessage(payload.decodeToString().trim())?.let { return it }
+        if (firstByte in setOf('N'.code, 'G'.code, 'J'.code, 'C'.code, 'B'.code)) {
+            parseDirectMetadataMessage(payload.decodeToString().trim())?.let { return it }
+        }
 
         if (payload.size > 1 && payload[0] == 0x10.toByte()) {
             // Some wrapped metadata responses arrive as 55 AA + 0x10 marker + ASCII payload.
@@ -541,16 +542,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             }
         }
 
+        if (firstByte != 0x10) return null
+
         val begodeDecoded = decodeBegodeEncodedName(payload)
         return if (begodeDecoded.isNotEmpty()) "NAME$begodeDecoded" else null
     }
 
     private fun isFirmwareMetadataMessage(message: String?): Boolean {
         return message?.let {
-            it.startsWith("GW", ignoreCase = true)
-                    || it.startsWith("JN", ignoreCase = true)
-                    || it.startsWith("CF", ignoreCase = true)
-                    || it.startsWith("BF", ignoreCase = true)
+            FIRMWARE_PREFIXES.any { prefix -> it.startsWith(prefix, ignoreCase = true) }
         } == true
     }
 
