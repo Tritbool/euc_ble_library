@@ -58,7 +58,7 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testBmsData() = runTest {
+    fun begodeExtremeCaptureReportsTwoBmsPacks() = runTest {
         val frames =
             loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
         assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
@@ -87,10 +87,31 @@ class WheelLogGotwayTest {
         delay(3000.milliseconds)
 
         val bmsData = protocol.getBMSData()
-        assert(bmsData.isNotEmpty())
+        assertEquals(2, bmsData.size)
 
         // Cancel collector job
         collectorJob.cancel()
+    }
+
+    @Test
+    fun extremeBullRocketCaptureReportsTwoBmsPacks() = runTest {
+        protocol.close()
+        protocol = ExtremeBullProtocol()
+        val frames = WheelLogCsvLoader.load(
+            WheelLogResources.rawFile("extreme_bull", "EB_ROCKET_2026_09_01_13_51_27.csv"),
+            maxFrames = 1000
+        ).also { result ->
+            WheelLogCsvLoader.assertHealthyParse(
+                WheelLogResources.rawFile("extreme_bull", "EB_ROCKET_2026_09_01_13_51_27.csv"),
+                result
+            )
+        }.frames
+        assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
+
+        frames.forEach { protocol.decode(it.bleData) }
+        delay(3000.milliseconds)
+
+        assertEquals(2, protocol.getBMSData().size)
     }
 
     @Test
