@@ -89,7 +89,8 @@ class WheelLogGotwayTest {
         val bmsData = protocol.getBMSData()
         assertEquals(2, bmsData.size)
         assertTrue(bmsData.all { it.current != null && it.voltage != null })
-        assertTrue(bmsData.all { it.temperatures == listOf(28.0, 27.0, 28.0, 27.0) })
+        assertEquals(listOf(28.0, 27.0, 28.0, 27.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
+        assertEquals(listOf(28.0, 27.0, 28.0, 27.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
 
         // Cancel collector job
         collectorJob.cancel()
@@ -112,7 +113,8 @@ class WheelLogGotwayTest {
         val bmsData = protocol.getBMSData()
         assertEquals(2, bmsData.size)
         assertTrue(bmsData.all { it.current != null && it.voltage != null })
-        assertTrue(bmsData.all { it.temperatures == listOf(22.0, 19.0, 22.0, 19.0) })
+        assertEquals(listOf(22.0, 19.0, 22.0, 19.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
+        assertEquals(listOf(22.0, 19.0, 22.0, 19.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
     }
 
     @Test
