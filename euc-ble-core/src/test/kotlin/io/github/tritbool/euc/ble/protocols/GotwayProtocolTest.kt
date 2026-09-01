@@ -174,14 +174,23 @@ class GotwayProtocolTest {
         return frame
     }
 
-    private fun createGotwayFrameType1(batteryVoltageTenth: Int): ByteArray {
+    private fun createGotwayFrameType1(
+        batteryVoltageTenth: Int,
+        bmsSubpage: Int = 0,
+        firstBmsTemperature: Int = 0,
+        secondBmsTemperature: Int = 0
+    ): ByteArray {
         val frame = ByteArray(24)
         frame[0] = 0x55.toByte()
         frame[1] = 0xAA.toByte()
         frame[6] = ((batteryVoltageTenth shr 8) and 0xFF).toByte()
         frame[7] = (batteryVoltageTenth and 0xFF).toByte()
+        frame[10] = ((firstBmsTemperature shr 8) and 0xFF).toByte()
+        frame[11] = (firstBmsTemperature and 0xFF).toByte()
+        frame[12] = ((secondBmsTemperature shr 8) and 0xFF).toByte()
+        frame[13] = (secondBmsTemperature and 0xFF).toByte()
         frame[18] = 0x01
-        frame[19] = 0x00
+        frame[19] = bmsSubpage.toByte()
         frame[20] = 0x5A.toByte()
         frame[21] = 0x5A.toByte()
         frame[22] = 0x5A.toByte()
@@ -1093,6 +1102,56 @@ class GotwayProtocolTest {
             assertNotNull(bms1.cellVoltages)
             assertEquals(4.100, bms0.cellVoltages!![0], 0.001)
             assertEquals(4.200, bms1.cellVoltages!![0], 0.001)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testBmsTemperaturesAreStoredPerPackFromType1Subpages() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        protocol.dataFlow.test {
+            protocol.decode(
+                createGotwayFrameType1(
+                    batteryVoltageTenth = 1344,
+                    bmsSubpage = 0,
+                    firstBmsTemperature = 37,
+                    secondBmsTemperature = 30
+                )
+            )
+            protocol.decode(
+                createGotwayFrameType1(
+                    batteryVoltageTenth = 1344,
+                    bmsSubpage = 1,
+                    firstBmsTemperature = 38,
+                    secondBmsTemperature = 31
+                )
+            )
+            protocol.decode(
+                createGotwayFrameType1(
+                    batteryVoltageTenth = 1344,
+                    bmsSubpage = 2,
+                    firstBmsTemperature = 27,
+                    secondBmsTemperature = 28
+                )
+            )
+            protocol.decode(
+                createGotwayFrameType1(
+                    batteryVoltageTenth = 1344,
+                    bmsSubpage = 3,
+                    firstBmsTemperature = 29,
+                    secondBmsTemperature = 26
+                )
+            )
+            protocol.decode(createGotwayFrame(voltageRaw = 6720, speedRaw = 0, distanceRaw = 0))
+            awaitItem()
+
+            val bmsData = protocol.getBMSData()
+            assertEquals(2, bmsData.size)
+            assertEquals(listOf(37.0, 30.0, 38.0, 31.0), bmsData[0].temperatures)
+            assertEquals(listOf(27.0, 28.0, 29.0, 26.0), bmsData[1].temperatures)
 
             cancelAndIgnoreRemainingEvents()
         }

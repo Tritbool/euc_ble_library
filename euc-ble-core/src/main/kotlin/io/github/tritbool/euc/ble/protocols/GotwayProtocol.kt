@@ -149,6 +149,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var gotwayFirmwareVariant: String? = null
     private var useHwPwm = false
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+    private val smartBmsTemperatures: MutableMap<Int, Array<Double?>> = mutableMapOf()
     /** True when the wheel has reported imperial-units mode via bit 0 of the Type-B
      *  settings word. Latched on every Type-B frame and applied in parseTypeA to
      *  convert mph→km/h and miles→km transparently. */
@@ -181,6 +182,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun close() {
         scope.cancel()
         smartBmsCellPages.clear()
+        smartBmsTemperatures.clear()
         lastKnownVoltage = null
         lastKnownCurrent = null
         hasType1Voltage = false
@@ -399,6 +401,16 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val batteryVoltageTenth = ByteUtils.tryGetUnsignedShortBE(data, 6) ?: return
         lastKnownVoltage = batteryVoltageTenth / 10.0
         hasType1Voltage = true
+
+        val bmsSubpage = ByteUtils.tryGetUnsignedByte(data, 19) ?: return
+        if (bmsSubpage !in 0..3) return
+        val firstTemperature = ByteUtils.tryGetSignedShortBE(data, 10) ?: return
+        val secondTemperature = ByteUtils.tryGetSignedShortBE(data, 12) ?: return
+        val bmsIndex = bmsSubpage / 2
+        val temperatureOffset = (bmsSubpage % 2) * 2
+        val temperatures = smartBmsTemperatures.getOrPut(bmsIndex) { arrayOfNulls(4) }
+        temperatures[temperatureOffset] = firstTemperature.toDouble()
+        temperatures[temperatureOffset + 1] = secondTemperature.toDouble()
     }
 
     @VisibleForTesting
@@ -760,12 +772,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     /**
      * Returns the current BMS data snapshots for all detected battery packs.
      * Each entry represents one BMS unit (typically 1 or 2 for dual-battery wheels).
-     * Data is accumulated from Type 2/3 frames which contain smart BMS cell voltage pages.
+     * Data is accumulated from Type 1 BMS temperature frames and Type 2/3 cell voltage pages.
      */
     override fun getBMSData(): List<BMSData> {
-        val allIndices = smartBmsCellPages.keys.distinct().sorted()
+        val allIndices = (smartBmsCellPages.keys + smartBmsTemperatures.keys).distinct().sorted()
         return allIndices.map { index ->
             val cells = smartBmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
+            val temperatures = smartBmsTemperatures[index]
+                ?.filterNotNull()
+                ?.ifEmpty { null }
             BMSData(
                 bmsIndex = index,
                 voltage = null, // Voltage not available in smart BMS pages
@@ -773,7 +788,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 remainingCapacity = null, // Capacity not available in smart BMS pages
                 factoryCapacity = null, // Factory capacity not available in smart BMS pages
                 cycles = null, // Cycle count not available in smart BMS pages
-                temperatures = null, // Temperatures not available in smart BMS pages
+                temperatures = temperatures,
                 cellVoltages = cells
             )
         }
