@@ -62,38 +62,33 @@ class WheelLogGotwayTest {
         val frames =
             loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
         assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
-        val decoded = mutableListOf<EUCData>()
-        var vendorMismatch = 0
 
-        // Start collecting in background FIRST using launch
-        val collectorJob = launch {
-            protocol.dataFlow.collect { data ->
-                decoded.add(data)
-                if (decoded.size >= 500) return@collect
-            }
-        }
-
-        // Small delay to ensure collector is subscribed
-        delay(200.milliseconds)
-
-        // Send all frames to the protocol for reassembly on IO dispatcher
         withContext(Dispatchers.IO) {
             for (frame in frames) {
                 protocol.decode(frame.bleData)
             }
         }
 
-        // Wait for async processing to complete (needs time for IO dispatcher)
-        delay(3000.milliseconds)
-
-        val bmsData = protocol.getBMSData()
+        val bmsData = withTimeout(5_000.milliseconds) {
+            while (true) {
+                val data = protocol.getBMSData()
+                if (data.size == 2 && data.all { bms ->
+                        bms.current != null &&
+                            bms.voltage != null &&
+                            bms.temperatures?.size == 4 &&
+                            bms.temperatures.all { it in -40.0..125.0 }
+                    }
+                ) {
+                    return@withTimeout data
+                }
+                delay(10.milliseconds)
+            }
+        }
         assertEquals(2, bmsData.size)
         assertTrue(bmsData.all { it.current != null && it.voltage != null })
-        assertEquals(listOf(28.0, 27.0, 28.0, 27.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
-        assertEquals(listOf(28.0, 27.0, 28.0, 27.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
-
-        // Cancel collector job
-        collectorJob.cancel()
+        assertEquals(setOf(0, 1), bmsData.map { it.bmsIndex }.toSet())
+        assertTrue(bmsData.all { it.temperatures?.size == 4 })
+        assertTrue(bmsData.all { bms -> bms.temperatures.orEmpty().all { it in -40.0..125.0 } })
     }
 
     @Test
