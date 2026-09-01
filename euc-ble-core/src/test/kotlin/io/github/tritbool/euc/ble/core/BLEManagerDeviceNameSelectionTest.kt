@@ -172,9 +172,8 @@ class BLEManagerDeviceNameSelectionTest {
 
     @Test
     fun `onServicesDiscovered selects ExtremeBull subclass when Gotway fingerprint and device name match`() {
-        // GotwayProtocol (inner stub, simpleName matches DB key "GotwayProtocol")
         val gotwayProto = GotwayProtocol()
-        val extremeBullProto = ExtremeBullSubStub2()
+        val extremeBullProto = ExtremeBullProtocol()
         manager.registerProtocol(gotwayProto)
         manager.registerProtocol(extremeBullProto)
 
@@ -368,38 +367,4 @@ class BLEManagerDeviceNameSelectionTest {
         override fun close() = Unit
     }
 
-    // ──── Integration stubs whose simpleName matches EucFingerprintDatabase keys ────
-
-    /**
-     * Stub whose simple class name "GotwayProtocol" matches the real [EucFingerprintDatabase]
-     * entry, enabling integration tests to use the real Gotway GATT fingerprint without
-     * importing the full production GotwayProtocol.
-     */
-    private open class GotwayProtocol(
-        private val charUuid: UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
-    ) : EUCProtocol {
-        override val manufacturer = "Gotway"
-        override val dataFlow: Flow<EUCData> = emptyFlow()
-        override fun decode(data: ByteArray) = null
-        override fun getDataCharacteristicUUID() = charUuid
-        override fun getServiceUUID() = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
-        override fun createCommand(commandType: CommandType, value: Any) = byteArrayOf()
-        override fun isDeviceReady(data: EUCData) = true
-        override fun close() = Unit
-    }
-
-    /**
-     * Strict subclass of the inner [GotwayProtocol] stub that matches "extreme"/"bull" device
-     * names. Used in [onServicesDiscovered] integration tests to verify that
-     * [BLEManager.selectSubclassByDeviceName] is invoked and produces the more-specific protocol.
-     */
-    private class ExtremeBullSubStub2(
-        charUuid: UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
-    ) : GotwayProtocol(charUuid) {
-        override val manufacturer = "ExtremeBull"
-        override fun matchesDeviceName(deviceName: String): Boolean {
-            val lower = deviceName.lowercase()
-            return lower.contains("extreme") || lower.contains("bull")
-        }
-    }
 }
