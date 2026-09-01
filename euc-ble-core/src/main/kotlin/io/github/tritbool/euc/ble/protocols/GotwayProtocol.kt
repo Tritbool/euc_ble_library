@@ -797,8 +797,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return allIndices.map { index ->
             val cells = smartBmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
             val temperatures = smartBmsTemperatures[index]
+                ?.takeIf { it.all { temperature -> temperature != null } }
                 ?.filterNotNull()
-                ?.ifEmpty { null }
             val voltage = smartBmsHalfVoltages[index]
                 ?.takeIf { it.all { halfVoltage -> halfVoltage != null } }
                 ?.filterNotNull()
