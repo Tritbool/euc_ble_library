@@ -419,6 +419,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         temperatures[temperatureOffset] = firstTemperature.toDouble()
         temperatures[temperatureOffset + 1] = secondTemperature.toDouble()
         if (halfPackIndex == 0) {
+            // Use the first subpage consistently instead of an order-dependent last value.
             smartBmsCurrents[bmsIndex] = current / 10.0
         }
         smartBmsHalfVoltages.getOrPut(bmsIndex) { arrayOfNulls(2) }[halfPackIndex] =
