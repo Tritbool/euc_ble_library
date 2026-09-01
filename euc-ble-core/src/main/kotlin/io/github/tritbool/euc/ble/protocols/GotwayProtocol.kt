@@ -801,7 +801,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 ?.ifEmpty { null }
             val voltage = smartBmsHalfVoltages[index]
                 ?.takeIf { it.all { halfVoltage -> halfVoltage != null } }
-                ?.sumOf { it!! }
+                ?.filterNotNull()
+                ?.sum()
             BMSData(
                 bmsIndex = index,
                 voltage = voltage,
