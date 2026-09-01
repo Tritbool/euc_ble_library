@@ -10,6 +10,7 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
+import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.LeaperkimProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import kotlinx.coroutines.flow.Flow
@@ -59,13 +60,14 @@ class BLEManagerDeviceNameSelectionTest {
     // ──────────────── ExtremeBullProtocol.matchesDeviceName ────────────────
 
     @Test
-    fun `ExtremeBullProtocol matchesDeviceName recognizes extreme and bull keywords`() {
+    fun `ExtremeBullProtocol matchesDeviceName recognizes known Extreme Bull names`() {
         val proto = ExtremeBullProtocol().also(protocolsToClose::add)
         assertTrue(proto.matchesDeviceName("Extreme Bull Master"))
         assertTrue(proto.matchesDeviceName("EXTREME BULL"))
         assertTrue(proto.matchesDeviceName("extreme bull apex"))
         assertTrue(proto.matchesDeviceName("extreme rider"))
         assertTrue(proto.matchesDeviceName("Raging Bull"))
+        assertTrue(proto.matchesDeviceName("ROCKET"))
     }
 
     @Test
@@ -119,11 +121,13 @@ class BLEManagerDeviceNameSelectionTest {
     }
 
     @Test
-    fun `selectByDeviceName selects real ExtremeBullProtocol by device name`() {
+    fun `Rocket device name refines Gotway to real ExtremeBullProtocol`() {
+        val gotway = GotwayProtocol().also(protocolsToClose::add)
         val extremeBull = ExtremeBullProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(gotway)
         manager.registerProtocol(extremeBull)
-        assertEquals(extremeBull, manager.selectByDeviceName("Extreme Bull Master"))
-        assertNull(manager.selectByDeviceName("KingSong S22"))
+        assertEquals(extremeBull, manager.selectSubclassByDeviceName(gotway, "ROCKET"))
+        assertNull(manager.selectSubclassByDeviceName(gotway, "KingSong S22"))
     }
 
     // ──────────────── selectSubclassByDeviceName unit tests ────────────────

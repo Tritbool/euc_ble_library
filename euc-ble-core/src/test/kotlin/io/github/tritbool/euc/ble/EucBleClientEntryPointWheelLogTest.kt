@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.core.DataCallback
 import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
@@ -57,7 +58,21 @@ class EucBleClientEntryPointWheelLogTest {
     /*************************************************************************************/
     /*                                    EXTREME BULL                                   */
     /*************************************************************************************/
-    // NO DATA AVAILABLE YET
+    @Test
+    fun extremeBullProtocolDecodesRocketFrames() = runTest {
+        val decoded = feedFramesWithProtocol<ExtremeBullProtocol>(
+            resourcePath = WheelLogResources.rawFile(
+                "extreme_bull",
+                "EB_ROCKET_2026_09_01_13_51_27.csv"
+            ),
+            maxFrames = 300,
+            expectedFrames = 1
+        )
+        assertTrue(decoded.isNotEmpty())
+        assertTrue(decoded.all { it.manufacturer == "ExtremeBull" })
+        assertTrue(decoded.any { it.model.contains("ROCKET", ignoreCase = true) })
+        assertTrue(decoded.any { it.voltage > 0.0 })
+    }
 
     /*************************************************************************************/
     /*                                 BEGODE / GOTWAY                                   */
