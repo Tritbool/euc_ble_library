@@ -58,10 +58,10 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun testBmsData() = runTest {
+    fun begodeExtremeCaptureReportsTwoBmsPacks() = runTest {
         val frames =
             loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
-        assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
         val decoded = mutableListOf<EUCData>()
         var vendorMismatch = 0
 
@@ -87,10 +87,34 @@ class WheelLogGotwayTest {
         delay(3000.milliseconds)
 
         val bmsData = protocol.getBMSData()
-        assert(bmsData.isNotEmpty())
+        assertEquals(2, bmsData.size)
+        assertTrue(bmsData.all { it.current != null && it.voltage != null })
+        assertEquals(listOf(28.0, 27.0, 28.0, 27.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
+        assertEquals(listOf(28.0, 27.0, 28.0, 27.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
 
         // Cancel collector job
         collectorJob.cancel()
+    }
+
+    @Test
+    fun extremeBullRocketCaptureReportsTwoBmsPacks() = runTest {
+        protocol.close()
+        protocol = ExtremeBullProtocol()
+        val resourcePath =
+            WheelLogResources.rawFile("extreme_bull", "EB_ROCKET_2026_09_01_13_51_27.csv")
+        val frames = WheelLogCsvLoader.load(resourcePath, maxFrames = 1000).also { result ->
+            WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
+        }.frames
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
+
+        frames.forEach { protocol.decode(it.bleData) }
+        delay(3000.milliseconds)
+
+        val bmsData = protocol.getBMSData()
+        assertEquals(2, bmsData.size)
+        assertTrue(bmsData.all { it.current != null && it.voltage != null })
+        assertEquals(listOf(22.0, 19.0, 22.0, 19.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
+        assertEquals(listOf(22.0, 19.0, 22.0, 19.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
     }
 
     @Test
