@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.SlowTest
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
 import io.github.tritbool.euc.ble.test.WheelLogFrame
@@ -69,7 +70,7 @@ class WheelLogGotwayTest {
             }
         }
 
-        val bmsData = withTimeout(5_000.milliseconds) {
+        val bmsData: List<BMSData> = withTimeout(5_000.milliseconds) {
             while (true) {
                 val data = protocol.getBMSData()
                 if (data.size == 2 && data.all { bms ->
@@ -84,11 +85,7 @@ class WheelLogGotwayTest {
                 delay(10.milliseconds)
             }
         }
-        assertEquals(2, bmsData.size)
-        assertTrue(bmsData.all { it.current != null && it.voltage != null })
         assertEquals(setOf(0, 1), bmsData.map { it.bmsIndex }.toSet())
-        assertTrue(bmsData.all { it.temperatures?.size == 4 })
-        assertTrue(bmsData.all { bms -> bms.temperatures.orEmpty().all { it in -40.0..125.0 } })
     }
 
     @Test
