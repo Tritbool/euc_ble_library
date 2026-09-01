@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -70,7 +71,7 @@ class WheelLogGotwayTest {
             }
         }
 
-        val bmsData: List<BMSData> = withTimeout(5_000.milliseconds) {
+        val bmsData: List<BMSData>? = withTimeout(5_000.milliseconds) {
             while (true) {
                 val data = protocol.getBMSData()
                 if (data.size == 2 && data.all { bms ->
@@ -84,8 +85,9 @@ class WheelLogGotwayTest {
                 }
                 delay(10.milliseconds)
             }
+            null
         }
-        assertEquals(setOf(0, 1), bmsData.map { it.bmsIndex }.toSet())
+        assertEquals(setOf(0, 1), bmsData?.map { it.bmsIndex }?.toSet())
     }
 
     @Test
