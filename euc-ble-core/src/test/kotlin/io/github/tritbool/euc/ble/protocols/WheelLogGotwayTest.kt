@@ -104,7 +104,7 @@ class WheelLogGotwayTest {
         val frames = WheelLogCsvLoader.load(resourcePath, maxFrames = 1000).also { result ->
             WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
         }.frames
-        assertTrue("Resource CSV vide ou introuvable", frames.isNotEmpty())
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
 
         frames.forEach { protocol.decode(it.bleData) }
         delay(3000.milliseconds)
