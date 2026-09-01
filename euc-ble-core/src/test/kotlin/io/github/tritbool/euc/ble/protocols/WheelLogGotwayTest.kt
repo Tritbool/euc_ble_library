@@ -97,16 +97,12 @@ class WheelLogGotwayTest {
     fun extremeBullRocketCaptureReportsTwoBmsPacks() = runTest {
         protocol.close()
         protocol = ExtremeBullProtocol()
-        val frames = WheelLogCsvLoader.load(
-            WheelLogResources.rawFile("extreme_bull", "EB_ROCKET_2026_09_01_13_51_27.csv"),
-            maxFrames = 1000
-        ).also { result ->
-            WheelLogCsvLoader.assertHealthyParse(
-                WheelLogResources.rawFile("extreme_bull", "EB_ROCKET_2026_09_01_13_51_27.csv"),
-                result
-            )
+        val resourcePath =
+            WheelLogResources.rawFile("extreme_bull", "EB_ROCKET_2026_09_01_13_51_27.csv")
+        val frames = WheelLogCsvLoader.load(resourcePath, maxFrames = 1000).also { result ->
+            WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
         }.frames
-        assertTrue("Ressource CSV vide ou introuvable", frames.isNotEmpty())
+        assertTrue("Resource CSV vide ou introuvable", frames.isNotEmpty())
 
         frames.forEach { protocol.decode(it.bleData) }
         delay(3000.milliseconds)
