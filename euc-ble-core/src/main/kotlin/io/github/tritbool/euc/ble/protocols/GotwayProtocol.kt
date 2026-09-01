@@ -418,8 +418,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val temperatures = smartBmsTemperatures.getOrPut(bmsIndex) { arrayOfNulls(4) }
         temperatures[temperatureOffset] = firstTemperature.toDouble()
         temperatures[temperatureOffset + 1] = secondTemperature.toDouble()
-        // Legacy WheelLog retains the current from the most recently received BMS subpage.
-        smartBmsCurrents[bmsIndex] = current / 10.0
+        if (halfPackIndex == 0) {
+            smartBmsCurrents[bmsIndex] = current / 10.0
+        }
         smartBmsHalfVoltages.getOrPut(bmsIndex) { arrayOfNulls(2) }[halfPackIndex] =
             halfPackVoltage / 10.0
     }

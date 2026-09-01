@@ -61,7 +61,7 @@ class WheelLogGotwayTest {
     fun begodeExtremeCaptureReportsTwoBmsPacks() = runTest {
         val frames =
             loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
-        assertTrue("Resource CSV vide ou introuvable", frames.isNotEmpty())
+        assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
         val decoded = mutableListOf<EUCData>()
         var vendorMismatch = 0
 
