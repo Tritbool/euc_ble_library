@@ -178,7 +178,9 @@ class GotwayProtocolTest {
         batteryVoltageTenth: Int,
         bmsSubpage: Int = 0,
         firstBmsTemperature: Int = 0,
-        secondBmsTemperature: Int = 0
+        secondBmsTemperature: Int = 0,
+        bmsCurrentTenth: Int = 0,
+        halfPackVoltageTenth: Int = 0
     ): ByteArray {
         val frame = ByteArray(24)
         frame[0] = 0x55.toByte()
@@ -189,6 +191,10 @@ class GotwayProtocolTest {
         frame[11] = (firstBmsTemperature and 0xFF).toByte()
         frame[12] = ((secondBmsTemperature shr 8) and 0xFF).toByte()
         frame[13] = (secondBmsTemperature and 0xFF).toByte()
+        frame[8] = ((bmsCurrentTenth shr 8) and 0xFF).toByte()
+        frame[9] = (bmsCurrentTenth and 0xFF).toByte()
+        frame[14] = ((halfPackVoltageTenth shr 8) and 0xFF).toByte()
+        frame[15] = (halfPackVoltageTenth and 0xFF).toByte()
         frame[18] = 0x01
         frame[19] = bmsSubpage.toByte()
         frame[20] = 0x5A.toByte()
@@ -1118,7 +1124,9 @@ class GotwayProtocolTest {
                     batteryVoltageTenth = 1344,
                     bmsSubpage = 0,
                     firstBmsTemperature = 37,
-                    secondBmsTemperature = 30
+                    secondBmsTemperature = 30,
+                    bmsCurrentTenth = -1,
+                    halfPackVoltageTenth = 838
                 )
             )
             protocol.decode(
@@ -1126,7 +1134,9 @@ class GotwayProtocolTest {
                     batteryVoltageTenth = 1344,
                     bmsSubpage = 1,
                     firstBmsTemperature = 38,
-                    secondBmsTemperature = 31
+                    secondBmsTemperature = 31,
+                    bmsCurrentTenth = -1,
+                    halfPackVoltageTenth = 836
                 )
             )
             protocol.decode(
@@ -1134,7 +1144,9 @@ class GotwayProtocolTest {
                     batteryVoltageTenth = 1344,
                     bmsSubpage = 2,
                     firstBmsTemperature = 27,
-                    secondBmsTemperature = 28
+                    secondBmsTemperature = 28,
+                    bmsCurrentTenth = -2,
+                    halfPackVoltageTenth = 835
                 )
             )
             protocol.decode(
@@ -1142,7 +1154,9 @@ class GotwayProtocolTest {
                     batteryVoltageTenth = 1344,
                     bmsSubpage = 3,
                     firstBmsTemperature = 29,
-                    secondBmsTemperature = 26
+                    secondBmsTemperature = 26,
+                    bmsCurrentTenth = -2,
+                    halfPackVoltageTenth = 834
                 )
             )
             protocol.decode(createGotwayFrame(voltageRaw = 6720, speedRaw = 0, distanceRaw = 0))
@@ -1152,6 +1166,10 @@ class GotwayProtocolTest {
             assertEquals(2, bmsData.size)
             assertEquals(listOf(37.0, 30.0, 38.0, 31.0), bmsData[0].temperatures)
             assertEquals(listOf(27.0, 28.0, 29.0, 26.0), bmsData[1].temperatures)
+            assertEquals(-0.1, bmsData[0].current ?: 0.0, 0.001)
+            assertEquals(167.4, bmsData[0].voltage ?: 0.0, 0.001)
+            assertEquals(-0.2, bmsData[1].current ?: 0.0, 0.001)
+            assertEquals(166.9, bmsData[1].voltage ?: 0.0, 0.001)
 
             cancelAndIgnoreRemainingEvents()
         }
