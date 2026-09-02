@@ -180,6 +180,13 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun getDataCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
 
+    /**
+     * Gotway/Begode wheels use an HM-10 style serial-to-BLE bridge whose FFE1 characteristic only
+     * advertises write-without-response; legacy WheelLog also writes every Gotway command with
+     * WriteType.WITHOUT_RESPONSE.
+     */
+    override val preferredWriteType: ProtocolWriteType = ProtocolWriteType.NO_RESPONSE
+
     override fun close() {
         scope.cancel()
         smartBmsCellPages.clear()

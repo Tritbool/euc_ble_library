@@ -137,6 +137,16 @@ interface EUCProtocol : Closeable {
     fun getWriteCharacteristicUUID(): UUID = getDataCharacteristicUUID()
 
     /**
+     * Preferred GATT write type for commands sent by this protocol.
+     *
+     * The default [ProtocolWriteType.AUTO] lets the BLE layer derive the write type from the
+     * properties advertised by the write characteristic. Protocols whose wheels require a specific
+     * write type (for example Gotway/Begode serial-to-BLE bridges, which only accept
+     * write-without-response on FFE1) should override this.
+     */
+    val preferredWriteType: ProtocolWriteType get() = ProtocolWriteType.AUTO
+
+    /**
      * Check if the device is ready for operation
      */
     fun isDeviceReady(data: EUCData): Boolean
@@ -148,6 +158,20 @@ interface EUCProtocol : Closeable {
      * a list of BMSData objects representing the current state of all battery packs.
      */
     fun getBMSData(): List<BMSData>? = null
+}
+
+/**
+ * Preferred GATT write type declared by a protocol for its command writes.
+ */
+enum class ProtocolWriteType {
+    /** Derive the write type from the GATT properties advertised by the characteristic. */
+    AUTO,
+
+    /** Prefer write-with-response (WRITE_TYPE_DEFAULT). */
+    WITH_RESPONSE,
+
+    /** Prefer write-without-response (WRITE_TYPE_NO_RESPONSE). */
+    NO_RESPONSE
 }
 
 /**

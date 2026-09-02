@@ -30,6 +30,7 @@ import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
+import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -410,12 +411,12 @@ class BLEManager internal constructor(
         val payload = command.clone() // defensive copy
 
         characteristic?.let { char ->
-            // ensure consistent write type (default)
-            char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            val writeType = resolveWriteType(char)
+            char.writeType = writeType
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // new API 33+ overload
-                bluetoothGatt?.writeCharacteristic(char, payload, char.writeType)
+                bluetoothGatt?.writeCharacteristic(char, payload, writeType)
             } else {
                 // fallback for older APIs
                 @Suppress("DEPRECATION") run {
@@ -425,6 +426,45 @@ class BLEManager internal constructor(
             }
         } ?: run {
             errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
+        }
+    }
+
+    /**
+     * Resolve the GATT write type to use for a characteristic.
+     *
+     * The protocol may declare a preferred write type (see [EUCProtocol.preferredWriteType]); it is
+     * honoured when the characteristic supports it. Otherwise the write type is derived from the
+     * properties advertised by the characteristic, which is important for serial-to-BLE bridges
+     * (Gotway/Begode FFE1) that only expose PROPERTY_WRITE_NO_RESPONSE and reject
+     * write-with-response.
+     */
+    internal fun resolveWriteType(characteristic: BluetoothGattCharacteristic): Int {
+        val properties = characteristic.properties
+        val supportsWithResponse = properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0
+        val supportsNoResponse =
+            properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
+
+        return when (currentProtocol?.preferredWriteType ?: ProtocolWriteType.AUTO) {
+            ProtocolWriteType.NO_RESPONSE ->
+                if (supportsNoResponse || !supportsWithResponse) {
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                } else {
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                }
+
+            ProtocolWriteType.WITH_RESPONSE ->
+                if (supportsWithResponse || !supportsNoResponse) {
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                } else {
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                }
+
+            ProtocolWriteType.AUTO ->
+                if (!supportsWithResponse && supportsNoResponse) {
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                } else {
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                }
         }
     }
 
