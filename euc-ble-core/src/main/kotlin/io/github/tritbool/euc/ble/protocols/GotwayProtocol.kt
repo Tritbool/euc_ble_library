@@ -170,6 +170,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
+        CommandType.SET_LIGHT_MODE,
         CommandType.BEEP,
         CommandType.POWER_OFF,
         CommandType.LIGHT_BRIGHTNESS,
@@ -736,6 +737,19 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return when (commandType) {
             CommandType.LIGHT_ON -> header + byteArrayOf(0x01, 0x01, 0x01)
             CommandType.LIGHT_OFF -> header + byteArrayOf(0x01, 0x01, 0x00)
+            CommandType.SET_LIGHT_MODE -> {
+                // Begode/Gotway front light has three states (matches legacy WheelLog
+                // GotwayAdapter.setLightMode): 0 = off, 1 = on, 2 = strobe. These are
+                // sent as single-character ASCII commands over the legacy channel,
+                // unlike LIGHT_ON/LIGHT_OFF which use the binary 0xA5 0x5A header.
+                when ((value as? Int)?.coerceIn(0, 2)) {
+                    0 -> "E".encodeToByteArray()
+                    1 -> "Q".encodeToByteArray()
+                    2 -> "T".encodeToByteArray()
+                    else -> byteArrayOf()
+                }
+            }
+
             CommandType.BEEP -> header + byteArrayOf(0x02, 0x01)
             CommandType.POWER_OFF -> header + byteArrayOf(0x03, 0x01)
             CommandType.LIGHT_BRIGHTNESS -> {

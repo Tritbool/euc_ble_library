@@ -893,6 +893,30 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun testCreateCommandSetLightModeOff() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, 0)
+        assertArrayEquals("E".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeOn() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, 1)
+        assertArrayEquals("Q".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeStrobe() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, 2)
+        assertArrayEquals("T".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeInvalidValue() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, "invalid")
+        assertArrayEquals(byteArrayOf(), command)
+    }
+
+    @Test
     fun testCreateCommandBeep() {
         val command = protocol.createCommand(CommandType.BEEP, Unit)
         assertArrayEquals(

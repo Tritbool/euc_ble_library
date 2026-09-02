@@ -34,7 +34,7 @@ package io.github.tritbool.euc.ble.models
  * @param autoPowerOffMinutes Auto power-off time in minutes, null if unavailable
  * @param tiltBackSpeed Tilt-back speed threshold, null if unavailable
  * @param ledMode LED mode setting, null if unavailable
- * @param lightMode Light mode setting, null if unavailable
+ * @param lightMode Front light mode setting (firmware-dependent, e.g. 0=off, 1=on, 2=strobe on Begode), null if unavailable
  * @param alertFlags Alert flags bitmap, null if unavailable
  * @param wheelAlarm Wheel alarm status, null if unavailable
  * @param topSpeed Session top speed in km/h, null if unavailable
