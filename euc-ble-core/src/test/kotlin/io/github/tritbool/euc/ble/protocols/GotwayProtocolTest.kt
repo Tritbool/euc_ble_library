@@ -943,6 +943,143 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun testSupportedCommandTypesIncludesNewSettingsCommands() {
+        assertTrue(protocol.supportedCommandTypes.contains(CommandType.SET_PEDALS_MODE))
+        assertTrue(protocol.supportedCommandTypes.contains(CommandType.SET_ALARM_SPEED))
+        assertTrue(protocol.supportedCommandTypes.contains(CommandType.SET_SPEED_LIMIT))
+        assertTrue(protocol.supportedCommandTypes.contains(CommandType.CALIBRATE))
+    }
+
+    @Test
+    fun testCreateCommandBeepSchedulesConfirmationBeepOnWriteFlow() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.LIGHT_ON, Unit)
+            assertArrayEquals("Q".encodeToByteArray(), command)
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandLightOffSchedulesConfirmationBeep() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.LIGHT_OFF, Unit)
+            assertArrayEquals("E".encodeToByteArray(), command)
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeSchedulesConfirmationBeep() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.SET_LIGHT_MODE, 2)
+            assertArrayEquals("T".encodeToByteArray(), command)
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetPedalsModeValues() {
+        assertArrayEquals("h".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
+        assertArrayEquals("f".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 1))
+        assertArrayEquals("s".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
+        assertArrayEquals("i".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 3))
+    }
+
+    @Test
+    fun testCreateCommandSetPedalsModeSchedulesConfirmationBeep() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.SET_PEDALS_MODE, 1)
+            assertArrayEquals("f".encodeToByteArray(), command)
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetPedalsModeInvalidValueReturnsEmpty() {
+        val command = protocol.createCommand(CommandType.SET_PEDALS_MODE, "invalid")
+        assertArrayEquals(byteArrayOf(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetAlarmSpeedValues() {
+        assertArrayEquals("o".encodeToByteArray(), protocol.createCommand(CommandType.SET_ALARM_SPEED, 0))
+        assertArrayEquals("u".encodeToByteArray(), protocol.createCommand(CommandType.SET_ALARM_SPEED, 1))
+        assertArrayEquals("i".encodeToByteArray(), protocol.createCommand(CommandType.SET_ALARM_SPEED, 2))
+        assertArrayEquals("I".encodeToByteArray(), protocol.createCommand(CommandType.SET_ALARM_SPEED, 3))
+    }
+
+    @Test
+    fun testCreateCommandSetAlarmSpeedDynamicTiltbackSchedulesConfirmationBeep() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.SET_ALARM_SPEED, 3)
+            assertArrayEquals("I".encodeToByteArray(), command)
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetAlarmSpeedInvalidValueReturnsEmpty() {
+        val command = protocol.createCommand(CommandType.SET_ALARM_SPEED, "invalid")
+        assertArrayEquals(byteArrayOf(), command)
+    }
+
+    @Test
+    fun testCreateCommandCalibrateSchedulesConfirmationSequence() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.CALIBRATE, Unit)
+            assertArrayEquals("c".encodeToByteArray(), command)
+            assertArrayEquals("y".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetSpeedLimitSchedulesFullSequence() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.SET_SPEED_LIMIT, 45)
+            assertArrayEquals("b".encodeToByteArray(), command)
+            assertArrayEquals("W".encodeToByteArray(), awaitItem())
+            assertArrayEquals("Y".encodeToByteArray(), awaitItem())
+            assertArrayEquals("4".encodeToByteArray(), awaitItem())
+            assertArrayEquals("5".encodeToByteArray(), awaitItem())
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetSpeedLimitZeroDisablesTiltbackLimit() = runTest {
+        val scopedProtocol = GotwayProtocol(scope = backgroundScope)
+        scopedProtocol.writeFlow.test {
+            val command = scopedProtocol.createCommand(CommandType.SET_SPEED_LIMIT, 0)
+            assertArrayEquals("b".encodeToByteArray(), command)
+            assertArrayEquals("\"".encodeToByteArray(), awaitItem())
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            assertArrayEquals("b".encodeToByteArray(), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testCreateCommandSetSpeedLimitInvalidValueReturnsEmpty() {
+        val command = protocol.createCommand(CommandType.SET_SPEED_LIMIT, "invalid")
+        assertArrayEquals(byteArrayOf(), command)
+    }
+
+    @Test
     fun testGetPollingPlanIsEnabled() {
         val plan = protocol.getPollingPlan()
         assertTrue(plan.enabled)
