@@ -117,7 +117,4 @@ object BLEConstants {
     const val NINEBOT_FRAME_FIRST_BYTE: Int = 0x55
     val NINEBOT_WHEELLOG_FRAME_HEADER: ByteArray = byteArrayOf(0x5A.toByte(), 0xA5.toByte())
     val LEAPERKIM_FRAME_HEADER: ByteArray = byteArrayOf(0xDC.toByte(), 0x5A.toByte(), 0x5C.toByte())
-
-    // Command frame header for Gotway (used in command generation, reverse of WheelLog header)
-    val GOTWAY_COMMAND_HEADER: ByteArray = byteArrayOf(0xA5.toByte(), 0x5A.toByte())
 }

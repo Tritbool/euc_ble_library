@@ -877,53 +877,56 @@ class GotwayProtocolTest {
     @Test
     fun testCreateCommandLightOn() {
         val command = protocol.createCommand(CommandType.LIGHT_ON, Unit)
-        assertArrayEquals(
-            byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x01, 0x01, 0x01),
-            command
-        )
+        assertArrayEquals("Q".encodeToByteArray(), command)
     }
 
     @Test
     fun testCreateCommandLightOff() {
         val command = protocol.createCommand(CommandType.LIGHT_OFF, Unit)
-        assertArrayEquals(
-            byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x01, 0x01, 0x00),
-            command
-        )
+        assertArrayEquals("E".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeOff() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, 0)
+        assertArrayEquals("E".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeOn() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, 1)
+        assertArrayEquals("Q".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeStrobe() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, 2)
+        assertArrayEquals("T".encodeToByteArray(), command)
+    }
+
+    @Test
+    fun testCreateCommandSetLightModeInvalidValue() {
+        val command = protocol.createCommand(CommandType.SET_LIGHT_MODE, "invalid")
+        assertArrayEquals(byteArrayOf(), command)
     }
 
     @Test
     fun testCreateCommandBeep() {
         val command = protocol.createCommand(CommandType.BEEP, Unit)
-        assertArrayEquals(
-            byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x02, 0x01),
-            command
-        )
+        assertArrayEquals("b".encodeToByteArray(), command)
     }
 
     @Test
-    fun testCreateCommandPowerOff() {
+    fun testCreateCommandPowerOffIsUnsupported() {
+        // Begode/Gotway has no remote power-off command in the real protocol
+        // (confirmed absent from legacy WheelLog.Android's GotwayAdapter and from
+        // eried/eucplanet's begode.md reference); it must not be advertised as
+        // supported nor produce a bogus payload.
+        assertEquals(
+            CommandSupport.UNSUPPORTED,
+            protocol.getCommandSupport(CommandType.POWER_OFF)
+        )
         val command = protocol.createCommand(CommandType.POWER_OFF, Unit)
-        assertArrayEquals(
-            byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x03, 0x01),
-            command
-        )
-    }
-
-    @Test
-    fun testCreateCommandLightBrightness() {
-        val command = protocol.createCommand(CommandType.LIGHT_BRIGHTNESS, 50)
-        // 50% of 255 = 127 (0x7F)
-        assertArrayEquals(
-            byteArrayOf(0xA5.toByte(), 0x5A.toByte(), 0x04, 0x7F.toByte()),
-            command
-        )
-    }
-
-    @Test
-    fun testCreateCommandLightBrightnessInvalidValue() {
-        // Invalid value should return empty array
-        val command = protocol.createCommand(CommandType.LIGHT_BRIGHTNESS, 150)
         assertArrayEquals(byteArrayOf(), command)
     }
 
@@ -944,9 +947,10 @@ class GotwayProtocolTest {
         val plan = protocol.getPollingPlan()
         assertTrue(plan.enabled)
         assertTrue(plan.startupQueries.isNotEmpty())
-        assertEquals(2, plan.startupQueries.size)
-        assertEquals(CommandType.REQUEST_SERIAL, plan.startupQueries[0].commandType)
-        assertEquals(CommandType.REQUEST_FIRMWARE, plan.startupQueries[1].commandType)
+        assertEquals(3, plan.startupQueries.size)
+        assertEquals(CommandType.BEEP, plan.startupQueries[0].commandType)
+        assertEquals(CommandType.REQUEST_SERIAL, plan.startupQueries[1].commandType)
+        assertEquals(CommandType.REQUEST_FIRMWARE, plan.startupQueries[2].commandType)
         assertTrue(plan.periodicQueries.isEmpty())
     }
 
