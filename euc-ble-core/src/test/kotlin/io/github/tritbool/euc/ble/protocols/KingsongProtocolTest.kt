@@ -479,6 +479,48 @@ class KingsongProtocolTest {
     }
 
     @Test
+    fun bmsChargingStatusIsDerivedFromNegativeBmsCurrent() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createBmsPage00Frame(
+                    messageType = 0xF1,
+                    bmsVoltageRaw = 8400,
+                    bmsCurrentRaw = -250,
+                    remainingCapacity = 5000,
+                    factoryCapacity = 6000,
+                    cycles = 42
+                )
+            )
+            waitForBmsCycles(42)
+            assertTrue(protocol.getBMSData()[0].isCharging == true)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun bmsIsNotChargingWhenBmsCurrentIsPositive() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createBmsPage00Frame(
+                    messageType = 0xF1,
+                    bmsVoltageRaw = 8400,
+                    bmsCurrentRaw = 250,
+                    remainingCapacity = 5000,
+                    factoryCapacity = 6000,
+                    cycles = 43
+                )
+            )
+            waitForBmsCycles(43)
+            assertFalse(protocol.getBMSData()[0].isCharging == true)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun decodeBmsPage01TemperaturesIsStoredInGetBMSData() = runTest {
         tearDown()
         protocol = KingsongProtocol(scope = backgroundScope)

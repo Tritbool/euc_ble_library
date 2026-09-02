@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -160,6 +161,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var lastKnownTopSpeed: Double? = null
     private var lastKnownFanStatus: Int? = null
     private var lastKnownChargingStatus: Int? = null
+    private var lastKnownIsCharging: Boolean? = null
     private var lastKnownMotorTemperature: Double? = null
     private var lastKnownCpuLoad: Int? = null
     private var lastKnownSpeedLimit: Double? = null
@@ -321,6 +323,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             if (current !in -200.0..200.0) return null
 
             val isCharging = (statusByte and 0x01) != 0
+            lastKnownIsCharging = isCharging
 
             // Mode detection (legacy: byte 15 == PEDALS_MODE_MARKER means mode is in byte 14)
             if (ensureRange(data, base + 15, 1) && ByteUtils.getUnsignedByte(
@@ -580,7 +583,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 factoryCapacity = summary?.factoryCapacity,
                 cycles = summary?.cycles,
                 temperatures = temps,
-                cellVoltages = cells
+                cellVoltages = cells,
+                isCharging = resolveBmsChargingState(summary?.current, lastKnownIsCharging)
             )
         }
     }

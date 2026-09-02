@@ -8,6 +8,7 @@ import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -962,7 +963,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 factoryCapacity = null, // Factory capacity not available in smart BMS pages
                 cycles = null, // Cycle count not available in smart BMS pages
                 temperatures = temperatures,
-                cellVoltages = cells
+                cellVoltages = cells,
+                isCharging = resolveBmsChargingState(smartBmsCurrents[index], null)
             )
         }
     }

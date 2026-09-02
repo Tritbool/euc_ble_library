@@ -58,6 +58,19 @@ For commands:
 client.sendCommand(CommandType.LIGHT_ON)
 ```
 
+## BMS data
+
+Wheels that expose a smart BMS publish their pack details through the active protocol:
+
+```kotlin
+// Poll as often as needed (UI refresh, logging, diagnostics, ...)
+val packs: List<BMSData>? = client.getBMSData()
+```
+
+Each `BMSData` entry carries pack voltage/current, remaining and factory capacity, cycles,
+temperature probes, cell voltages and the pack charging status (`isCharging`).
+`null` is returned when the connected wheel does not expose BMS data.
+
 ## Testing
 
 **84%+ line coverage on protocol/model/frame code**, verified on every push.

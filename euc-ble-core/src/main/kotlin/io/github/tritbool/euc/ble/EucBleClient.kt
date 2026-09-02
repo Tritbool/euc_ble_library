@@ -14,6 +14,7 @@ import io.github.tritbool.euc.ble.core.ErrorCallback
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
@@ -86,6 +87,15 @@ class EucBleClient(
     fun getConnectionState(): BLEConstants.ConnectionState = bleManager.getConnectionState()
 
     fun getConnectedDevice(): EUCDevice? = bleManager.getConnectedDevice()
+
+    /**
+     * Returns the latest BMS snapshot of the connected wheel (cell voltages, temperatures,
+     * pack voltage/current, charging status), or `null` when the wheel does not expose BMS data.
+     *
+     * Poll it as often as needed; what is done with the snapshot (display, logging, ...) is
+     * entirely up to the client application.
+     */
+    fun getBMSData(): List<BMSData>? = bleManager.getBMSData()
 
     fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {
         bleManager.setProtocolSelectionMode(mode)

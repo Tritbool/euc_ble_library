@@ -21,6 +21,7 @@ import androidx.annotation.VisibleForTesting.Companion.PRIVATE
 import io.github.tritbool.euc.ble.exceptions.BLEException
 import io.github.tritbool.euc.ble.integration.BleBackendEvent
 import io.github.tritbool.euc.ble.integration.BleBackendListener
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
@@ -935,6 +936,14 @@ class BLEManager internal constructor(
             }
         }
     }
+
+    /**
+     * Returns the latest BMS snapshot decoded by the active protocol, or `null` when the
+     * connected wheel does not expose BMS data.
+     *
+     * Intended to be polled by client applications as often as needed (display, logging, ...).
+     */
+    fun getBMSData(): List<BMSData>? = currentProtocol?.getBMSData()?.takeIf { it.isNotEmpty() }
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun cancelDataFlowCollection() {

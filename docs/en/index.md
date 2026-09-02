@@ -80,6 +80,9 @@ flowchart LR
 - The protocol core exposes:
     - `Flow<EUCData>` for decoded telemetry.
     - `Flow<ByteArray>` (`rawFrameFlow`) for raw frames (useful for logging / debugging).
+- `client.getBMSData()` returns the latest BMS snapshot (cell voltages, temperatures, pack
+  voltage/current and charging status) of wheels exposing a smart BMS, or `null` otherwise. It is a
+  pull API: poll it as often as needed, the app decides what to do with it (display, logging, ...).
 
 Example usage on the app side:
 

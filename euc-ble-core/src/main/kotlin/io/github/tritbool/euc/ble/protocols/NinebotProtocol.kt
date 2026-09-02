@@ -4,6 +4,7 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -124,6 +125,7 @@ class NinebotProtocol : EUCProtocol {
     private var zDriveFlags: Int? = null
     private var zSpeakerVolumeStep: Int? = null
     private val zBmsSnapshots = mutableMapOf<Int, ZBmsSnapshot>()
+    private var lastKnownIsCharging: Boolean? = null
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
@@ -167,6 +169,7 @@ class NinebotProtocol : EUCProtocol {
             ?: estimateBatteryPercent(voltage)
         val status = ByteUtils.tryGetUnsignedByte(data, STATUS_OFFSET) ?: 0
         val isCharging = (status and 0x01) != 0
+        lastKnownIsCharging = isCharging
 
         val now = System.currentTimeMillis()
         val rideTime = ByteUtils.tryGetUnsignedIntLE(data, RIDE_TIME_OFFSET)?.toLong()
@@ -315,6 +318,7 @@ class NinebotProtocol : EUCProtocol {
         val current = (ByteUtils.tryGetSignedShortLE(frame, 33)?.toInt() ?: return null) / 100.0
         val temperature = (ByteUtils.tryGetUnsignedShortLE(frame, 29) ?: return null) / 10.0
         val battery = decodeWheelLogBattery(frame) ?: return null
+        val isCharging = current > 0.5
 
         if (voltage !in 20.0..150.0) return null
         if (speed !in -120.0..120.0) return null
@@ -330,6 +334,8 @@ class NinebotProtocol : EUCProtocol {
             ?.takeIf { it in 0L..604_800L }
             ?: deriveRideTimeSeconds(now)
 
+        lastKnownIsCharging = isCharging
+
         return EUCData(
             speed = speed,
             voltage = voltage,
@@ -344,7 +350,7 @@ class NinebotProtocol : EUCProtocol {
             model = inferModel(frame),
             serialNumber = serialNumber,
             firmwareVersion = firmwareVersion,
-            isCharging = current > 0.5,
+            isCharging = isCharging,
             rideTime = rideTime,
             cellVoltages = null,
             motorTemperature = null,
@@ -554,7 +560,8 @@ class NinebotProtocol : EUCProtocol {
                     factoryCapacity = null,
                     cycles = null,
                     temperatures = null,
-                    cellVoltages = snapshot.cellVoltages
+                    cellVoltages = snapshot.cellVoltages,
+                    isCharging = lastKnownIsCharging
                 )
             }
     }
@@ -685,6 +692,7 @@ class NinebotProtocol : EUCProtocol {
         zDriveFlags = null
         zSpeakerVolumeStep = null
         zBmsSnapshots.clear()
+        lastKnownIsCharging = null
         _channel.close()
     }
 }
