@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -180,6 +181,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     @Volatile
     private var lastDetectedDialect: Dialect = Dialect.UNKNOWN
+
+    @Volatile
+    private var lastKnownIsCharging: Boolean? = null
 
     @Volatile
     private var modelName: String = "InMotion"
@@ -819,6 +823,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
         val stateByte = payload[54].toInt() and 0xFF
         val isCharging = (stateByte and 0x80) != 0
+        lastKnownIsCharging = isCharging
 
         val modeString = when {
             isCharging -> "charging"
@@ -935,6 +940,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val telemetryMotorTemp = p6MotorTemp ?: boardTemp.toDouble()
         val stateByte = payload[74].toInt() and 0xFF
         val isCharging = ((stateByte shr 7) and 0x01) == 1
+        lastKnownIsCharging = isCharging
         val now = System.currentTimeMillis()
         val rideTimeFromPayload = ByteUtils.tryGetUnsignedIntLE(payload, 24)
             ?.takeIf { it in 0L..604_800L }
@@ -1444,7 +1450,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     factoryCapacity = null,
                     cycles = null,
                     temperatures = if (index == 1) temperatures?.takeIf { it.isNotEmpty() } else null,
-                    cellVoltages = cells
+                    cellVoltages = cells,
+                    isCharging = resolveBmsChargingState(
+                        if (index == 1) current else null,
+                        lastKnownIsCharging
+                    )
                 )
             }
         }
@@ -1459,7 +1469,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     factoryCapacity = null,
                     cycles = null,
                     temperatures = temperatures?.takeIf { it.isNotEmpty() },
-                    cellVoltages = cellVoltages
+                    cellVoltages = cellVoltages,
+                    isCharging = resolveBmsChargingState(current, lastKnownIsCharging)
                 )
             )
         }
@@ -1473,7 +1484,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     factoryCapacity = null,
                     cycles = null,
                     temperatures = if (index == 0) temperatures?.takeIf { it.isNotEmpty() } else null,
-                    cellVoltages = null
+                    cellVoltages = null,
+                    isCharging = resolveBmsChargingState(
+                        if (index == 0) current else null,
+                        lastKnownIsCharging
+                    )
                 )
             }
         }
@@ -1486,7 +1501,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 factoryCapacity = null,
                 cycles = null,
                 temperatures = temperatures?.takeIf { it.isNotEmpty() },
-                cellVoltages = null
+                cellVoltages = null,
+                isCharging = resolveBmsChargingState(current, lastKnownIsCharging)
             )
         )
     }

@@ -80,6 +80,10 @@ flowchart LR
 - Le cœur protocole expose :
     - `Flow<EUCData>` pour la télémétrie décodée.
     - `Flow<ByteArray>` (`rawFrameFlow`) pour les trames brutes (utile pour logger / debug).
+    - `Flow<List<BMSData>>` (`bmsDataFlow`) pour les instantanés BMS (tensions de cellules,
+      températures, courant/tension du pack et statut de charge), émis à chaque changement d'état BMS
+      afin de proposer une option de log « BMS » à côté de la capture brute. `client.getBMSData()`
+      renvoie le dernier instantané à la demande.
 
 Exemple d’utilisation côté app :
 

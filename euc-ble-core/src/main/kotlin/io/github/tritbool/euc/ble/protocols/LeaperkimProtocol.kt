@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -177,6 +178,10 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     // voltage-curve estimate on the other 8 pages (mVer 8 / Oryx only).
     @Volatile
     private var lastOryxBatterySoc: Int = -1
+
+    // Last charge mode reported by the wheel (frame byte 22, 0 = not charging).
+    @Volatile
+    private var lastKnownChargeMode: Int? = null
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
     private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
@@ -254,6 +259,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 32)
         val pwmRaw = ByteUtils.tryGetUnsignedShortBE(frame, 34) ?: 0
         val chargeMode = ByteUtils.tryGetUnsignedShortBE(frame, 22) ?: 0
+        lastKnownChargeMode = chargeMode
         val autoOffSeconds = ByteUtils.tryGetUnsignedShortBE(frame, 20) ?: 0
         val speedAlertRaw = ByteUtils.tryGetUnsignedShortBE(frame, 24) ?: 0
         val speedTiltBackRaw = ByteUtils.tryGetUnsignedShortBE(frame, 26) ?: 0
@@ -313,6 +319,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
             serialNumber = null,
             firmwareVersion = if (versionRaw > 0) formatVersion(versionRaw) else null,
             isCharging = chargeMode > 0,
+            chargingStatus = chargeMode,
             rideTime = rideTimeSeconds,
             cellVoltages = getCombinedCellVoltages(),
             motorTemperature = null,
@@ -395,7 +402,11 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
                 factoryCapacity = null,
                 cycles = null,
                 temperatures = bmsTemperatures[index],
-                cellVoltages = bmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
+                cellVoltages = bmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null },
+                isCharging = resolveBmsChargingState(
+                    bmsCurrents[index],
+                    lastKnownChargeMode?.let { it > 0 }
+                )
             )
         }
     }

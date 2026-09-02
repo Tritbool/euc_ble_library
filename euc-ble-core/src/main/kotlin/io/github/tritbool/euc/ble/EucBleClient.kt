@@ -14,6 +14,7 @@ import io.github.tritbool.euc.ble.core.ErrorCallback
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
+import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
@@ -87,6 +88,12 @@ class EucBleClient(
 
     fun getConnectedDevice(): EUCDevice? = bleManager.getConnectedDevice()
 
+    /**
+     * Returns the latest BMS snapshot of the connected wheel, or `null` when the wheel
+     * does not expose BMS data.
+     */
+    fun getBMSData(): List<BMSData>? = bleManager.getBMSData()
+
     fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {
         bleManager.setProtocolSelectionMode(mode)
     }
@@ -126,6 +133,13 @@ class EucBleClient(
     }
 
     val rawFrameFlow: SharedFlow<ByteArray> = bleManager.rawFrameFlow
+
+    /**
+     * Flow emitting the latest BMS snapshot each time the decoded BMS state changes.
+     * Collect it to record BMS behaviour (cell voltages, temperatures, pack current and
+     * charging status) at ride time, next to the raw frame capture of [rawFrameFlow].
+     */
+    val bmsDataFlow: SharedFlow<List<BMSData>> = bleManager.bmsDataFlow
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = bleManager.queryTraceFlow
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)

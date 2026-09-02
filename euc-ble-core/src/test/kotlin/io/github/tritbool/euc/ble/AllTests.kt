@@ -7,6 +7,7 @@ import io.github.tritbool.euc.ble.core.BLEManagerProtocolSelectionTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
+import io.github.tritbool.euc.ble.models.BMSDataTest
 import io.github.tritbool.euc.ble.models.EUCDataTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
@@ -35,6 +36,7 @@ import org.junit.platform.suite.api.Suite
     FrameReassemblerStaticFlowTest::class,
     ByteUtilsTest::class,
     ByteUtilsSafeAccessTest::class,
+    BMSDataTest::class,
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,

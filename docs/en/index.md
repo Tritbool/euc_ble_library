@@ -80,6 +80,10 @@ flowchart LR
 - The protocol core exposes:
     - `Flow<EUCData>` for decoded telemetry.
     - `Flow<ByteArray>` (`rawFrameFlow`) for raw frames (useful for logging / debugging).
+    - `Flow<List<BMSData>>` (`bmsDataFlow`) for BMS snapshots (cell voltages, temperatures, pack
+      current/voltage and charging status), emitted on every BMS state change so apps can offer a
+      "BMS" logging option next to the raw capture. `client.getBMSData()` returns the latest snapshot
+      on demand.
 
 Example usage on the app side:
 
