@@ -67,6 +67,12 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     override fun getWriteCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.LEAPERKIM_WRITE_CHARACTERISTIC)
 
+    /**
+     * Veteran/LeaperKim wheels share the Gotway-style FFE1 serial-to-BLE bridge, which only accepts
+     * write-without-response; legacy WheelLog also uses WriteType.WITHOUT_RESPONSE for them.
+     */
+    override val preferredWriteType: ProtocolWriteType = ProtocolWriteType.NO_RESPONSE
+
     private enum class ParseState {
         UNKNOWN,
         LENGTH_SEARCH,
