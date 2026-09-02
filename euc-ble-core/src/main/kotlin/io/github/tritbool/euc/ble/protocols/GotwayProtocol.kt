@@ -172,8 +172,6 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         CommandType.LIGHT_OFF,
         CommandType.SET_LIGHT_MODE,
         CommandType.BEEP,
-        CommandType.POWER_OFF,
-        CommandType.LIGHT_BRIGHTNESS,
         CommandType.REQUEST_SERIAL,
         CommandType.REQUEST_FIRMWARE
     )
@@ -733,15 +731,19 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     }
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
-        val header = BLEConstants.GOTWAY_COMMAND_HEADER
+        // Begode/Gotway has no binary command envelope: every control command is a
+        // 1-byte ASCII character written without response to the FFE1 characteristic,
+        // with no checksum/ack (confirmed via legacy WheelLog.Android's GotwayAdapter
+        // and eried/eucplanet's begode.md protocol reference, section 6.1). The
+        // previous 0xA5 0x5A "binary" command header used here was fictional and the
+        // wheel silently ignored it, which is why BEEP/LIGHT_ON/LIGHT_OFF appeared to
+        // do nothing.
         return when (commandType) {
-            CommandType.LIGHT_ON -> header + byteArrayOf(0x01, 0x01, 0x01)
-            CommandType.LIGHT_OFF -> header + byteArrayOf(0x01, 0x01, 0x00)
+            CommandType.LIGHT_ON -> "Q".encodeToByteArray()
+            CommandType.LIGHT_OFF -> "E".encodeToByteArray()
             CommandType.SET_LIGHT_MODE -> {
                 // Begode/Gotway front light has three states (matches legacy WheelLog
-                // GotwayAdapter.setLightMode): 0 = off, 1 = on, 2 = strobe. These are
-                // sent as single-character ASCII commands over the legacy channel,
-                // unlike LIGHT_ON/LIGHT_OFF which use the binary 0xA5 0x5A header.
+                // GotwayAdapter.setLightMode): 0 = off, 1 = on, 2 = strobe.
                 when ((value as? Int)?.coerceIn(0, 2)) {
                     0 -> "E".encodeToByteArray()
                     1 -> "Q".encodeToByteArray()
@@ -750,15 +752,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 }
             }
 
-            CommandType.BEEP -> header + byteArrayOf(0x02, 0x01)
-            CommandType.POWER_OFF -> header + byteArrayOf(0x03, 0x01)
-            CommandType.LIGHT_BRIGHTNESS -> {
-                if (value is Int && value in 0..100) {
-                    val brightness = (value * 255 / 100).toByte()
-                    header + byteArrayOf(0x04, brightness)
-                } else byteArrayOf()
-            }
-
+            CommandType.BEEP -> "b".encodeToByteArray()
             CommandType.REQUEST_SERIAL -> "N".encodeToByteArray()
             CommandType.REQUEST_FIRMWARE -> "V".encodeToByteArray()
             else -> byteArrayOf()
@@ -769,6 +763,18 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         return ProtocolPollingPlan(
             enabled = true,
             startupQueries = listOf(
+                ProtocolQuerySpec(
+                    // Legacy WheelLog.Android and eried/eucplanet both send a single
+                    // 'b' (beep) right after notifications are enabled: it serves as a
+                    // UX cue ("the wheel beeped, we're connected") and flushes the
+                    // serial-to-BLE bridge's input buffer. There is no response frame
+                    // for this command, so it's a fire-and-forget single attempt.
+                    id = "gotway.connect-beep",
+                    commandType = CommandType.BEEP,
+                    initialDelayMs = 0L,
+                    responseTimeoutMs = 200L,
+                    maxRetries = 0
+                ),
                 ProtocolQuerySpec(
                     id = "gotway.request-model",
                     commandType = CommandType.REQUEST_SERIAL,
