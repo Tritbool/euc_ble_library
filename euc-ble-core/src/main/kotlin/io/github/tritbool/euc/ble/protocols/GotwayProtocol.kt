@@ -118,6 +118,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
          *  Type-A frame; we multiply by this constant to convert back to km/h and
          *  km so all downstream consumers always receive metric values. */
         private const val MILES_TO_KM = 1.60934
+        /** Delay before writing a confirmation beep after a settings-change command with no
+         *  ack/checksum, matching legacy WheelLog's `sendCommand(s, "b", 100)` default. */
+        private const val BEEP_FOLLOWUP_DELAY_MS = 100L
     }
 
     private val frameParser = FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
@@ -130,6 +133,20 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val rawFrameFlow: Flow<ByteArray> = _rawFrameFlow.asSharedFlow()
+
+    /**
+     * Begode/Gotway commands are single ASCII characters with no ack/checksum, so several
+     * real-world actions (light/pedals/alarm mode changes, calibration, max-speed/tiltback
+     * configuration) are actually short sequences of characters sent a few hundred
+     * milliseconds apart (mirrors legacy WheelLog.Android's GotwayAdapter.sendCommand chains).
+     * [createCommand] returns the first byte(s) synchronously and schedules the remaining
+     * follow-up writes (e.g. a confirmation beep) on [writeFlow].
+     */
+    private val _writeFlow = MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val writeFlow: Flow<ByteArray> = _writeFlow.asSharedFlow()
 
     private var hasSeenType7Pwm = false
     //private val scope = CoroutineScope(Dispatchers.IO)
@@ -173,6 +190,10 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         CommandType.LIGHT_OFF,
         CommandType.SET_LIGHT_MODE,
         CommandType.BEEP,
+        CommandType.SET_PEDALS_MODE,
+        CommandType.SET_ALARM_SPEED,
+        CommandType.SET_SPEED_LIMIT,
+        CommandType.CALIBRATE,
         CommandType.REQUEST_SERIAL,
         CommandType.REQUEST_FIRMWARE
     )
@@ -738,6 +759,28 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         }
     }
 
+    /**
+     * Schedules a follow-up ASCII command to be written [delayMs] after the primary command
+     * returned by [createCommand], emitted on [writeFlow] for the BLE layer to write out.
+     * Mirrors legacy WheelLog.Android's `Handler().postDelayed(... sendCommand ...)` chains
+     * used for Begode/Gotway settings that require more than one character (e.g. a
+     * confirmation beep, or a multi-character max-speed/tiltback sequence).
+     */
+    private fun scheduleWrite(delayMs: Long, bytes: ByteArray) {
+        scope.launch {
+            delay(delayMs)
+            _writeFlow.tryEmit(bytes)
+        }
+    }
+
+    /** Schedules a single confirmation beep ('b') after a settings-change command, matching
+     *  legacy WheelLog's default `sendCommand(s)` (== `sendCommand(s, "b", 100)`) behavior:
+     *  Begode/Gotway settings commands have no ack, so the wheel's beep is the only user
+     *  feedback that the change was applied. */
+    private fun scheduleConfirmationBeep() {
+        scheduleWrite(BEEP_FOLLOWUP_DELAY_MS, "b".encodeToByteArray())
+    }
+
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         // Begode/Gotway has no binary command envelope: every control command is a
         // 1-byte ASCII character written without response to the FFE1 characteristic,
@@ -746,18 +789,98 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         // previous 0xA5 0x5A "binary" command header used here was fictional and the
         // wheel silently ignored it, which is why BEEP/LIGHT_ON/LIGHT_OFF appeared to
         // do nothing.
+        //
+        // Several settings commands have no ack/checksum, so legacy WheelLog.Android follows
+        // them with a confirmation beep (or, for calibration/max-speed, a short character
+        // sequence) written a short delay later. Those follow-up writes are scheduled via
+        // [scheduleWrite]/[scheduleConfirmationBeep] and emitted on [writeFlow]; callers must
+        // collect [writeFlow] and write out anything it emits for this feedback to reach the
+        // wheel.
         return when (commandType) {
-            CommandType.LIGHT_ON -> "Q".encodeToByteArray()
-            CommandType.LIGHT_OFF -> "E".encodeToByteArray()
+            CommandType.LIGHT_ON -> {
+                scheduleConfirmationBeep()
+                "Q".encodeToByteArray()
+            }
+
+            CommandType.LIGHT_OFF -> {
+                scheduleConfirmationBeep()
+                "E".encodeToByteArray()
+            }
+
             CommandType.SET_LIGHT_MODE -> {
                 // Begode/Gotway front light has three states (matches legacy WheelLog
                 // GotwayAdapter.setLightMode): 0 = off, 1 = on, 2 = strobe.
-                when ((value as? Int)?.coerceIn(0, 2)) {
+                val command = when ((value as? Int)?.coerceIn(0, 2)) {
                     0 -> "E".encodeToByteArray()
                     1 -> "Q".encodeToByteArray()
                     2 -> "T".encodeToByteArray()
-                    else -> byteArrayOf()
+                    else -> return byteArrayOf()
                 }
+                scheduleConfirmationBeep()
+                command
+            }
+
+            CommandType.SET_PEDALS_MODE -> {
+                // Matches legacy WheelLog GotwayAdapter.updatePedalsMode: 0=hard, 1=medium,
+                // 2=soft, 3=free-standing/independent pedals ("free").
+                val command = when (value as? Int) {
+                    0 -> "h".encodeToByteArray()
+                    1 -> "f".encodeToByteArray()
+                    2 -> "s".encodeToByteArray()
+                    3 -> "i".encodeToByteArray()
+                    else -> return byteArrayOf()
+                }
+                scheduleConfirmationBeep()
+                command
+            }
+
+            CommandType.SET_ALARM_SPEED -> {
+                // Begode/Gotway exposes a single preset alarm/tiltback mode rather than
+                // per-threshold speeds (matches legacy WheelLog GotwayAdapter.updateAlarmMode):
+                // 0 = two alarms (30 + 35/45 km/h) + 80% PWM tiltback,
+                // 1 = one alarm (35/45 km/h) + 80% PWM tiltback,
+                // 2 = 80% PWM tiltback only (no speed alarms),
+                // 3 = dynamic/proportional PWM tiltback (custom firmware "dynamic tiltback").
+                val command = when (value as? Int) {
+                    0 -> "o".encodeToByteArray()
+                    1 -> "u".encodeToByteArray()
+                    2 -> "i".encodeToByteArray()
+                    3 -> "I".encodeToByteArray()
+                    else -> return byteArrayOf()
+                }
+                scheduleConfirmationBeep()
+                command
+            }
+
+            CommandType.SET_SPEED_LIMIT -> {
+                // Max-speed/tiltback-speed setting (matches legacy WheelLog
+                // GotwayAdapter.updateMaxSpeed): a short beep, then "W"+"Y" to select the
+                // parameter, then the two ASCII digits of the speed in km/h, then a closing
+                // double-beep. A value of 0 disables the tiltback speed limit via '"'.
+                val maxSpeed = (value as? Int) ?: return byteArrayOf()
+                if (maxSpeed <= 0) {
+                    scheduleWrite(100L, "\"".encodeToByteArray())
+                    scheduleWrite(200L, "b".encodeToByteArray())
+                    scheduleWrite(300L, "b".encodeToByteArray())
+                } else {
+                    val clamped = maxSpeed.coerceIn(1, 99)
+                    val tens = ('0' + (clamped / 10)).toString().encodeToByteArray()
+                    val units = ('0' + (clamped % 10)).toString().encodeToByteArray()
+                    scheduleWrite(100L, "W".encodeToByteArray())
+                    scheduleWrite(200L, "Y".encodeToByteArray())
+                    scheduleWrite(300L, tens)
+                    scheduleWrite(400L, units)
+                    scheduleWrite(500L, "b".encodeToByteArray())
+                    scheduleWrite(600L, "b".encodeToByteArray())
+                }
+                "b".encodeToByteArray()
+            }
+
+            CommandType.CALIBRATE -> {
+                // Wheel calibration (matches legacy WheelLog GotwayAdapter.wheelCalibration):
+                // "c" starts calibration, "y" confirms it ~300ms later.
+                scheduleWrite(300L, "y".encodeToByteArray())
+                "c".encodeToByteArray()
             }
 
             CommandType.BEEP -> "b".encodeToByteArray()
