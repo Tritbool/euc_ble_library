@@ -825,9 +825,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                 // Matches legacy WheelLog GotwayAdapter.updatePedalsMode: 0=hard, 1=medium,
                 // 2=soft, 3=free-standing/independent pedals ("free").
                 val command = when (value as? Int) {
-                    0 -> "h".encodeToByteArray()
+                    0 -> "s".encodeToByteArray()
                     1 -> "f".encodeToByteArray()
-                    2 -> "s".encodeToByteArray()
+                    2 -> "h".encodeToByteArray()
                     3 -> "i".encodeToByteArray()
                     else -> return byteArrayOf()
                 }

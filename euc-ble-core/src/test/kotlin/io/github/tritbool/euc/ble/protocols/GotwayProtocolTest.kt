@@ -985,9 +985,9 @@ class GotwayProtocolTest {
 
     @Test
     fun testCreateCommandSetPedalsModeValues() {
-        assertArrayEquals("h".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
+        assertArrayEquals("s".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
         assertArrayEquals("f".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 1))
-        assertArrayEquals("s".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
+        assertArrayEquals("h".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
         assertArrayEquals("i".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 3))
     }
 
