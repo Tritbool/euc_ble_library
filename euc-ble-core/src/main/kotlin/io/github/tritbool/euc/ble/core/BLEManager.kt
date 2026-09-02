@@ -148,26 +148,6 @@ class BLEManager internal constructor(
      */
     val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
 
-    // BMS capture: latest BMS snapshot published whenever the decoded BMS state changes
-    private val _bmsDataFlow = MutableSharedFlow<List<BMSData>>(
-        replay = 1,
-        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    private var lastEmittedBmsData: List<BMSData>? = null
-
-    /**
-     * Flow emitting the latest BMS (Battery Management System) snapshot of the connected
-     * wheel, as reported by the active protocol.
-     *
-     * A new list is emitted whenever the decoded BMS state changes (cell voltages,
-     * temperatures, pack current/voltage, charging status, ...), which makes it suitable for
-     * BMS logging at ride time, alongside the raw frame logging offered by [rawFrameFlow].
-     *
-     * Emissions are driven by decoded telemetry and must be treated as background events.
-     */
-    val bmsDataFlow: SharedFlow<List<BMSData>> = _bmsDataFlow.asSharedFlow()
-
     private val _queryTraceFlow = MutableSharedFlow<QueryTraceEvent>(
         extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -945,7 +925,6 @@ class BLEManager internal constructor(
         dataFlowCollectorJob = coroutineScope.launch {
             protocol.dataFlow.collect { d ->
                 dataCallback?.onDataReceived(d)
-                publishBmsData(protocol)
             }
         }
 
@@ -959,25 +938,15 @@ class BLEManager internal constructor(
     }
 
     /**
-     * Publishes the current BMS snapshot of [protocol] when it differs from the last
-     * published one, so collectors only receive actual BMS state changes.
-     */
-    private fun publishBmsData(protocol: EUCProtocol) {
-        val bmsData = protocol.getBMSData()?.takeIf { it.isNotEmpty() } ?: return
-        if (bmsData == lastEmittedBmsData) return
-        lastEmittedBmsData = bmsData
-        _bmsDataFlow.tryEmit(bmsData)
-    }
-
-    /**
      * Returns the latest BMS snapshot decoded by the active protocol, or `null` when the
      * connected wheel does not expose BMS data.
+     *
+     * Intended to be polled by client applications as often as needed (display, logging, ...).
      */
     fun getBMSData(): List<BMSData>? = currentProtocol?.getBMSData()?.takeIf { it.isNotEmpty() }
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun cancelDataFlowCollection() {
-        lastEmittedBmsData = null
         dataFlowCollectorJob?.cancel()
         dataFlowCollectorJob = null
         writeFlowCollectorJob?.cancel()

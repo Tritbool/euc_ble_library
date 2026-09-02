@@ -58,22 +58,18 @@ For commands:
 client.sendCommand(CommandType.LIGHT_ON)
 ```
 
-## Logging streams
+## BMS data
 
-Two capture streams are exposed for ride-time logging, both independent from the telemetry callback:
+Wheels that expose a smart BMS publish their pack details through the active protocol:
 
 ```kotlin
-// RAW: every BLE notification, exactly as received
-client.rawFrameFlow.collect { bytes -> /* append to raw log */ }
-
-// BMS: battery pack snapshots (cells, temperatures, pack current/voltage, charging status)
-client.bmsDataFlow.collect { packs -> /* append to BMS log */ }
+// Poll as often as needed (UI refresh, logging, diagnostics, ...)
+val packs: List<BMSData>? = client.getBMSData()
 ```
 
-`bmsDataFlow` emits a new snapshot whenever the decoded BMS state changes, so a "BMS" logging
-option can be offered alongside the RAW one to record cell behaviour during a ride.
-`client.getBMSData()` returns the latest snapshot on demand, or `null` when the connected wheel
-does not expose BMS data.
+Each `BMSData` entry carries pack voltage/current, remaining and factory capacity, cycles,
+temperature probes, cell voltages and the pack charging status (`isCharging`).
+`null` is returned when the connected wheel does not expose BMS data.
 
 ## Testing
 
