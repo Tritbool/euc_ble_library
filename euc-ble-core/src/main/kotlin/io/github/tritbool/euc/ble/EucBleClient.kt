@@ -97,6 +97,7 @@ class EucBleClient(
      */
     fun getBMSData(): List<BMSData>? = bleManager.getBMSData()
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {
         bleManager.setProtocolSelectionMode(mode)
     }
