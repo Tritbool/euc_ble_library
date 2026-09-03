@@ -6,10 +6,8 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.le.ScanCallback as AndroidScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
@@ -37,8 +35,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -46,6 +44,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
+import android.bluetooth.le.ScanCallback as AndroidScanCallback
 
 /**
  * Main BLE manager for Electric Unicycles.
@@ -755,8 +754,15 @@ class BLEManager internal constructor(
 
         connectionCallback?.onServicesDiscovered(gatt.services)
 
+
+
         if (fingerprintMatch != null) {
             // Refine with device name when a more-specific sub-protocol is registered
+
+            logger.info(
+                TAG,
+                "Checking subclasses for protocol $fingerprintMatch with device name ${device.name}"
+            )
             val subclassOverride = selectSubclassByDeviceName(fingerprintMatch, device.name)
             val selected = subclassOverride ?: fingerprintMatch
 
@@ -775,7 +781,7 @@ class BLEManager internal constructor(
             }
         } else {
             // No fingerprint match — try device name matching before falling back to manual
-            logger.info(TAG,"Trying to get protocol for device ${device.name}")
+            logger.info(TAG, "Trying to get protocol for device ${device.name}")
             val deviceNameMatch = selectByDeviceName(device.name)
             if (deviceNameMatch != null) {
                 deviceNameMatch.getCandidateDataCharacteristicUUIDs().distinct()
@@ -985,7 +991,7 @@ class BLEManager internal constructor(
         signaturesProvider: (String) -> List<GattSignature> = EucFingerprintDatabase::getSignatures
     ): Pair<EUCProtocol?, Int> {
         val matchesWSign = protocols.map { protocol ->
-            var matches:  Pair<EUCProtocol?, GattSignature?> = Pair(null,null)
+            var matches: Pair<EUCProtocol?, GattSignature?> = Pair(null, null)
             val signatures = signaturesProvider(protocol.javaClass.simpleName)
             logger.debug(
                 TAG + ":selectByGattFingerprint",
@@ -1240,7 +1246,7 @@ class BLEManager internal constructor(
             )
             return false
         }
-        logger.info(TAG,"Applied protocol $protocol")
+        logger.info(TAG, "Applied protocol $protocol")
         setActiveProtocol(protocol, logReason, selectionReason)
         return true
     }

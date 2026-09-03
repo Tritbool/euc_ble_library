@@ -496,7 +496,7 @@ class GotwayProtocolTest {
             assertEquals(200.0, result.speed, 0.1)
             assertEquals(4294967.295, result.distance, 1.0)
             assertEquals(327.67, result.current, 0.01)
-            assertEquals(3276.7, result.temperature, 0.01)
+            assertEquals(132.90, result.temperature, 0.01)
 
             cancelAndIgnoreRemainingEvents()
         }

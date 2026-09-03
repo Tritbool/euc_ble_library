@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import java.util.TreeMap
 import java.util.UUID
 import kotlin.math.abs
 
@@ -103,6 +104,16 @@ import kotlin.math.abs
 open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
     EUCProtocol {
 
+
+    data class BatteryVoltageRange(
+        val minVoltage: Double,
+        val maxVoltage: Double,
+    ) {
+        val seriesCells: Int
+            get() = (maxVoltage / 4.2).toInt()
+    }
+
+
     companion object {
         const val FRAME_SIZE = 24
         val HEADER: ByteArray = BLEConstants.GOTWAY_FRAME_HEADER
@@ -113,15 +124,144 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         private val FIRMWARE_PREFIXES = listOf("GW", "JN", "CF", "BF")
         private val WRAPPED_METADATA_FIRST_BYTES =
             setOf('N'.code, 'G'.code, 'J'.code, 'C'.code, 'B'.code)
+
         /** Conversion factor for wheels that have been set to imperial units by the
          *  Begode app. When the imperial flag is set in a Type-B frame the wheel
          *  transmits speed in mph and trip distance in miles on every subsequent
          *  Type-A frame; we multiply by this constant to convert back to km/h and
          *  km so all downstream consumers always receive metric values. */
         private const val MILES_TO_KM = 1.60934
+
         /** Delay before writing a confirmation beep after a settings-change command with no
          *  ack/checksum, matching legacy WheelLog's `sendCommand(s, "b", 100)` default. */
         private const val BEEP_FOLLOWUP_DELAY_MS = 100L
+
+        private enum class BoardTemperatureEncoding {
+            UNKNOWN,
+            TENTHS_OF_CELSIUS,
+            MPU6050_RAW,
+        }
+
+        private val begodeBatteryVoltages: Map<String, BatteryVoltageRange> = mapOf(
+
+            // ─────────────────────────────────────────────────────────────────────
+            // BEGODE — 50S — plateforme tres haute tension 210 V
+            // Charge complète : 210,0 V ; borne basse électrochimique : 150,0 V
+            // ─────────────────────────────────────────────────────────────────────
+            "race" to BatteryVoltageRange(150.0, 210.0),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // BEGODE — 40S — plateforme haute tension 168 V
+            // Charge complète : 168,0 V ; borne basse électrochimique : 120,0 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Blitz Pro" to BatteryVoltageRange(120.0, 168.0),
+            "ET Max" to BatteryVoltageRange(120.0, 168.0),
+            "Panther" to BatteryVoltageRange(120.0, 168.0),
+            "X-Way Pro" to BatteryVoltageRange(120.0, 168.0),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // BEGODE — 32S — plateforme 134 V / charge complète 134,4 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Blitz" to BatteryVoltageRange(96.0, 134.4),
+            "Extreme" to BatteryVoltageRange(96.0, 134.4),
+            "EX30" to BatteryVoltageRange(96.0, 134.4),
+            "EX30 Pro" to BatteryVoltageRange(96.0, 134.4),
+            "Master" to BatteryVoltageRange(96.0, 134.4),
+            "Master V2" to BatteryVoltageRange(96.0, 134.4),
+            "Master V3" to BatteryVoltageRange(96.0, 134.4),
+            "Master V4" to BatteryVoltageRange(96.0, 134.4),
+            "Master Pro" to BatteryVoltageRange(96.0, 134.4),
+            "Master Pro V2" to BatteryVoltageRange(96.0, 134.4),
+            "Master Pro V3" to BatteryVoltageRange(96.0, 134.4),
+            "Master X" to BatteryVoltageRange(96.0, 134.4),
+            "T4 Pro" to BatteryVoltageRange(96.0, 134.4),
+            "X-Way" to BatteryVoltageRange(96.0, 134.4),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // BEGODE — 24S — plateforme 100 V / charge complète 100,8 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Falcon" to BatteryVoltageRange(72.0, 100.8),
+            "Falcon Pro" to BatteryVoltageRange(72.0, 100.8),
+            "T4" to BatteryVoltageRange(72.0, 100.8),
+            "T4 Max" to BatteryVoltageRange(72.0, 100.8),
+            "T4 Pro Max" to BatteryVoltageRange(72.0, 100.8),
+            "Hero" to BatteryVoltageRange(72.0, 100.8),
+            "Hero V2" to BatteryVoltageRange(72.0, 100.8),
+            "Hero V3" to BatteryVoltageRange(72.0, 100.8),
+            "EX" to BatteryVoltageRange(72.0, 100.8),
+            "EX.N" to BatteryVoltageRange(72.0, 100.8),
+            "EXN" to BatteryVoltageRange(72.0, 100.8),
+            "EX20S" to BatteryVoltageRange(72.0, 100.8),
+            "EX20" to BatteryVoltageRange(72.0, 100.8),
+            "Nikola Plus" to BatteryVoltageRange(72.0, 100.8),
+            "Nikola Plus AR+" to BatteryVoltageRange(72.0, 100.8),
+            "Nikola AR+" to BatteryVoltageRange(72.0, 100.8),
+            "RS" to BatteryVoltageRange(72.0, 100.8),
+            "RS HS" to BatteryVoltageRange(72.0, 100.8),
+            "RS HT" to BatteryVoltageRange(72.0, 100.8),
+            "RS C38" to BatteryVoltageRange(72.0, 100.8),
+            "RS C30" to BatteryVoltageRange(72.0, 100.8),
+            "Monster Pro" to BatteryVoltageRange(72.0, 100.8),
+            "Monster Pro V2" to BatteryVoltageRange(72.0, 100.8),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // BEGODE — 20S — plateforme 84 V / charge complète 84,0 V
+            // ─────────────────────────────────────────────────────────────────────
+            "A2" to BatteryVoltageRange(60.0, 84.0),
+            "Mten4" to BatteryVoltageRange(60.0, 84.0),
+            "Mten5" to BatteryVoltageRange(60.0, 84.0),
+            "Mten3" to BatteryVoltageRange(60.0, 84.0),
+            "MCM5" to BatteryVoltageRange(60.0, 84.0),
+            "MCM5 V2" to BatteryVoltageRange(60.0, 84.0),
+            "Tesla" to BatteryVoltageRange(60.0, 84.0),
+            "Tesla V2" to BatteryVoltageRange(60.0, 84.0),
+            "Tesla V3" to BatteryVoltageRange(60.0, 84.0),
+            "T3" to BatteryVoltageRange(60.0, 84.0),
+            "Nikola" to BatteryVoltageRange(60.0, 84.0),
+            "Nikola 84V" to BatteryVoltageRange(60.0, 84.0),
+            "MSX" to BatteryVoltageRange(60.0, 84.0),
+            "MSuper X" to BatteryVoltageRange(60.0, 84.0),
+            "MSuper Pro" to BatteryVoltageRange(60.0, 84.0),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // BEGODE — 10S — plateforme 42 V / charge complète 42,0 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Future" to BatteryVoltageRange(30.0, 42.0),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // EXTREME BULL — 40S — plateforme 168 V / charge complète 168,0 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Rocket" to BatteryVoltageRange(120.0, 168.0),
+            "Commander GT Pro" to BatteryVoltageRange(120.0, 168.0),
+            "Commander GT Pro+" to BatteryVoltageRange(120.0, 168.0),
+            "Commander GT Pro Plus" to BatteryVoltageRange(120.0, 168.0),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // EXTREME BULL — 36S — plateforme 151,2 V
+            // Annoncée commercialement à « 151 V ».
+            // ─────────────────────────────────────────────────────────────────────
+            "Griffin" to BatteryVoltageRange(108.0, 151.2),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // EXTREME BULL — 35S — plateforme 147 V
+            // ─────────────────────────────────────────────────────────────────────
+            "K6" to BatteryVoltageRange(105.0, 147.0),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // EXTREME BULL — 32S — plateforme 134 V / charge complète 134,4 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Commander Mini" to BatteryVoltageRange(96.0, 134.4),
+            "Commander Pro" to BatteryVoltageRange(96.0, 134.4),
+            "Commander Pro 50E" to BatteryVoltageRange(96.0, 134.4),
+            "Commander Pro 50S" to BatteryVoltageRange(96.0, 134.4),
+            "Commander GT" to BatteryVoltageRange(96.0, 134.4),
+
+            // ─────────────────────────────────────────────────────────────────────
+            // EXTREME BULL — 24S — plateforme 100 V / charge complète 100,8 V
+            // ─────────────────────────────────────────────────────────────────────
+            "Commander" to BatteryVoltageRange(72.0, 100.8),
+        )
+
     }
 
     private val frameParser = FixedSizeFrameParser(FRAME_SIZE, HEADER, FOOTER)
@@ -150,6 +290,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override val writeFlow: Flow<ByteArray> = _writeFlow.asSharedFlow()
 
     private var hasSeenType7Pwm = false
+
     //private val scope = CoroutineScope(Dispatchers.IO)
     private var lastKnownVoltage: Double? = null
     private var lastKnownCurrent: Double? = null
@@ -165,12 +306,15 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var lastKnownFirmwareVersion: String? = null
 
     private var lastKnownPhaseCurrent: Double? = null
+
+    private var boardTemperatureEncoding = BoardTemperatureEncoding.UNKNOWN
     private var gotwayFirmwareVariant: String? = null
     private var useHwPwm = false
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val smartBmsTemperatures: MutableMap<Int, Array<Double?>> = mutableMapOf()
     private val smartBmsCurrents: MutableMap<Int, Double> = mutableMapOf()
     private val smartBmsHalfVoltages: MutableMap<Int, Array<Double?>> = mutableMapOf()
+
     /** True when the wheel has reported imperial-units mode via bit 0 of the Type-B
      *  settings word. Latched on every Type-B frame and applied in parseTypeA to
      *  convert mph→km/h and miles→km transparently. */
@@ -232,6 +376,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         gotwayFirmwareVariant = null
         useHwPwm = false
         hasSeenType7Pwm = false
+        boardTemperatureEncoding = BoardTemperatureEncoding.UNKNOWN
         _channel.close()
     }
 
@@ -304,7 +449,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             else -> ByteUtils.tryGetUnsignedIntBE(data, 6)?.toDouble()?.div(1000.0)
         } ?: return null
         // Apply imperial conversion to distance as well.
-        val tripDistanceKm = if (wheelInMiles) rawTripDistanceKm * MILES_TO_KM else rawTripDistanceKm
+        val tripDistanceKm =
+            if (wheelInMiles) rawTripDistanceKm * MILES_TO_KM else rawTripDistanceKm
         val currentRaw = ByteUtils.tryGetSignedShortBE(data, 10) ?: return null
 
         // phaseCurrent: courant moteur, toujours positif (valeur absolue en A)
@@ -388,7 +534,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val lightMode = ByteUtils.tryGetUnsignedByte(data, 15)?.and(0x03)
         val wheelAlarm = alertFlags?.let { (it and 0x01) == 1 }
 
-        lastKnownTotalDistance = distanceRaw.toDouble()/1000.0
+        lastKnownTotalDistance = distanceRaw.toDouble() / 1000.0
         val voltage = lastKnownVoltage ?: 0.0
         val current = lastKnownCurrent ?: 0.0
         val power = voltage * current
@@ -522,18 +668,48 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
 
     private fun estimateBatteryLevel(voltage: Double): Int {
         if (voltage <= 0.0) return 0
-        return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
-            .toInt()
-            .coerceIn(0, 100)
+        else {
+            val battSpecs = lastKnownModel
+                ?.let { model ->
+                    begodeBatteryVoltages.entries.firstOrNull { entry ->
+                        entry.key.equals(model, ignoreCase = true)
+                    }?.value
+                }
+            return if (battSpecs != null) (((voltage - battSpecs.minVoltage) / (battSpecs.maxVoltage - battSpecs.minVoltage)) * 100.0)
+                .toInt()
+                .coerceIn(0, 100)
+            else
+                return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
+                    .toInt()
+                    .coerceIn(0, 100)
+        }
     }
 
     private fun decodeBoardTemperature(tempRaw: Int): Double {
         val legacyTenths = tempRaw / 10.0
-        if (legacyTenths in -40.0..125.0) return legacyTenths
+        val mpu6050 = (tempRaw / 340.0) + 36.53
 
-        // Newer Begode boards often expose MPU-like raw temperature values.
-        val mpuConverted = (tempRaw / 340.0) + 36.53
-        return if (mpuConverted in -40.0..125.0) mpuConverted else legacyTenths
+        when (boardTemperatureEncoding) {
+            BoardTemperatureEncoding.TENTHS_OF_CELSIUS -> return legacyTenths
+            BoardTemperatureEncoding.MPU6050_RAW -> return mpu6050
+            BoardTemperatureEncoding.UNKNOWN -> Unit
+        }
+
+        if (tempRaw < -1_360 || tempRaw > 1_250) {
+            boardTemperatureEncoding = BoardTemperatureEncoding.MPU6050_RAW
+            return mpu6050
+        }
+
+        // Valeur réellement impossible en dixièmes de °C, mais le seuil précédent
+        // devrait déjà couvrir ce cas. Garde ce garde-fou pour les évolutions futures.
+        if (legacyTenths !in -20.0..80.0 && mpu6050 in -20.0..80.0) {
+            boardTemperatureEncoding = BoardTemperatureEncoding.MPU6050_RAW
+            return mpu6050
+        }
+
+        // L’encodage reste inconnu. Préférer le format historique direct évite de
+        // transformer 25,0 °C (250) en 37,27 °C arbitrairement.
+        return legacyTenths
     }
 
     private fun getCombinedCellVoltages(): List<Double>? {
@@ -593,7 +769,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         if (payload.size > 1 && payload[0] == 0x10.toByte()) {
             // Some wrapped metadata responses arrive as 55 AA + 0x10 marker + ASCII payload.
             // Accept that specific shim to preserve the pre-regression name/firmware retrieval path.
-            parseDirectMetadataMessage(payload.copyOfRange(1, payload.size).decodeToString().trim())?.let {
+            parseDirectMetadataMessage(
+                payload.copyOfRange(1, payload.size).decodeToString().trim()
+            )?.let {
                 return it
             }
         }
@@ -748,7 +926,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             CommandType.REQUEST_FIRMWARE -> {
                 val direct = parseDirectMetadataMessage(data.decodeToString().trim())
                 val wrapped = extractWrappedMetadataMessage(data)
-                val matched = isFirmwareMetadataMessage(direct) || isFirmwareMetadataMessage(wrapped)
+                val matched =
+                    isFirmwareMetadataMessage(direct) || isFirmwareMetadataMessage(wrapped)
                 android.util.Log.d(
                     "GotwayQueryMatch",
                     "matchesQueryResponse: REQUEST_FIRMWARE direct='$direct' wrapped='$wrapped' matched=$matched"
@@ -941,11 +1120,11 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
      */
     override fun getBMSData(): List<BMSData> {
         val allIndices = (
-            smartBmsCellPages.keys +
-                smartBmsTemperatures.keys +
-                smartBmsCurrents.keys +
-                smartBmsHalfVoltages.keys
-            ).distinct().sorted()
+                smartBmsCellPages.keys +
+                        smartBmsTemperatures.keys +
+                        smartBmsCurrents.keys +
+                        smartBmsHalfVoltages.keys
+                ).distinct().sorted()
         return allIndices.map { index ->
             val cells = smartBmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
             val temperatures = smartBmsTemperatures[index]
