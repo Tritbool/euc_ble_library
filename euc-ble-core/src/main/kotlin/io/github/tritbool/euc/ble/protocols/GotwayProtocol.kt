@@ -388,7 +388,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val lightMode = ByteUtils.tryGetUnsignedByte(data, 15)?.and(0x03)
         val wheelAlarm = alertFlags?.let { (it and 0x01) == 1 }
 
-        lastKnownTotalDistance = distanceRaw.toDouble()
+        lastKnownTotalDistance = distanceRaw.toDouble()/1000.0
         val voltage = lastKnownVoltage ?: 0.0
         val current = lastKnownCurrent ?: 0.0
         val power = voltage * current
