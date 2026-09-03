@@ -399,7 +399,7 @@ class WheelLogGotwayTest {
                         )
                     }
                 }"
-            }
+            }/1000.0
             assertEquals(parsedDistance, data.totalDistance ?: 0.0, 0.01)
 
             assertEquals(expectedPedalsMode, data.pedalsMode)
