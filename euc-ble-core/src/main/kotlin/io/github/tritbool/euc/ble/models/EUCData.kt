@@ -95,6 +95,7 @@ data class EUCData(
     val mosfetTemperature: Double? = null,  // MOSFET temperature in degrees Celsius
     val boardTemperature: Double? = null,   // controller/board temperature in degrees Celsius
     val imuTemperature: Double? = null,     // IMU temperature in degrees Celsius
+    val tirePressureKpa: Double? = null,
     val cpuLoad: Int? = null,               // CPU load percentage
     val speedLimit: Double? = null,         // configured speed limit in km/h
     val alarm1Speed: Int? = null,           // alarm 1 speed threshold

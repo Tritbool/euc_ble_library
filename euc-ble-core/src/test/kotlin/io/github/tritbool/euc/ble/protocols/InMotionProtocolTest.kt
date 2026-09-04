@@ -158,19 +158,25 @@ class InMotionProtocolTest {
 
     @Test
     fun getPollingPlanHasStartupAndPeriodicQueries() {
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2)) // V14 50S
+
         val plan = protocol.getPollingPlan()
+
         assertTrue(plan.enabled)
-        // V1 handshake (factory-password + pin) + V2 dialect-probe
+
         assertEquals(3, plan.startupQueries.size)
         assertEquals(5, plan.periodicQueries.size)
-        // V1 handshake frames are the first two startup queries
+
         assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
         assertEquals(CommandType.CUSTOM, plan.startupQueries[0].commandType)
+
         assertEquals("inmotion.v1-pin", plan.startupQueries[1].id)
         assertEquals(CommandType.CUSTOM, plan.startupQueries[1].commandType)
+
         val probe = plan.startupQueries[2]
         assertEquals("inmotion.dialect-probe", probe.id)
         assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
+
         assertEquals(4, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
     }
 
@@ -187,11 +193,35 @@ class InMotionProtocolTest {
     }
 
     @Test
+    fun getPollingPlanDoesNotProbeV14BmsAddressesOnV9() {
+        protocol.decode(buildCarTypeFrame(series = 12, type = 1)) // V9
+
+        val plan = protocol.getPollingPlan()
+
+        assertEquals(1, plan.periodicQueries.size)
+        assertEquals("inmotion.realtime", plan.periodicQueries.single().id)
+    }
+
+    @Test
+    fun getPollingPlanDoesNotProbeV14BmsAddressesOnP6() {
+        protocol.decode(buildCarTypeFrame(series = 13, type = 1)) // P6
+
+        val plan = protocol.getPollingPlan()
+
+        assertEquals(1, plan.periodicQueries.size)
+        assertEquals("inmotion.realtime", plan.periodicQueries.single().id)
+    }
+
+    @Test
     fun createCommandSupportsCustomV14PackQueriesAfterV2Detected() {
-        protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
-        val query = protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-1-cells" }
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2)) // V14 50S
+
+        val query = protocol.getPollingPlan()
+            .periodicQueries
+            .first { it.id == "inmotion.v14-pack-1-cells" }
 
         assertEquals(CommandType.CUSTOM, query.commandType)
+
         assertArrayEquals(
             query.value as ByteArray,
             protocol.createCommand(query.commandType, query.value)
@@ -301,6 +331,62 @@ class InMotionProtocolTest {
         }
     }
 
+    private fun buildP6RealtimePayload(tirePressureKpa: Int): ByteArray {
+        require(tirePressureKpa in 0..0xFFFF)
+
+        return ByteArray(80).apply {
+            // payload[0..1]: tension minimale valide = 220.00 V
+            this[0] = 0xF0.toByte()
+            this[1] = 0x55.toByte()
+
+            // payload[20..21] et [22..23]: deux SOC à 80.00 %.
+            // La P6 calcule le SOC comme leur moyenne.
+            this[20] = 0x40.toByte()
+            this[21] = 0x1F.toByte()
+            this[22] = 0x40.toByte()
+            this[23] = 0x1F.toByte()
+
+            // payload[58] et [59]: 25 °C avec l’encodage uint8 offset-80.
+            this[58] = 0xC9.toByte()
+            this[59] = 0xC9.toByte()
+
+            // payload[74]: mode actif, sans flag de charge.
+            this[74] = 0x01.toByte()
+
+            // payload[78..79]: uint16 little-endian, en kPa.
+            this[78] = (tirePressureKpa and 0xFF).toByte()
+            this[79] = ((tirePressureKpa ushr 8) and 0xFF).toByte()
+        }
+    }
+
+    @Test
+    fun p6RealtimeDecodesRelayedTpmsPressureInKpa() {
+        protocol.decode(buildCarTypeFrame(series = 13, type = 1)) // P6
+
+        val payload = buildP6RealtimePayload(tirePressureKpa = 201)
+        val frame = buildV2ResponseFrame(flag = 0x14, command = 0x04, payload = payload)
+
+        val data = protocol.decode(frame)
+
+        assertNotNull(data)
+        assertEquals("InMotion P6", data!!.model)
+        assertEquals(201.0, data.tirePressureKpa ?: -1.0, 0.001)
+    }
+
+    @Test
+    fun nonP6RealtimeDoesNotExposeTpmsPressure() {
+        protocol.decode(buildCarTypeFrame(series = 12, type = 1)) // V9
+
+        val payload = buildP6RealtimePayload(tirePressureKpa = 201)
+        val frame = buildV2ResponseFrame(flag = 0x14, command = 0x04, payload = payload)
+
+        val data = protocol.decode(frame)
+
+        assertNotNull(data)
+        assertEquals("InMotion V9", data!!.model)
+        assertNull(data.tirePressureKpa)
+    }
+
     @Test
     fun p6PhaseCurrentDerivedFromTorque() {
         // P6 car-type frame: series=13 (0x0D), type=1 → "InMotion P6"
@@ -313,8 +399,8 @@ class InMotionProtocolTest {
         // Torque is at payload[12..13] (frame bytes 17-18); checksum recomputed.
         val realtimeFrame = ByteUtils.hexToBytes(
             "aaaa1457843e1e0c000000000000000000ca03c30000000000ffffd7fe000000" +
-            "000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cd" +
-            "c900ceb0cec8ceb03a640000000000490000000000000000000000a6"
+                    "000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cd" +
+                    "c900ceb0cec8ceb03a640000000000490000000000000000000000a6"
         )
 
         protocol.decode(carTypeFrame)
@@ -336,8 +422,8 @@ class InMotionProtocolTest {
         val carTypeFrame = ByteUtils.hexToBytes("aaaa11088201020c0101010095")
         val realtimeFrame = ByteUtils.hexToBytes(
             "aaaa1457843e1e0c000000000000000000ca03c30000000000ffffd7fe000000" +
-            "000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cd" +
-            "c900ceb0cec8ceb03a640000000000490000000000000000000000a6"
+                    "000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cd" +
+                    "c900ceb0cec8ceb03a640000000000490000000000000000000000a6"
         )
 
         protocol.decode(carTypeFrame)
@@ -391,8 +477,10 @@ class InMotionProtocolTest {
     fun decodeV14PackCellResponsesExposeOneBmsEntryPerPack() {
         protocol.decode(buildCarTypeFrame(series = 9, type = 2))
 
-        val pack1Query = protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-1-cells" }
-        val pack2Query = protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-2-cells" }
+        val pack1Query =
+            protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-1-cells" }
+        val pack2Query =
+            protocol.getPollingPlan().periodicQueries.first { it.id == "inmotion.v14-pack-2-cells" }
         val pack1Response = buildV2ResponseFrame(
             flag = 0x16,
             command = 0x24,
@@ -534,6 +622,7 @@ class InMotionProtocolTest {
             protocol.decode(buildCarTypeFrame(series = series, type = type))
 
             val v12Payload = ByteArray(56)
+
             // Minimal valid payload: voltage=8100, batLevel=8000
             fun putLE16(buf: ByteArray, offset: Int, v: Int) {
                 buf[offset] = (v and 0xFF).toByte()
@@ -541,7 +630,8 @@ class InMotionProtocolTest {
             }
             putLE16(v12Payload, 0, 8100)
             putLE16(v12Payload, 24, 8000)
-            val realtimeFrame = buildV2ResponseFrame(flag = 0x14, command = 0x04, payload = v12Payload)
+            val realtimeFrame =
+                buildV2ResponseFrame(flag = 0x14, command = 0x04, payload = v12Payload)
             val data = protocol.decode(realtimeFrame)
 
             assertNotNull("Expected non-null EUCData for $expectedName", data)
@@ -574,11 +664,13 @@ class InMotionProtocolTest {
         putLE32(totalStatsPayload, 12, 7200)  // ride-time seconds
         putLE32(totalStatsPayload, 16, 14400) // power-on-time seconds
 
-        val totalStatsFrame = buildV2ResponseFrame(flag = 0x14, command = 0x11, payload = totalStatsPayload)
+        val totalStatsFrame =
+            buildV2ResponseFrame(flag = 0x14, command = 0x11, payload = totalStatsPayload)
         protocol.decode(totalStatsFrame)
 
         // Now emit a realtime frame so the state is included in EUCData
-        val realtimeHex = "aaaa1457843e1e0c000000000000000000afffc30000000000ffffd7fe000000000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cdc900ceb0cec8ceb03a6400000000004900000000000000000000003f"
+        val realtimeHex =
+            "aaaa1457843e1e0c000000000000000000afffc30000000000ffffd7fe000000000600000000009a17191670178510a00f401f401fa00fa00f983a00000000cdc900ceb0cec8ceb03a6400000000004900000000000000000000003f"
         val data = protocol.decode(ByteUtils.hexToBytes(realtimeHex))
 
         assertNotNull(data)
@@ -629,7 +721,8 @@ class InMotionProtocolTest {
         packPayload[1] = ((8200 shr 8) and 0xFF).toByte()
         // Remaining 3 packs are zero and should be filtered out.
 
-        val batteryInfoFrame = buildV2ResponseFrame(flag = 0x14, command = 0x05, payload = packPayload)
+        val batteryInfoFrame =
+            buildV2ResponseFrame(flag = 0x14, command = 0x05, payload = packPayload)
         protocol.decode(buildCarTypeFrame(series = 9, type = 2))
         protocol.decode(batteryInfoFrame)
 

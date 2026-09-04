@@ -100,10 +100,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val V1_TYPE_DATA: Byte = 0x00
 
         // CAN IDs used by the protocol.
-        private const val V1_CAN_FAST_INFO  = 0x0F550113
-        private const val V1_CAN_HEADLIGHT  = 0x0F55010D
+        private const val V1_CAN_FAST_INFO = 0x0F550113
+        private const val V1_CAN_HEADLIGHT = 0x0F55010D
         private const val V1_CAN_REMOTE_CTRL = 0x0F550116
-        private const val V1_CAN_PIN        = 0x0F550307
+        private const val V1_CAN_PIN = 0x0F550307
 
         private const val V1_DEFAULT_PIN = "000000"
         private const val V1_FACTORY_PASSWORD = "INMOTI"
@@ -255,7 +255,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         android.util.Log.e("InMotionProtocol", "setDialect called version=$version")
         when (version) {
             0, 1, 2 -> {
-                logger.info(TAG,"DIALECT SET TO ${Dialect.entries[version]} ")
+                logger.info(TAG, "DIALECT SET TO ${Dialect.entries[version]} ")
                 lastDetectedDialect = Dialect.entries[version]
             }
 
@@ -315,7 +315,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 // unescaped bytes (FLAG and LEN already counted as 2; total = len+2 from pos 2).
                 // We already consumed 2 above, so we need `len` more from where the FLAG/LEN
                 // scan left off. But it's simpler to scan from scratch for all len+2 bytes.
-                val checksumIdx = findChecksumIndex(v2Buffer, startIdx = 2, targetUnescaped = len + 2)
+                val checksumIdx =
+                    findChecksumIndex(v2Buffer, startIdx = 2, targetUnescaped = len + 2)
                 if (checksumIdx < 0) break  // frame incomplete, wait for more data
 
                 // Step 3: verify the checksum over the unescaped payload bytes
@@ -346,7 +347,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
      *
      * @return Pair(unescaped bytes, raw bytes consumed) or null if buffer has insufficient data.
      */
-    private fun unescapeNBytes(buffer: List<Byte>, startIdx: Int, count: Int): Pair<ByteArray, Int>? {
+    private fun unescapeNBytes(
+        buffer: List<Byte>,
+        startIdx: Int,
+        count: Int
+    ): Pair<ByteArray, Int>? {
         val result = ByteArray(count)
         var rawIdx = startIdx
         var n = 0
@@ -759,6 +764,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun isV12Model(): Boolean = modelName in V12_MODEL_NAMES
 
+    private fun supportsV14PackCellQueries(): Boolean =
+        modelName == "InMotion V14 50GB" ||
+                modelName == "InMotion V14 50S"
+
     private fun parseRealTime(payload: ByteArray, rawFrame: ByteArray): EUCData? {
         return if (isV12Model()) {
             parseRealTimeV12(payload, rawFrame)
@@ -884,6 +893,13 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         if (payload.size < V2_REALTIME_MIN_SIZE) return null
 
         val isP6 = modelName == "InMotion P6"
+        val tirePressureKpa = if (isP6) {
+            ByteUtils.tryGetUnsignedShortLE(payload, 78)
+                ?.takeIf { it in 50..1_500 }
+                ?.toDouble()
+        } else {
+            null
+        }
         if (isP6) enqueueP6StatsQueryIfDue()
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
@@ -930,7 +946,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
         val mosTemp = decodeTemperature(payload[58])
         val boardTemp = decodeTemperature(payload[59])
-        val imuTemp = ByteUtils.tryGetUnsignedByte(payload, 63)?.let { decodeTemperature(it.toByte()) }
+        val imuTemp =
+            ByteUtils.tryGetUnsignedByte(payload, 63)?.let { decodeTemperature(it.toByte()) }
         val p6MotorTemp = if (isP6) {
             ByteUtils.tryGetSignedByte(payload, 31)?.let { decodeP6SignedOffset80Temperature(it) }
         } else {
@@ -983,6 +1000,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             roll = rollAngle,
             speedLimit = dynSpeedLimit,
             mode = modeString,
+            tirePressureKpa = tirePressureKpa,
         )
             .also { decoded ->
                 updateBmsSnapshot(
@@ -1064,7 +1082,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         var off = 2
         repeat(32) {
             val mv = (payload[off].toInt() and 0xFF) or
-                ((payload[off + 1].toInt() and 0xFF) shl 8)
+                    ((payload[off + 1].toInt() and 0xFF) shl 8)
             cells.add(mv / 1000.0)
             off += 2
         }
@@ -1090,9 +1108,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             lastKnownBmsSnapshot = InMotionBmsSnapshot(
                 voltage = voltage ?: currentSnapshot.voltage,
                 current = current ?: currentSnapshot.current,
-                temperatures = (temperatures ?: currentSnapshot.temperatures)?.takeIf { it.isNotEmpty() },
-                packVoltages = (packVoltages ?: currentSnapshot.packVoltages)?.takeIf { it.isNotEmpty() },
-                cellVoltages = (cellVoltages ?: currentSnapshot.cellVoltages)?.takeIf { it.isNotEmpty() },
+                temperatures = (temperatures
+                    ?: currentSnapshot.temperatures)?.takeIf { it.isNotEmpty() },
+                packVoltages = (packVoltages
+                    ?: currentSnapshot.packVoltages)?.takeIf { it.isNotEmpty() },
+                cellVoltages = (cellVoltages
+                    ?: currentSnapshot.cellVoltages)?.takeIf { it.isNotEmpty() },
                 packCellVoltages = if (packCellVoltages.isNullOrEmpty()) {
                     currentSnapshot.packCellVoltages
                 } else {
@@ -1151,7 +1172,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         // (the V1 handshake queries) to avoid spamming V2-only requests against legacy devices.
         if (lastDetectedDialect == Dialect.UNKNOWN &&
             commandType != CommandType.REQUEST_FIRMWARE &&
-            commandType != CommandType.CUSTOM) {
+            commandType != CommandType.CUSTOM
+        ) {
             return byteArrayOf()
         }
         return when (commandType) {
@@ -1252,6 +1274,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     responseTimeoutMs = 1_200L,
                     maxRetries = 1
                 ),
+            ) + if (supportsV14PackCellQueries()) listOf(
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-1-cells",
                     commandType = CommandType.CUSTOM,
@@ -1288,7 +1311,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     responseTimeoutMs = 1_200L,
                     maxRetries = 1
                 )
-            )
+            ) else emptyList()
         )
     }
 
@@ -1301,12 +1324,17 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
             CommandType.REQUEST_BATTERY_INFO ->
                 command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
+
             CommandType.CUSTOM -> matchesCustomQueryResponse(query, command, data)
             else -> false
         }
     }
 
-    private fun matchesCustomQueryResponse(query: ProtocolQuerySpec, command: Int, data: ByteArray): Boolean {
+    private fun matchesCustomQueryResponse(
+        query: ProtocolQuerySpec,
+        command: Int,
+        data: ByteArray
+    ): Boolean {
         val request = query.value as? ByteArray ?: return false
         if (request.size < 7 || request[4].toInt() and 0xFF != COMMAND_MAIN_INFO) return false
         val packAddress = request[5].toInt() and 0xFF
@@ -1318,12 +1346,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         // first payload byte is at position 6; otherwise it is at position 5.
         val cmdByte = packAddress or 0x80
         val escaped = data.size > 5 &&
-            (data[4].toInt() and 0xFF) == 0xA5 &&
-            (data[5].toInt() and 0xFF) == cmdByte
+                (data[4].toInt() and 0xFF) == 0xA5 &&
+                (data[5].toInt() and 0xFF) == cmdByte
         val payloadOffset = if (escaped) 6 else 5
         if (data.size < payloadOffset + 2) return false
         return (data[payloadOffset].toInt() and 0xFF) == 0x02 &&
-            (data[payloadOffset + 1].toInt() and 0xFF) == 0x82
+                (data[payloadOffset + 1].toInt() and 0xFF) == 0x82
     }
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
@@ -1369,6 +1397,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 out.write(V1_ESCAPE.toInt() and 0xFF)
                 out.write(b.toInt() and 0xFF)
             }
+
             else -> out.write(b.toInt() and 0xFF)
         }
     }
@@ -1400,8 +1429,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     /** Software lock command for V1 wheels (sub-commands 0x03 / 0x04 of the remote-control group). */
     private fun buildV1LockFrame(locked: Boolean): ByteArray =
-        buildV1Frame(V1_CAN_REMOTE_CTRL,
-            byteArrayOf(0xB2.toByte(), 0, 0, 0, if (locked) 0x03 else 0x04, 0, 0, 0))
+        buildV1Frame(
+            V1_CAN_REMOTE_CTRL,
+            byteArrayOf(0xB2.toByte(), 0, 0, 0, if (locked) 0x03 else 0x04, 0, 0, 0)
+        )
 
     private fun buildMessage(flag: Int, command: Int, data: ByteArray): ByteArray {
         val len = data.size + 1
