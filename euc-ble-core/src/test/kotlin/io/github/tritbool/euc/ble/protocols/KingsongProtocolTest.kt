@@ -55,7 +55,7 @@ class KingsongProtocolTest {
             protocol.decode(createF5Frame(outputPercentByte = 63))
             protocol.decode(createA9Frame())
             val data = awaitItem()
-            assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+            assertEquals(63.0, data.pwm ?: -1.0, 0.0001)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -410,7 +410,7 @@ class KingsongProtocolTest {
             protocol.decode(createA9Frame())
             val data = awaitItem()
             assertEquals(42, data.cpuLoad)
-            assertEquals(0.63, data.pwm ?: -1.0, 0.0001)
+            assertEquals(63.0, data.pwm ?: -1.0, 0.0001)
             cancelAndIgnoreRemainingEvents()
         }
     }

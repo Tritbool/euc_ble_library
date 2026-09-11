@@ -165,6 +165,7 @@ class KingsongProtocolAsyncTest {
         }
     }
 
+    /*
     @Test
     fun testHeaderVariant55AA() = runTest {
         tearDown()
@@ -182,4 +183,6 @@ class KingsongProtocolAsyncTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+    */
+
 }

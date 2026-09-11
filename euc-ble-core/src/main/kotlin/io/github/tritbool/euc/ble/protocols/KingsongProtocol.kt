@@ -15,7 +15,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -31,70 +30,85 @@ import java.util.UUID
 class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
     EUCProtocol {
 
-    private val header1 = BLEConstants.KINGSONG_FRAME_HEADER_1
-    private val header2 = BLEConstants.KINGSONG_FRAME_HEADER_2
-    private val MIN_LENGTH = 20
-    // Keep enough replay for short startup races and enough extra capacity for bursty BLE chunks.
+    private val header = BLEConstants.KINGSONG_FRAME_HEADER_1
+    private val FRAME_LENGTH = 20
+
     private val unpackBuffer = ArrayList<Byte>()
 
-    // Unpacker: accumulates bytes and returns 0..N complete frames.
-    // Heuristic rule: detects headers (AA 55 or 55 AA) and extracts the slice until the next header.
-    private val unpacker: (Byte) -> List<ByteArray> = { b: Byte ->
-        val out = mutableListOf<ByteArray>()
-        unpackBuffer.add(b)
+    /**
+     * Stateful byte-stream reassembler for fixed-length KingSong frames.
+     *
+     * Input chunks may be truncated, concatenated, or prefixed with junk.
+     * Each emitted item is exactly one 20-byte frame beginning with AA 55.
+     *
+     * `AA 55` is the only accepted inbound header. A final lone `AA` is kept
+     * when resynchronising because the next chunk may begin with `55`.
+     */
+    private val unpacker: (Byte) -> List<ByteArray> = { byte ->
+        unpackBuffer.add(byte)
 
-        fun findHeaderIndex(from: Int = 0): Int {
-            val bufSize = unpackBuffer.size
-            if (bufSize < 2) return -1
-            var i = maxOf(from, 0)
-            val maxStart = bufSize - 2
-            while (i <= maxStart) {
-                val a = unpackBuffer[i]
-                val c = unpackBuffer[i + 1]
-                if ((a == header1[0] && c == header1[1]) || (a == header2[0] && c == header2[1])) return i
-                i++
+        val frames = mutableListOf<ByteArray>()
+
+        fun findHeaderIndex(): Int {
+            var index = 0
+            while (index + 1 < unpackBuffer.size) {
+                if (
+                    unpackBuffer[index] == header[0] &&
+                    unpackBuffer[index + 1] == header[1]
+                ) {
+                    return index
+                }
+                index++
             }
             return -1
         }
 
-        var headerIdx = findHeaderIndex(0)
-        while (headerIdx >= 0) {
-            // look for the next header
-            val nextHeader = findHeaderIndex(headerIdx + 2)
-            if (nextHeader >= 0) {
-                // extract frame [headerIdx, nextHeader)
-                val len = nextHeader - headerIdx
-                val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
-                out.add(frame)
-                // remove emitted bytes
-                repeat(nextHeader) { unpackBuffer.removeAt(0) }
-                headerIdx = findHeaderIndex(0)
-                continue
-            }
+        while (true) {
+            val headerIndex = findHeaderIndex()
 
-            // no next header
-            // if we have at least MIN_LENGTH bytes after the header, emit at least that (floating heuristic)
-            if (unpackBuffer.size >= headerIdx + MIN_LENGTH) {
-                // emit all remaining as a frame instead of waiting indefinitely
-                val len = unpackBuffer.size - headerIdx
-                val frame = ByteArray(len) { i -> unpackBuffer[headerIdx + i] }
-                out.add(frame)
-                // remove emitted bytes
-                repeat(headerIdx + len) { unpackBuffer.removeAt(0) }
-            } else {
-                // not enough data to complete a frame, wait for more
+            if (headerIndex < 0) {
+                /*
+                 * Preserve only a possible first byte of a split AA 55 header.
+                 * Any other bytes cannot begin a valid incoming KingSong frame.
+                 */
+                val keepLastAa =
+                    unpackBuffer.lastOrNull() == header[0]
+
+                unpackBuffer.clear()
+
+                if (keepLastAa) {
+                    unpackBuffer.add(header[0])
+                }
+
                 break
             }
-            headerIdx = findHeaderIndex(0)
+
+            /*
+             * Discard bytes before the next valid AA 55 header.
+             * Do this before checking size so a fragmented valid frame remains
+             * aligned at index 0 until its missing bytes arrive.
+             */
+            if (headerIndex > 0) {
+                unpackBuffer.subList(0, headerIndex).clear()
+            }
+
+            /*
+             * A KingSong short frame is complete only at exactly 20 buffered
+             * bytes from its AA 55 header. Do not use the next header as an end
+             * delimiter, and do not emit bytes beyond this frame.
+             */
+            if (unpackBuffer.size < FRAME_LENGTH) {
+                break
+            }
+
+            frames += ByteArray(FRAME_LENGTH) { index ->
+                unpackBuffer[index]
+            }
+
+            unpackBuffer.subList(0, FRAME_LENGTH).clear()
         }
 
-        // if no header, keep at most 1 byte (preserve possibility of fractured header)
-        if (findHeaderIndex(0) < 0) {
-            val keep = 1
-            while (unpackBuffer.size > keep) unpackBuffer.removeAt(0)
-        }
-
-        out
+        frames
     }
 
     override val manufacturer: String = "KingSong"
@@ -126,6 +140,16 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     private fun ensureRange(data: ByteArray, offset: Int, length: Int): Boolean {
         return offset >= 0 && data.size >= offset + length
+    }
+
+
+    private fun readWordSwappedLE32(frame: ByteArray, offset: Int): Int {
+        val b0 = frame[offset].toInt() and 0xFF
+        val b1 = frame[offset + 1].toInt() and 0xFF
+        val b2 = frame[offset + 2].toInt() and 0xFF
+        val b3 = frame[offset + 3].toInt() and 0xFF
+
+        return (b1 shl 24) or (b0 shl 16) or (b3 shl 8) or b2
     }
 
     // Internal buffer used by the unpacker
@@ -227,7 +251,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     init {
         // Start observing frames asynchronously and process them
         scope.launch {
-            frameReassembler.observeFrames().collectLatest { frame ->
+            frameReassembler.observeFrames().collect { frame ->
                 processFrame(frame)
             }
         }
@@ -238,14 +262,14 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
         val headerIdx = run {
             for (i in 0..(data.size - 2)) {
-                if (data[i] == header1[0] && data[i + 1] == header1[1]) return@run i
-                if (data[i] == header2[0] && data[i + 1] == header2[1]) return@run i
+                if (data[i] == header[0] && data[i + 1] == header[1]) return@run i
+
             }
             -1
         }
         if (headerIdx < 0) return null
 
-        if (data.size - headerIdx < MIN_LENGTH) {
+        if (data.size - headerIdx < FRAME_LENGTH) {
             return null
         }
 
@@ -300,7 +324,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 ByteUtils.getUnsignedShortLE(data, base + OFFSET_SPEED) / 100.0 else 0.0
 
             val totalDistRaw = if (ensureRange(data, base + 6, 4))
-                ByteUtils.getUnsignedIntLE(data, base + 6).toDouble() else 0.0
+                readWordSwappedLE32(data, base + 6).toDouble() / 1000.0 else 0.0
 
             val current = if (ensureRange(data, base + 10, 2))
                 ByteUtils.getSignedShortLE(data, base + 10) / 100.0 else 0.0
@@ -361,7 +385,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 rideTime = rideTimeSeconds,
                 cellVoltages = getCombinedCellVoltages(),
                 motorTemperature = lastKnownMotorTemperature,
-                totalDistance = lastKnownTotalDistance,
+                totalDistance = lastKnownTotalDistance?: totalDistRaw,
                 topSpeed = lastKnownTopSpeed,
                 fanStatus = lastKnownFanStatus,
                 chargingStatus = lastKnownChargingStatus,
@@ -371,7 +395,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 alarm2Speed = lastKnownAlarm2Speed,
                 alarm3Speed = lastKnownAlarm3Speed,
                 wheelMaxSpeed = lastKnownWheelMaxSpeed,
-                wheelDistance = lastKnownWheelDistance,
+                wheelDistance = lastKnownWheelDistance ?: totalDistRaw,
                 lightMode = lastKnownLightMode
             )
         } catch (_: Exception) {
@@ -460,7 +484,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         }
         if (!ensureRange(data, base + 15, 1)) return
         val outputByte = ByteUtils.getUnsignedByte(data, base + 15)
-        lastKnownPwm = outputByte / 100.0
+        lastKnownPwm = outputByte.toDouble()
     }
 
     /**
@@ -602,18 +626,17 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         val parsed = parseFrame(frame)
         parsed?.let { _channel.trySend(it) }
 
-        if (frame.size >= MIN_LENGTH) {
+        if (frame.size >= FRAME_LENGTH) {
             val headerIdx = run {
                 for (i in 0..(frame.size - 2)) {
-                    if (frame[i] == header1[0] && frame[i + 1] == header1[1]) return@run i
-                    if (frame[i] == header2[0] && frame[i + 1] == header2[1]) return@run i
+                    if (frame[i] == header[0] && frame[i + 1] == header[1]) return@run i
                 }
                 -1
             }
-            if (headerIdx >= 0 && frame.size - headerIdx >= MIN_LENGTH) {
+            if (headerIdx >= 0 && frame.size - headerIdx >= FRAME_LENGTH) {
                 val messageType = ByteUtils.getUnsignedByte(frame, headerIdx + OFFSET_MESSAGE_TYPE)
                 if (messageType == FRAME_TYPE_A4) {
-                    val reply = frame.copyOfRange(headerIdx, headerIdx + MIN_LENGTH)
+                    val reply = frame.copyOfRange(headerIdx, headerIdx + FRAME_LENGTH)
                     reply[16] = 0x98.toByte()
                     reply[2] = 0x01.toByte()
                     _writeFlow.tryEmit(reply)
@@ -903,15 +926,14 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
-        if (data.size < MIN_LENGTH) return false
+        if (data.size < FRAME_LENGTH) return false
         val headerIdx = run {
             for (i in 0..(data.size - 2)) {
-                if (data[i] == header1[0] && data[i + 1] == header1[1]) return@run i
-                if (data[i] == header2[0] && data[i + 1] == header2[1]) return@run i
+                if (data[i] == header[0] && data[i + 1] == header[1]) return@run i
             }
             -1
         }
-        if (headerIdx < 0 || data.size - headerIdx < MIN_LENGTH) return false
+        if (headerIdx < 0 || data.size - headerIdx < FRAME_LENGTH) return false
         val messageType = ByteUtils.getUnsignedByte(data, headerIdx + 16)
         return when (query.commandType) {
             CommandType.REQUEST_FIRMWARE -> messageType == FRAME_TYPE_BB
