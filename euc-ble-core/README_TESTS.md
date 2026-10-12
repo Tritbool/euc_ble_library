@@ -1,11 +1,10 @@
 # EUC BLE Library – Test Suite
 
-## Philosophy: real-device captures, not synthetic frames
+## Test approach: captures and unit tests
 
-Most BLE protocol libraries test against hand-crafted byte arrays — frames that are  *thought*
-to be valid. This library takes a different approach: **every protocol decoder is validated against
-raw BLE traffic recorded from physical wheels**, replayed offline under JUnit 5 without any Android
-device or emulator.
+The suite combines protocol-specific unit tests (including constructed edge cases) with offline
+replay of raw BLE captures from physical wheels. Capture coverage is partial: a passing test does
+not establish compatibility with every model, firmware, command, or operating condition.
 
 Captures are stored as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android) under:
@@ -55,11 +54,11 @@ branching that may not appear in captures.
 | `NinebotZProtocolTest` | Z-series handshake, BMS, settings polling |
 | `LeaperkimProtocolTest` | Legacy settings fields, Smart BMS pages, out-of-range voltage drop |
 | `NosfetProtocolTest` | Telemetry decoding |
+| `ExtremeBullProtocolTest` | Advertisement-name matching, manufacturer identity, inherited Gotway BLE requirements |
 
 ### No-drop tests
 
-Verify that no decoded frame is silently lost between `decode()` and the `dataFlow` collector,
-under concurrent load.
+Exercise decoded-data delivery from each protocol under concurrent load.
 
 | Test class | Brand |
 |---|---|
@@ -74,7 +73,7 @@ under concurrent load.
 
 | Test class | What it covers |
 |---|---|
-| `ProtocolParityContractTest` | Same field semantics across all protocol implementations |
+| `ProtocolParityContractTest` | Selected command support and polling-plan contracts |
 | `BleFrequencyAnalysisTest` | Emission rate and timing characteristics per brand |
 | `GotwayFrameReassemblerTest` | Frame reassembly from fragmented BLE notifications |
 | `EucBleClientEntryPointWheelLogTest` | Full stack: metadata detection + frame selection per protocol |
@@ -87,14 +86,14 @@ under concurrent load.
 | Suite | Contents |
 |---|---|
 | `AllTests` | Entry point for CI – runs everything |
-| `RegularTestsSuite` | All tests except those tagged `@SlowTest` |
-| `NoDropTestsSuite` | No-drop tests only |
+| `RegularTestsSuite` | Selected protocol, capture, and utility tests |
+| `NoDropTestsSuite` | No-drop tests plus client entry-point capture integration |
 
-### Enhancement needed
-| Class | What it covers |
-|---|---|
-| `ExtremeBullProtocol` | Raw frames needed for test |
-| `NinebotProtocol` | Raw frames from ninebot non-Z wheel needed to enhance testing |
+### Known capture gaps
+
+- ExtremeBull currently inherits Gotway telemetry parsing. One ExtremeBull Rocket capture is
+  replayed by `WheelLogGotwayTest`; additional models and firmware variants need broader coverage.
+- Additional Ninebot non-Z captures would improve validation of that parser.
 ---
 
 ## Running tests

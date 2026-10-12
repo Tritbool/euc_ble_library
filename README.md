@@ -3,6 +3,11 @@
 [![Tests](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml/badge.svg)](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml)
 [![Coverage (protocols/models/frames)](https://img.shields.io/badge/coverage-protocols%2Fmodels%2Fframes%20in%20CI%20summary-blue)](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml)
 
+> **Work in progress — version 0.1.0.** This library is experimental: protocol support is
+> incomplete, some features may be broken or behave differently across wheel/firmware versions,
+> and public APIs and behavior may evolve. Validate it with the specific wheel and firmware you
+> intend to use; do not assume that passing unit tests guarantees safe or complete behavior.
+
 ## Usage (single entry point)
 
 `io.github.tritbool.euc.ble.EucBleClient` is the public BLE entry point for client applications.
@@ -73,39 +78,40 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
 
 ## Testing
 
-**84%+ line coverage on protocol/model/frame code**, verified on every push.
-Coverage details are published in each [CI run summary](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml).
+Coverage reports for protocol/model/frame code are generated in CI and published in each
+[CI run summary](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml).
+Coverage is a testing aid, not a measure of device or firmware compatibility.
 
 ### Real-device capture methodology
 
-Most BLE protocol libraries test against hand-crafted byte arrays — frames that the author *believes* to be valid.
-This library takes a different approach: protocols are tested against **raw BLE captures recorded from real wheels**,
-replayed offline via JUnit 5 without any Android device or emulator.
+Protocol tests combine offline unit tests with **raw BLE captures recorded from real wheels**,
+replayed via JUnit 5 without an Android device or emulator. Capture coverage is partial and does
+not mean every supported model, firmware, command, or edge case has been verified on a physical wheel.
 
 Captures are stored in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android), a well-established EUC logging app.
 Each CSV row contains the exact byte sequence received from the wheel over BLE.
 
-This means:
+Captures help to:
 
 - Decoders are validated against **authentic protocol behaviour**, not assumptions
 - Edge cases found in the wild (fragmented frames, garbage between headers, firmware variants) are
   permanently encoded as regression tests
-- Adding support for a new firmware version is as simple as dropping a new capture file in the right folder
+- Preserve observed device behavior as regression fixtures; parser support and review are still needed for new variants
 
 ### What is tested
 
 | Test class | What it validates |
 |---|---|
-| `WheelLogGotwayTest` | Full decode pipeline on real Gotway/Begode BLE captures |
+| `WheelLogGotwayTest` | Full decode pipeline on real Gotway/Begode and ExtremeBull captures |
 | `WheelLogKingsongTest` | Full decode pipeline on real KingSong captures |
 | `WheelLogLeaperkimTest` | Full decode pipeline on real Leaperkim/Veteran captures |
 | `WheelLogInMotionTest` | Full decode pipeline on real InMotion captures |
 | `WheelLogNinebotTest` | Full decode pipeline on real Ninebot captures |
 | `WheelLogNosfetTest` | Full decode pipeline on real Nosfet captures |
-| `GotwayProtocolTest`, `KingsongProtocolTest`, … | Unit tests for edge cases, boundary values, frame fragmentation |
-| `GotwayNoDropTest`, `KingsongNoDropTest`, … | No decoded frame is silently dropped between `decode()` and `dataFlow` |
-| `ProtocolParityContractTest` | Cross-protocol consistency: same field semantics across all implementations |
+| `GotwayProtocolTest`, `KingsongProtocolTest`, … | Protocol-specific parsing, commands, and edge cases |
+| `ExtremeBullProtocolTest` | ExtremeBull advertisement matching and inherited Gotway BLE requirements |
+| `ProtocolParityContractTest` | Selected cross-protocol command and polling contracts |
 | `BleFrequencyAnalysisTest` | Emission rate and timing characteristics per brand |
 
 See [`euc-ble-core/README_TESTS.md`](euc-ble-core/README_TESTS.md) for the full test inventory.

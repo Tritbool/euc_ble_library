@@ -4,6 +4,7 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNotNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -52,13 +53,40 @@ class NinebotZProtocolTest {
 
     @Test
     fun createCommandSupportsCommonControlCommands() {
-        val lightOn = protocol.createCommand(CommandType.LIGHT_ON, Unit)
-        val lock = protocol.createCommand(CommandType.LOCK, Unit)
-        val requestFirmware = protocol.createCommand(CommandType.REQUEST_FIRMWARE, Unit)
+        assertArrayEquals(
+            byteArrayOf(0x55, 0x05, 0x21, 0x50, 0x01, 0x75),
+            protocol.createCommand(CommandType.LIGHT_ON, Unit)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x55, 0x05, 0x21, 0x31, 0x00, 0x15),
+            protocol.createCommand(CommandType.UNLOCK, Unit)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x55, 0x04, 0x22, 0x10, 0x36),
+            protocol.createCommand(CommandType.REQUEST_SERIAL, Unit)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x55, 0x04, 0x22, 0x1a, 0x3c),
+            protocol.createCommand(CommandType.REQUEST_FIRMWARE, Unit)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x5a, 0xa5.toByte(), 0x01, 0x00, 0x00, 0x00, 0x24),
+            protocol.createCommand(CommandType.REQUEST_BATTERY_INFO, Unit)
+        )
+    }
 
-        assertTrue(lightOn.isNotEmpty())
-        assertTrue(lock.isNotEmpty())
-        assertTrue(requestFirmware.isNotEmpty())
+    @Test
+    fun createCommandClampsSpeedLimitAndRejectsInvalidValues() {
+        assertArrayEquals(
+            byteArrayOf(0x55, 0x05, 0x21, 0x70, 0x05, 0x51),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, -1)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x55, 0x05, 0x21, 0x70, 0x3c, 0x68),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, 100)
+        )
+        assertTrue(protocol.createCommand(CommandType.SET_SPEED_LIMIT, "fast").isEmpty())
+        assertTrue(protocol.createCommand(CommandType.POWER_OFF, Unit).isEmpty())
     }
 
     @Test
