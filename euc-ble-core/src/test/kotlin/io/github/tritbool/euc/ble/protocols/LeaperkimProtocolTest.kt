@@ -100,6 +100,21 @@ class LeaperkimProtocolTest {
     }
 
     @Test
+    fun decodeLongFrameWithInvalidCrcIsDropped() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
+        val invalidFrame = createLeaperkimFrame(len = 86).apply {
+            this[lastIndex] = (this[lastIndex].toInt() xor 0x01).toByte()
+        }
+
+        protocol.dataFlow.test(timeout = invalidFrameCheckTimeoutMs.milliseconds) {
+            protocol.decode(invalidFrame)
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun createCommandMapsKnownActions() {
         assertArrayEquals(
             "SetLightON".encodeToByteArray(),
