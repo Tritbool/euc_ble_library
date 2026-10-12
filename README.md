@@ -103,7 +103,7 @@ Captures help to:
 
 | Test class | What it validates |
 |---|---|
-| `WheelLogGotwayTest` | Full decode pipeline on real Gotway/Begode BLE captures |
+| `WheelLogGotwayTest` | Full decode pipeline on real Gotway/Begode and ExtremeBull captures |
 | `WheelLogKingsongTest` | Full decode pipeline on real KingSong captures |
 | `WheelLogLeaperkimTest` | Full decode pipeline on real Leaperkim/Veteran captures |
 | `WheelLogInMotionTest` | Full decode pipeline on real InMotion captures |

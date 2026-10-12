@@ -8,7 +8,7 @@ Bluetooth Low Energy library for Electric Unicycles (EUC), providing an Android 
 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
-> Module: `euc-ble-core`  
+> Module: `euc-ble-core`<br>
 > Current development version: `0.1.0`
 
 > **Work in progress.** Version 0.1.0 is experimental, not a stability guarantee. Protocol support is
@@ -156,7 +156,7 @@ They do not guarantee that all telemetry fields or commands behave consistently 
 To make coverage visible:
 
 - CI generates full and focused JaCoCo HTML reports.
-- These reports are copied into `site/test-coverage/` and published via GitHub Pages:
+- These reports are copied into the generated site and published via GitHub Pages:
 
 
 - [https://tritbool.github.io/euc_ble_library/test-coverage/full/](https://tritbool.github.io/euc_ble_library/test-coverage/full/)
@@ -205,7 +205,8 @@ workflow is run manually.
 ## Current limitations and next steps
 
 - Protocol and command coverage is partial and may vary by model and firmware.
-- ExtremeBull shares Gotway decoding and needs its own physical captures for validation.
+- ExtremeBull shares Gotway decoding and has one Rocket capture in the current suite; other models
+  and firmware variants need broader physical-device coverage.
 - More device/firmware captures and physical-device testing are needed.
 - A sample application and broader settings/diagnostics coverage remain future work.
 

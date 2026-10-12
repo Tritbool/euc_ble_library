@@ -91,8 +91,8 @@ Exercise decoded-data delivery from each protocol under concurrent load.
 
 ### Known capture gaps
 
-- ExtremeBull currently inherits Gotway telemetry parsing; physical ExtremeBull captures are still
-  needed to validate model- and firmware-specific behavior.
+- ExtremeBull currently inherits Gotway telemetry parsing. One ExtremeBull Rocket capture is
+  replayed by `WheelLogGotwayTest`; additional models and firmware variants need broader coverage.
 - Additional Ninebot non-Z captures would improve validation of that parser.
 ---
 

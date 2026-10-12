@@ -8,7 +8,7 @@ Bibliothèque Bluetooth Low Energy pour monocycles électriques (EUC), avec une 
 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
-> Module: `euc-ble-core`  
+> Module: `euc-ble-core`<br>
 > Version de développement actuelle : `0.1.0`
 
 > **Projet en cours de développement.** La version 0.1.0 est expérimentale et ne garantit pas la
@@ -190,7 +190,7 @@ La lib expose des erreurs structurées via `BLEException` et `ErrorCallback` pou
 
 ## Documentation API
 
-- **Accueil** (cette page) :  
+- **Accueil** (cette page) :
   [https://tritbool.github.io/euc_ble_library/](https://tritbool.github.io/euc_ble_library/)
 
 - **Référence API Kotlin (Dokka)** :  
@@ -204,7 +204,8 @@ lancement manuel du workflow.
 ## Limites actuelles et prochaines étapes
 
 - La prise en charge des protocoles et commandes est partielle et peut varier selon le modèle et le firmware.
-- ExtremeBull utilise le décodage Gotway et nécessite des captures physiques dédiées pour validation.
+- ExtremeBull utilise le décodage Gotway et dispose d'une capture Rocket dans la suite ; d'autres
+  modèles et firmwares nécessitent davantage de tests sur appareils physiques.
 - Davantage de captures et de tests sur appareils physiques sont nécessaires.
 - Une application de démonstration et une couverture plus large des réglages/diagnostics restent à faire.
 
