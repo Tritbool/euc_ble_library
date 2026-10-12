@@ -4,23 +4,32 @@
 
 # EUC BLE Library
 
-Bibliothèque Bluetooth Low Energy pour monocycles électriques (EUC) – pensée pour des **applications Android modernes**, avec une **couche protocole testée sur de vraies roues** et un backend BLE modulaire.
+Bibliothèque Bluetooth Low Energy pour monocycles électriques (EUC), avec une API client Android et des implémentations de protocoles propres aux constructeurs.
 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
-> Module: `euc-ble-core`
+> Module: `euc-ble-core`  
+> Version de développement actuelle : `0.1.0`
+
+> **Projet en cours de développement.** La version 0.1.0 est expérimentale et ne garantit pas la
+> stabilité. La prise en charge des protocoles est incomplète ; certaines fonctions peuvent être
+> défaillantes, varier selon la roue ou le firmware, ou évoluer avec le projet. Vérifiez le
+> comportement avec l'appareil et le firmware visés. Les tests unitaires et captures ne remplacent
+> pas les essais sur appareil physique.
 
 ---
 
 ## Pourquoi cette librairie ?
 
-La plupart des libs BLE EUC se contentent de quelques trames “faites à la main” et d’un moteur BLE monolithique. 
-Ici, l’objectif est différent :
+Le projet propose :
 
-- **Vrais protocoles, vraies trames** : décodage validé sur des captures WheelLog issues de roues KingSong, Begode/Gotway, InMotion, Ninebot, Leaperkim, Nosfet.
-- **Architecture modulaire** : séparation nette entre backend BLE, protocoles, modèles de données et couche d’adaptation WheelLog.
-- **Asynchrone de bout en bout** : callbacks non bloquants, `Flow` Kotlin et coroutines pour le streaming de télémétrie.
-- **Testable** : tests JUnit 5 offline (pas besoin d’émulateur BLE), backend abstrait pour A/B entre moteur legacy et nouveau moteur.
+- Une entrée Android unique, `EucBleClient`, qui enregistre les protocoles intégrés.
+- Des protocoles et tests sur captures pour KingSong, Gotway/Begode, InMotion, Ninebot
+  (dont la série Z), Leaperkim/Veteran et Nosfet. ExtremeBull réutilise actuellement le protocole Gotway.
+- Des API callbacks et Kotlin `Flow` pour la télémétrie et les événements de connexion.
+- Une couche d'intégration de backend BLE abstraite, utile pour une migration progressive et les tests.
+
+Les tests sur captures restent partiels et ne couvrent pas tous les modèles, firmwares ou commandes.
 
 ---
 
@@ -34,7 +43,7 @@ Ici, l’objectif est différent :
 
 - **Backend BLE extensible**
     - `BLEManager` : cœur BLE.
-    - `BleBackend` + `FrameworkBleBackend` + `LegacyBleBackend` + `SwitchableBleBackend` : adaptation progressive depuis un moteur existant (par ex. WheelLog).
+    - `BleBackend` + `FrameworkBleBackend` + `LegacyBleBackend` + `SwitchableBleBackend` : intégration et migration entre backends.
 
 - **Modèle de données riche**  
   `EUCData` expose vitesse, tension, courant, température, niveau de batterie, distance, puissance, état de charge, temps de ride, etc.
@@ -116,12 +125,10 @@ client.startScan()
 
 ## Couverture de tests & qualité
 
-### Couverture de code
+### Couverture et limites
 
-- **≈ 84 % de couverture sur le code protocole/modèles/frames**, mesurée par JaCoCo sur les tests unitaires debug.
-- Rapports générés en CI :
-    - Rapport complet : classes + utilitaires.
-    - Rapport “focused” : uniquement `protocols`, `models`, `frames` pour refléter la partie critique de décodage.
+- La CI génère des rapports JaCoCo pour le module et pour `protocols`, `models` et `frames`.
+- Ces rapports indiquent les chemins exécutés, pas la justesse ou la compatibilité avec toutes les roues.
 
 Les rapports HTML de couverture sont publiés sous :
 
@@ -132,17 +139,17 @@ Les rapports HTML de couverture sont publiés sous :
 
 ### Méthode de test
 
-Les protocoles sont testés avec de **vraies captures BLE** :
+Les tests combinent de **vraies captures BLE** et des cas unitaires construits :
 
 - Captures WheelLog exportées en CSV (`RAWWHEELLOG`) pour chaque marque.
-- Rejouées offline via JUnit 5, sans appareil physique ni émulateur BLE.
-- Tests d’intégration par marque (`WheelLogKingsongTest`, `WheelLogGotwayTest`, etc.) qui valident le pipeline complet de décodage.
+- Rejouées hors ligne avec JUnit 5 ; aucun émulateur BLE n'est nécessaire pour les tests unitaires.
+- Tests par marque pour les chemins de décodage présents dans les captures.
+- Des essais sur appareils physiques restent nécessaires, en particulier pour les combinaisons
+  roue/firmware et commandes absentes des captures disponibles.
 
-En plus :
-
-- Tests de non‑perte de trames (`NoDropTest`) : aucune trame décodée ne doit être silencieusement ignorée.
-- Contrats de parité entre protocoles (`ProtocolParityContractTest`) pour garantir une sémantique cohérente des champs.
-- Analyses de fréquence d’émission par marque (`BleFrequencyAnalysisTest`).
+D'autres tests couvrent certains contrats de commandes et de polling, le réassemblage de trames
+et la fréquence d'émission. Ils ne garantissent pas une cohérence parfaite de tous les champs ou
+commandes entre protocoles.
 
 ---
 
@@ -159,13 +166,15 @@ En plus :
 
 ## Intégration dans une app
 
-### Dépendance Maven Central
+### Dépendance Maven Central (0.1.0)
 
 ```kotlin
 dependencies {
-    implementation("io.github.tritbool:euc-ble-library:0.0.1")
+    implementation("io.github.tritbool:euc-ble-library:0.1.0")
 }
 ```
+
+La dépendance sera disponible depuis Maven Central après la publication de la version 0.1.0.
 
 ### Permissions & BLE Android
 
@@ -187,18 +196,17 @@ La lib expose des erreurs structurées via `BLEException` et `ErrorCallback` pou
 - **Référence API Kotlin (Dokka)** :  
   [https://tritbool.github.io/euc_ble_library/api/](https://tritbool.github.io/euc_ble_library/api/)
 
-La référence Dokka est regénérée automatiquement à chaque push sur `main` et publiée sous `/api/` via GitHub Actions.
+Le workflow Pages publie la référence Dokka générée lors de la publication d'une release ou d'un
+lancement manuel du workflow.
 
 ---
 
-## Roadmap
+## Limites actuelles et prochaines étapes
 
-- ✅ Core BLE stable (`BLEManager`, `EucBleClient`, backend abstrait).
-- ✅ Protocoles KingSong / Gotway-Begode / InMotion / Ninebot / Ninebot Z / Leaperkim / Nosfet.
-- ✅ Suite de tests basée sur captures réelles + rapports de couverture JaCoCo.
-- ✅ Publication Maven Central & doc API Dokka.
-- ☐ Application de démonstration.
-- ☐ Cas bord et nouveaux firmwares basés sur retours terrain.
+- La prise en charge des protocoles et commandes est partielle et peut varier selon le modèle et le firmware.
+- ExtremeBull utilise le décodage Gotway et nécessite des captures physiques dédiées pour validation.
+- Davantage de captures et de tests sur appareils physiques sont nécessaires.
+- Une application de démonstration et une couverture plus large des réglages/diagnostics restent à faire.
 
 ---
 
