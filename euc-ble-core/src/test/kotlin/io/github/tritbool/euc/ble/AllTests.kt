@@ -4,11 +4,13 @@ import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
 import io.github.tritbool.euc.ble.core.BLEManagerDeviceNameSelectionTest
 import io.github.tritbool.euc.ble.core.BLEManagerGattFingerprintTest
 import io.github.tritbool.euc.ble.core.BLEManagerProtocolSelectionTest
+import io.github.tritbool.euc.ble.core.BLEManagerWriteTypeTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
 import io.github.tritbool.euc.ble.models.BMSDataTest
 import io.github.tritbool.euc.ble.models.EUCDataTest
+import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
@@ -22,6 +24,8 @@ import io.github.tritbool.euc.ble.protocols.NinebotProtocolTest
 import io.github.tritbool.euc.ble.protocols.NinebotZProtocolTest
 import io.github.tritbool.euc.ble.protocols.NosfetNoDropTest
 import io.github.tritbool.euc.ble.protocols.NosfetProtocolTest
+import io.github.tritbool.euc.ble.protocols.KingsongProtocolTest
+import io.github.tritbool.euc.ble.protocols.ProtocolParityContractTest
 import io.github.tritbool.euc.ble.protocols.WheelLogGotwayTest
 import io.github.tritbool.euc.ble.protocols.WheelLogInMotionTest
 import io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest
@@ -42,10 +46,13 @@ import org.junit.platform.suite.api.Suite
     InMotionProtocolTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
+    KingsongProtocolTest::class,
+    ProtocolParityContractTest::class,
     BleFrequencyAnalysisTest::class,
     BLEManagerGattFingerprintTest::class,
     BLEManagerDeviceNameSelectionTest::class,
     BLEManagerProtocolSelectionTest::class,
+    BLEManagerWriteTypeTest::class,
     WheelLogGotwayTest::class,
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,
@@ -56,6 +63,7 @@ import org.junit.platform.suite.api.Suite
     NosfetProtocolTest::class,
     NinebotProtocolTest::class,
     NinebotZProtocolTest::class,
+    ExtremeBullProtocolTest::class,
     GotwayNoDropTest::class,
     InmotionNoDropTest::class,
     KingsongNoDropTest::class,

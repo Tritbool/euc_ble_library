@@ -56,11 +56,24 @@ branching that may not appear in captures.
 | `NosfetProtocolTest` | Telemetry decoding |
 | `ExtremeBullProtocolTest` | Advertisement-name matching, manufacturer identity, inherited Gotway BLE requirements |
 
+### No-drop tests
+
+Exercise decoded-data delivery from each protocol under concurrent load.
+
+| Test class | Brand |
+|---|---|
+| `GotwayNoDropTest` | Gotway / Begode |
+| `KingsongNoDropTest` | KingSong |
+| `InmotionNoDropTest` | InMotion |
+| `LeaperkimNoDropTest` | Leaperkim / Veteran |
+| `NinebotNoDropTest` | Ninebot |
+| `NosfetNoDropTest` | Nosfet |
+
 ### Cross-protocol and utility tests
 
 | Test class | What it covers |
 |---|---|
-| `ProtocolParityContractTest` | Same field semantics across all protocol implementations |
+| `ProtocolParityContractTest` | Selected command support and polling-plan contracts |
 | `BleFrequencyAnalysisTest` | Emission rate and timing characteristics per brand |
 | `GotwayFrameReassemblerTest` | Frame reassembly from fragmented BLE notifications |
 | `EucBleClientEntryPointWheelLogTest` | Full stack: metadata detection + frame selection per protocol |
@@ -73,8 +86,8 @@ branching that may not appear in captures.
 | Suite | Contents |
 |---|---|
 | `AllTests` | Entry point for CI – runs everything |
-| `RegularTestsSuite` | All tests except those tagged `@SlowTest` |
-| `NoDropTestsSuite` | No-drop tests only |
+| `RegularTestsSuite` | Selected protocol, capture, and utility tests |
+| `NoDropTestsSuite` | No-drop tests plus client entry-point capture integration |
 
 ### Known capture gaps
 

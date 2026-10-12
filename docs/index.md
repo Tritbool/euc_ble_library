@@ -135,7 +135,7 @@ Les rapports HTML de couverture sont publiés sous :
 - [`/test-coverage/full/`](./test-coverage/full/) – vue globale.
 - [`/test-coverage/focused/`](./test-coverage/focused/) – uniquement protocole / modèles / frames.
 
-*(Voir plus bas la section “Test coverage reports”.)*
+*(Voir plus bas la section « Rapports de couverture des tests ».)*
 
 ### Méthode de test
 
@@ -153,10 +153,10 @@ commandes entre protocoles.
 
 ---
 
-## Test coverage reports
+## Rapports de couverture des tests
 
-- La CI génère des rapports JaCoCo HTML complets et “focused”.
-- Ces rapports sont copiés dans le dossier `site/test-coverage/` puis publiés via GitHub Pages:
+- La CI génère des rapports JaCoCo HTML complets et ciblés.
+- Ces rapports sont publiés via GitHub Pages :
 
 
 - [https://tritbool.github.io/euc_ble_library/test-coverage/full/](https://tritbool.github.io/euc_ble_library/test-coverage/full/)
@@ -190,7 +190,7 @@ La lib expose des erreurs structurées via `BLEException` et `ErrorCallback` pou
 
 ## Documentation API
 
-- **Home** (cette page) :  
+- **Accueil** (cette page) :  
   [https://tritbool.github.io/euc_ble_library/](https://tritbool.github.io/euc_ble_library/)
 
 - **Référence API Kotlin (Dokka)** :  
