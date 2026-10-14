@@ -220,8 +220,8 @@ mavenPublishing {
         url.set("https://github.com/Tritbool/euc_ble_library")
         licenses {
             license {
-                name.set("MIT License")
-                url.set("https://opensource.org/licenses/MIT")
+                name.set("GNU General Public License v3.0")
+                url.set("https://www.gnu.org/licenses/gpl-3.0.html")
             }
         }
         developers {
@@ -238,4 +238,3 @@ mavenPublishing {
         }
     }
 }
-
