@@ -626,7 +626,6 @@ class BLEManager internal constructor(
     // Private implementation methods
     @RequiresApi(Build.VERSION_CODES.M)
     @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
-    //@RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
 
     private fun startBleScan() {
         val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
@@ -690,7 +689,6 @@ class BLEManager internal constructor(
     // BluetoothGattCallback implementations
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-        //super.onConnectionStateChange(gatt, status, newState)
 
         when (newState) {
             BluetoothProfile.STATE_CONNECTED -> {
@@ -786,7 +784,6 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-        //super.onServicesDiscovered(gatt, status)
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -918,7 +915,6 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
     ) {
-        //super.onCharacteristicChanged(gatt, characteristic, value)
         val data = value.clone()
         handleIncomingBytes(data, characteristic.uuid)
     }
@@ -928,7 +924,6 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic
     ) {
-        //super.onCharacteristicChanged(gatt, characteristic)
         val raw = characteristic.value ?: return
         val data = raw.clone()
         handleIncomingBytes(data, characteristic.uuid)
@@ -951,7 +946,6 @@ class BLEManager internal constructor(
     override fun onCharacteristicWrite(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
-        //super.onCharacteristicWrite(gatt, characteristic, status)
         pendingWriteAck?.complete(Unit)
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
@@ -960,7 +954,6 @@ class BLEManager internal constructor(
     }
 
     override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-        //super.onMtuChanged(gatt, mtu, status)
 
         if (status == BluetoothGatt.GATT_SUCCESS) {
             connectionCallback?.onMtuChanged(mtu)
@@ -1553,9 +1546,9 @@ class BLEManager internal constructor(
  */
 // Callback interfaces
 interface ScanCallback {
-    fun onScanStarted() {}
-    fun onDeviceDiscovered(device: EUCDevice) {}
-    fun onScanCompleted(devices: List<EUCDevice>) {}
+    fun onScanStarted()
+    fun onDeviceDiscovered(device: EUCDevice)
+    fun onScanCompleted(devices: List<EUCDevice>)
 }
 
 /**
@@ -1574,14 +1567,14 @@ interface ScanCallback {
  *   publish the event into a UI-observed state holder.
  */
 abstract class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback {
-    open fun onConnecting() {}
-    open fun onConnected() {}
-    open fun onDisconnected() {}
-    open fun onConnectionFailed(error: BLEException) {}
-    open fun onServicesDiscovered(services: List<BluetoothGattService>) {}
-    open fun onMtuChanged(mtu: Int) {}
-    open fun onProtocolSelectionRequired(protocols: List<EUCProtocol>) {}
-    open fun onProtocolSelected(selection: ProtocolSelection) {}
+    open abstract fun onConnecting()
+    open abstract fun onConnected()
+    open abstract fun onDisconnected()
+    open abstract fun onConnectionFailed(error: BLEException)
+    open abstract fun onServicesDiscovered(services: List<BluetoothGattService>)
+    open abstract fun onMtuChanged(mtu: Int)
+    open abstract fun onProtocolSelectionRequired(protocols: List<EUCProtocol>)
+    open abstract fun onProtocolSelected(selection: ProtocolSelection)
 }
 
 /**

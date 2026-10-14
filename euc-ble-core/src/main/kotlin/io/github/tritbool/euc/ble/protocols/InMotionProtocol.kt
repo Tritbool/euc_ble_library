@@ -39,6 +39,24 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val MIN_FRAME_SIZE = 5
         private const val MAX_LEN = 240
 
+        /* INMOTION WHEELS */
+        private const val V5 = 0
+        private const val V5F = "InMotion V5F"
+        private const val V8 = 0
+        private const val V8F = "InMotion V8F"
+        private const val V8S = "InMotion V8S"
+        private const val V9 = "InMotion V9"
+        private const val V10 = 0
+        private const val V10F = 0
+        private const val V11 = "InMotion V11"
+        private const val V11Y = "InMotion V11Y"
+        private const val V12 = "InMotion V12"
+        private const val V12S = "InMotion V12S"
+        private const val V13 = "InMotion V13"
+        private const val V14 = "InMotion V14"
+        private const val P6 = "InMotion P6"
+
+
         /** InMotion V2 escape marker byte. Any 0xAA or 0xA5 in the payload is
          *  transmitted as 0xA5 followed by the original byte. */
         private const val ESCAPE_MARKER = 0xA5
@@ -75,10 +93,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val V12_REALTIME_MIN_SIZE = 56
 
         private val V12_MODEL_NAMES = setOf(
-            "InMotion V12 HS",
-            "InMotion V12 HT",
-            "InMotion V12 PRO",
-            "InMotion V12S"
+            "$V12 HS",
+            "$V12 HT",
+            "$V12 PRO",
+            V12S
         )
 
         private val V14_BMS_PACK_ADDRESSES = listOf(0x24, 0x25, 0x26, 0x27)
@@ -186,7 +204,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private var lastKnownIsCharging: Boolean? = null
 
     @Volatile
-    private var modelName: String = "InMotion"
+    private var modelName: String = manufacturer
 
     @Volatile
     private var serialNumber: String? = null
@@ -587,10 +605,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun mapLegacyModel(modelCode: Int): String {
         return when (modelCode) {
-            0x1B -> "InMotion V5F"
-            0x0E -> "InMotion V8F"
-            0x06 -> "InMotion V8S"
-            else -> "InMotion"
+            0x1B -> V5F
+            0x0E -> V8F
+            0x06 -> V8S
+            else -> manufacturer
         }
     }
 
@@ -691,19 +709,19 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     val series = payload[2].toInt() and 0xFF
                     val type = payload[3].toInt() and 0xFF
                     modelName = when {
-                        series == 6 && type == 1 -> "InMotion V11"
-                        series == 6 && type == 2 -> "InMotion V11Y"
-                        series == 7 && type == 1 -> "InMotion V12 HS"
-                        series == 7 && type == 2 -> "InMotion V12 HT"
-                        series == 7 && type == 3 -> "InMotion V12 PRO"
-                        series == 8 && type == 1 -> "InMotion V13"
-                        series == 8 && type == 2 -> "InMotion V13 PRO"
-                        series == 9 && type == 1 -> "InMotion V14 50GB"
-                        series == 9 && type == 2 -> "InMotion V14 50S"
-                        series == 11 && type == 1 -> "InMotion V12S"
-                        series == 12 && type == 1 -> "InMotion V9"
-                        series == 13 && type == 1 -> "InMotion P6"
-                        else -> "InMotion $series.$type"
+                        series == 6 && type == 1 -> V11
+                        series == 6 && type == 2 -> V11Y
+                        series == 7 && type == 1 -> "$V12 HS"
+                        series == 7 && type == 2 -> "$V12 HT"
+                        series == 7 && type == 3 -> "$V12 PRO"
+                        series == 8 && type == 1 -> V13
+                        series == 8 && type == 2 -> "$V13 PRO"
+                        series == 9 && type == 1 -> "$V14 50GB"
+                        series == 9 && type == 2 -> "$V14 50S"
+                        series == 11 && type == 1 -> V12S
+                        series == 12 && type == 1 -> V9
+                        series == 13 && type == 1 -> P6
+                        else -> "$manufacturer $series.$type"
                     }
                     enqueueP6StatsQueryIfDue(force = true)
                 }
@@ -765,8 +783,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun isV12Model(): Boolean = modelName in V12_MODEL_NAMES
 
     private fun supportsV14PackCellQueries(): Boolean =
-        modelName == "InMotion V14 50GB" ||
-                modelName == "InMotion V14 50S"
+        modelName == "$V14 50GB" ||
+                modelName == "$V14 50S"
 
     private fun parseRealTime(payload: ByteArray, rawFrame: ByteArray): EUCData? {
         return if (isV12Model()) {
@@ -892,7 +910,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun parseRealTimeV14(payload: ByteArray, rawFrame: ByteArray): EUCData? {
         if (payload.size < V2_REALTIME_MIN_SIZE) return null
 
-        val isP6 = modelName == "InMotion P6"
+        val isP6 = modelName == P6
         val tirePressureKpa = if (isP6) {
             ByteUtils.tryGetUnsignedShortLE(payload, 78)
                 ?.takeIf { it in 50..1_500 }
@@ -910,7 +928,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         // video+btsnoop by eucplanet (commit 32385baa): phase = torque / 0.586 Nm/A
         // reproduces app readings within rounding over a 75x torque range.
         // Kept signed (negative on regen) to match how current and torque are shown.
-        val phaseCurrent = if (modelName == "InMotion P6") torque?.div(P6_KT_NM_PER_A) else null
+        val phaseCurrent = if (modelName == P6) torque?.div(P6_KT_NM_PER_A) else null
         val pwm = (ByteUtils.tryGetSignedShortLE(payload, 14)?.toDouble() ?: 0.0) / 100.0
 
         // Pitch and roll angles per the V14 telemetry layout (verified against
@@ -1018,7 +1036,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     private fun enqueueP6StatsQueryIfDue(force: Boolean = false) {
-        if (lastDetectedDialect != Dialect.V2 || modelName != "InMotion P6") return
+        if (lastDetectedDialect != Dialect.V2 || modelName != P6) return
         val now = System.currentTimeMillis()
         if (!force && now - lastP6StatsQueryAtMs < P6_STATS_QUERY_INTERVAL_MS) return
         lastP6StatsQueryAtMs = now
