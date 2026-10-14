@@ -1,13 +1,15 @@
-name: Publish Dokka docs + Coverage to GitHub Pages
+name: Publish docs and quality to GitHub Pages
 
 on:
-  release:
-    types: [ published ]   # déclenché quand un Release (ou Pre-release) est publié
+  workflow_run:
+    workflows: [ "CI – Quality" ]
+    types: [ completed ]
     branches: [ main ]
   workflow_dispatch: { }
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -17,14 +19,67 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.id == github.repository_id &&
+       github.event.workflow_run.conclusion != 'cancelled')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
+      - name: Select completed main-branch quality run
+        id: quality
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          main_sha=$(gh api "repos/$REPOSITORY/commits/main" --jq .sha)
+          if [ "$EVENT_NAME" = workflow_run ]; then
+            run_id="$EVENT_RUN_ID"
+          else
+            run_id=$(gh api --method GET "repos/$REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f branch=main -f event=push -f head_sha="$main_sha" \
+              -f status=completed -f per_page=1 --jq '.workflow_runs[0].id // empty')
+          fi
+          if [ -z "$run_id" ]; then
+            echo "::error::No completed quality run for current main. Run CI before publishing."
+            exit 1
+          fi
+          gh api "repos/$REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/quality-run.json"
+          sha=$(jq -r .head_sha "$RUNNER_TEMP/quality-run.json")
+          jq -e --arg sha "$main_sha" --arg repo "$REPOSITORY" \
+            '.head_sha == $sha and .head_branch == "main" and .event == "push" and
+             .status == "completed" and .conclusion != "cancelled" and
+             .head_repository.full_name == $repo' "$RUNNER_TEMP/quality-run.json"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.quality.outputs.sha }}
+
+      - name: Download reports from the exact quality run
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: website-quality
+          path: quality
+          run-id: ${{ steps.quality.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify quality snapshot provenance
+        env:
+          EXPECTED_SHA: ${{ steps.quality.outputs.sha }}
+          EXPECTED_RUN: ${{ steps.quality.outputs.run_id }}
+        run: |
+          jq -e --arg sha "$EXPECTED_SHA" --arg run "$EXPECTED_RUN" \
+            '.sha == $sha and (.run_id | tostring) == $run' quality/summary.json
 
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -36,18 +91,9 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Run tests + coverage reports
-        run: >
-          ./gradlew :euc-ble-core:testDebugUnitTest
-          --tests io.github.tritbool.euc.ble.AllTests
-          :euc-ble-core:jacocoTestReport
-          :euc-ble-core:jacocoFocusedReport
-          -PmaxParallelForks=1
-          --no-daemon
-        env:
-          CI: true
-
       - name: Generate Dokka HTML
+        id: dokka
+        continue-on-error: true
         run: ./gradlew :euc-ble-core:dokkaGeneratePublicationHtml --no-daemon
         env:
           CI: true
@@ -58,19 +104,38 @@ jobs:
           source: ./docs
           destination: ./_site
 
-      - name: Copy Dokka + JaCoCo into Jekyll build output
+      - name: Copy API and quality reports into Jekyll output
         run: |
-          sudo mkdir -p _site/api
-          sudo mkdir -p _site/test-coverage/full
-          sudo mkdir -p _site/test-coverage/focused
-          sudo cp -r euc-ble-core/build/dokka/html/* _site/api/
-          sudo cp -r euc-ble-core/build/reports/jacoco/full/html/* _site/test-coverage/full/
-          sudo cp -r euc-ble-core/build/reports/jacoco/focused/html/* _site/test-coverage/focused/
+          sudo mkdir -p _site/quality
+          sudo cp -r quality/. _site/quality/
+          if [ -d euc-ble-core/build/dokka/html ]; then
+            sudo mkdir -p _site/api
+            sudo cp -r euc-ble-core/build/dokka/html/. _site/api/
+          else
+            echo "::warning::Dokka unavailable for this commit; API reference not published."
+          fi
+          for scope in full focused; do
+            if [ -d "quality/reports/coverage/$scope" ]; then
+              sudo mkdir -p "_site/test-coverage/$scope"
+              sudo cp -r "quality/reports/coverage/$scope/." "_site/test-coverage/$scope/"
+            fi
+          done
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+      - name: Reject stale publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_SHA: ${{ steps.quality.outputs.sha }}
+        run: |
+          test "$(gh api "repos/$REPOSITORY/commits/main" --jq .sha)" = "$EXPECTED_SHA" || {
+            echo "::error::Main changed while the site was building; wait for its quality run."
+            exit 1
+          }
 
       - name: Deploy to GitHub Pages
         id: deployment

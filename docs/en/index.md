@@ -131,6 +131,11 @@ client.startScan()
 
 ## Test coverage & quality
 
+- [Quality dashboard]({{ '/en/quality/' | relative_url }}): tests, Android Lint,
+  full/focused coverage and commit-matched SonarCloud results.
+- Updated after each completed main-branch quality run, including failed checks.
+  Missing or stale analysis is explicitly labelled; PR results remain in GitHub and SonarCloud.
+
 ### Coverage and limitations
 
 - CI generates JaCoCo reports for the module and for `protocols`, `models`, and `frames`.
@@ -204,8 +209,8 @@ The library exposes structured errors via `BLEException` and `ErrorCallback` to 
 - **Kotlin API reference (Dokka)**:  
   [https://tritbool.github.io/euc_ble_library/api/](https://tritbool.github.io/euc_ble_library/api/)
 
-The Pages workflow publishes the generated Dokka reference when a release is published or the
-workflow is run manually.
+The Pages workflow publishes the generated Dokka reference after main-branch quality checks
+complete or when run manually against a completed main-branch quality run.
 
 ---
 
