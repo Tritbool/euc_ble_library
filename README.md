@@ -68,6 +68,39 @@ For commands:
 client.sendCommand(CommandType.LIGHT_ON)
 ```
 
+## Raw BLE traffic capture
+
+`client.trafficFlow: SharedFlow<TrafficEvent>` exposes both received notification chunks
+(`TrafficDirection.RX`) and outgoing writes accepted by Android (`TrafficDirection.TX`).
+`TrafficEvent` and `TrafficDirection` are in `io.github.tritbool.euc.ble.core`.
+Each event carries `sequence`, `timestampMs` (Unix epoch milliseconds), `characteristicUuid`,
+and `bytes`. TX means **submitted to Android**, not that the wheel received or executed the
+command. Rejected submissions are not emitted; an accepted retry is emitted once. This covers
+user commands, automatic polling, and protocol-generated replies/follow-up writes.
+
+There is one underlying shared capture stream. `client.rawFrameFlow` remains **RX-only**,
+as a filtered view of that stream, without a second buffer or payload copy. Its public type
+changes from `SharedFlow<ByteArray>` to `Flow<ByteArray>`: normal `.collect` usage is unchanged,
+but code relying on the old type or `replayCache` must migrate and binary consumers must recompile.
+Both views share defensive byte snapshots: **treat bytes as read-only**, copying before mutation.
+Transport chunk boundaries are preserved; events are not necessarily complete protocol frames.
+
+### TuxWheel migration
+
+- Replace the raw-log recorder's `rawFrameFlow` subscription with `trafficFlow`.
+- Ensure collection is active **before connecting**, to include initialization exchanges.
+  There is no replay/history, and events with no subscribers are not retained.
+- Save sequence, timestamp, direction, characteristic UUID, and bytes in a single ordered log.
+  Use background, buffered file I/O and remove any separate command logging to avoid duplicates.
+- Keep decoding/replay input RX-only; TX entries describe the conversation, not telemetry.
+- The library performs no file I/O. Capture is bounded to 256 pending events and drops oldest
+  events for slow collectors rather than suspending BLE callbacks. Recording is therefore
+  best-effort, not guaranteed lossless. Consecutive sequence gaps reveal missed events in
+  `trafficFlow`; an RX-only view naturally skips TX sequence numbers.
+- Sequence starts at 1 for each client/manager instance, spans both directions, and continues
+  across reconnects and periods without subscribers. It records library observation order, not
+  over-the-air timing. Wall-clock timestamps can move backwards; use sequence for ordering.
+
 ## BMS data
 
 Wheels that expose a smart BMS publish their pack details through the active protocol:
