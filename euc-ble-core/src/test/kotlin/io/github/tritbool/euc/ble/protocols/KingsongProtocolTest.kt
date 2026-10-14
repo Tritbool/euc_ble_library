@@ -63,11 +63,11 @@ class KingsongProtocolTest {
     @Test
     fun createCommandUsesLegacyFrameFormatForCoreActions() {
         assertArrayEquals(
-            createLegacyCommand(command = 0x73, payload2 = 0x13, payload3 = 0x01),
+            createLegacyCommand(command = 0x73, payload2 = 0x12, payload3 = 0x01),
             protocol.createCommand(CommandType.LIGHT_ON, Unit)
         )
         assertArrayEquals(
-            createLegacyCommand(command = 0x73, payload2 = 0x12, payload3 = 0x01),
+            createLegacyCommand(command = 0x73, payload2 = 0x13, payload3 = 0x01),
             protocol.createCommand(CommandType.LIGHT_OFF, Unit)
         )
         assertArrayEquals(
@@ -93,6 +93,14 @@ class KingsongProtocolTest {
         assertArrayEquals(
             createLegacyCommand(command = 0x73, payload2 = 0x14, payload3 = 0x01),
             protocol.createCommand(CommandType.SET_LIGHT_MODE, 2)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x73, payload2 = 0x13, payload3 = 0x01),
+            protocol.createCommand(CommandType.SET_LIGHT_MODE, 0)
+        )
+        assertArrayEquals(
+            createLegacyCommand(command = 0x73, payload2 = 0x12, payload3 = 0x01),
+            protocol.createCommand(CommandType.SET_LIGHT_MODE, 1)
         )
     }
 
