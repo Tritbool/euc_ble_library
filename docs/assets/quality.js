@@ -8,6 +8,11 @@
       status: "Status", available: "Available", passed: "Passed", failed: "Failed",
       unavailable: "Unavailable", stale: "Stale — omitted", unknown: "Unknown",
       timestamp: "Collected at", sha: "Commit SHA", run: "CI run",
+      analyzed: "Analyzed at",
+      checks: "Checks job outcome",
+      freshness: "Published snapshot freshness", current: "Current main commit",
+      checking: "Checking main commit…", mainSHA: "Latest main SHA",
+      staleSnapshot: "Stale — main has advanced",
       outcome: "CI step outcome", success: "Success", failure: "Failure",
       cancelled: "Cancelled", skipped: "Skipped", timed_out: "Timed out",
       total: "Total", failures: "Failures", errors: "Errors", duplicates: "Duplicate executions (counted once)",
@@ -26,6 +31,11 @@
       status: "État", available: "Disponible", passed: "Réussi", failed: "Échec",
       unavailable: "Indisponible", stale: "Obsolètes — omises", unknown: "Inconnu",
       timestamp: "Collecté le", sha: "SHA du commit", run: "Exécution CI",
+      analyzed: "Analysé le",
+      checks: "Résultat du job de vérification",
+      freshness: "Actualité de l’instantané publié", current: "Commit main actuel",
+      checking: "Vérification du commit main…", mainSHA: "Dernier SHA de main",
+      staleSnapshot: "Obsolète — main a avancé",
       outcome: "Résultat de l’étape CI", success: "Réussite", failure: "Échec",
       cancelled: "Annulé", skipped: "Ignorés", timed_out: "Délai dépassé",
       total: "Total", failures: "Échecs", errors: "Erreurs", duplicates: "Exécutions dupliquées (comptées une fois)",
@@ -56,6 +66,7 @@
     const description = document.createElement("dd");
     description.textContent = text(value);
     list.append(term, description);
+    return description;
   }
 
   function link(container, label, url) {
@@ -85,10 +96,38 @@
     return {container, list};
   }
 
+  async function checkFreshness(sha, list) {
+    const display = row(list, t.freshness, t.checking);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      // Public main only: no token, cookies, PR refs or caller-controlled endpoint.
+      const response = await fetch(
+        "https://api.github.com/repos/Tritbool/euc_ble_library/commits/main",
+        {signal: controller.signal, credentials: "omit", cache: "no-store",
+         referrerPolicy: "no-referrer", headers: {Accept: "application/vnd.github+json"}});
+      if (!response.ok) throw new Error("Freshness unavailable");
+      const latest = await response.json();
+      if (!latest || !/^[0-9a-f]{40}$/i.test(latest.sha || "") ||
+          !/^[0-9a-f]{40}$/i.test(sha || "")) {
+        throw new Error("Freshness unavailable");
+      }
+      display.textContent = sha.toLowerCase() === latest.sha.toLowerCase() ?
+        t.current : t.staleSnapshot;
+      row(list, t.mainSHA, latest.sha);
+    } catch (_) {
+      display.textContent = t.unavailable;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   function render(data) {
     const snapshot = section("quality-snapshot", {status: data.status, available: true});
     row(snapshot.list, t.timestamp, data.timestamp);
     row(snapshot.list, t.sha, data.sha);
+    if (data.check_outcome) row(snapshot.list, t.checks, translated(data.check_outcome));
+    checkFreshness(data.sha, snapshot.list);
     if (/^[\w.-]+\/[\w.-]+$/.test(data.repository || "") &&
         /^\d+$/.test(data.run_id || "")) {
       link(snapshot.container, t.run, new URL("https://github.com/" +
@@ -128,6 +167,7 @@
     const sonar = data.sonar || {};
     const sonarView = section("quality-sonar", sonar);
     row(sonarView.list, t.gate, translated(sonar.gate_status || "unavailable"));
+    row(sonarView.list, t.analyzed, sonar.analysis_timestamp);
     row(sonarView.list, t.metrics, translated(sonar.metrics_status || "unavailable"));
     if (sonar.timestamp) row(sonarView.list, t.timestamp, sonar.timestamp);
     if (sonar.metrics_status === "available") {

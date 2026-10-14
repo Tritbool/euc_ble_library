@@ -141,6 +141,7 @@ def collect(client, report, sha):
         "status": "passed" if gate_status == "OK" else "failed",
         "available": True, "gate_status": gate_status,
         "analysis_id": analysis_id, "revision": revision,
+        "analysis_timestamp": task.get("executedAt"),
         "dashboard_url": SERVER + "/dashboard?" + urlencode({"id": project, **scope}),
         "metrics_status": "unavailable",
     }

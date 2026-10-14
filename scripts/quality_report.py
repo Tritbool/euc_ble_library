@@ -111,7 +111,7 @@ def sonar(root, outcome, sha):
         result = section(outcome, data.get("available", False))
         # Explicit allowlist: never copy credentials or arbitrary collector fields.
         for key in ("gate_status", "analysis_id", "revision", "timestamp",
-                    "dashboard_url", "metrics_status", "reason"):
+                    "analysis_timestamp", "dashboard_url", "metrics_status", "reason"):
             if key in data:
                 result[key] = data[key]
         if data.get("metrics_status") == "available" and isinstance(data.get("metrics"), dict):

@@ -116,6 +116,15 @@ class SnapshotTests(FixtureTest):
         self.assertNotIn("metrics", result)
         self.assertNotIn("token", result)
 
+    def test_analysis_timestamp_survives_summary_allowlist(self):
+        self.write("quality/sonar.json", json.dumps({
+            "sha": "sha", "available": True, "status": "passed",
+            "timestamp": "2026-10-14T14:25:00Z",
+            "analysis_timestamp": "2026-10-14T14:20:00+0000"}))
+        result = quality_report.sonar(self.root, "success", "sha")
+        self.assertEqual(result["analysis_timestamp"], "2026-10-14T14:20:00+0000")
+        self.assertEqual(result["timestamp"], "2026-10-14T14:25:00Z")
+
     def test_snapshot_cli_persists_metadata_and_failure(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(quality_report.main(self.root, {
@@ -245,6 +254,14 @@ class SonarTests(FixtureTest):
                 self.assertNotIn("private-token", json.dumps(result))
                 self.assertEqual([call[0] for call in client.calls],
                                  ["ce/task", "qualitygates/project_status"])
+
+    def test_analysis_timestamp_comes_only_from_task_execution_time(self):
+        for executed in ("2026-10-14T14:20:00+0000", None):
+            client = FakeClient([
+                ("ce/task", self.task(pullRequest="123", executedAt=executed)),
+                ("qualitygates/project_status", self.gate())])
+            result = sonar_results.collect(client, self.report, "sha")
+            self.assertEqual(result["analysis_timestamp"], executed)
 
     def test_pr_scanner_context_mismatched_revision_fails(self):
         client = FakeClient([
@@ -394,6 +411,18 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(len(parser.ids), len(set(parser.ids)))
             pages.append(set(parser.ids))
         self.assertEqual(*pages)
+
+    def test_freshness_uses_fixed_public_main_endpoint_and_bounded_anonymous_fetch(self):
+        script = (Path(__file__).resolve().parents[2] /
+                  "docs/assets/quality.js").read_text()
+        self.assertIn("https://api.github.com/repos/Tritbool/euc_ble_library/commits/main",
+                      script)
+        self.assertIn('credentials: "omit"', script)
+        self.assertIn("new AbortController()", script)
+        self.assertIn("controller.abort(), 8000", script)
+        self.assertIn("display.textContent = t.unavailable", script)
+        self.assertNotIn("innerHTML", script)
+        self.assertNotIn("Authorization", script)
 
 
 if __name__ == "__main__":
