@@ -33,6 +33,13 @@ Captured-frame tests are partial and do not imply complete model, firmware, or c
 
 ---
 
+## Client application
+
+[TuxWheel](https://github.com/Tritbool/TuxWheel) is the first client app built with this library.
+It is available as a pre-release, with publication on F-Droid planned.
+
+---
+
 ## Key features
 
 - **Multi‑vendor support**  
@@ -208,7 +215,7 @@ workflow is run manually.
 - ExtremeBull shares Gotway decoding and has one Rocket capture in the current suite; other models
   and firmware variants need broader physical-device coverage.
 - More device/firmware captures and physical-device testing are needed.
-- A sample application and broader settings/diagnostics coverage remain future work.
+- Broader settings and diagnostics coverage remain future work.
 
 ---
 

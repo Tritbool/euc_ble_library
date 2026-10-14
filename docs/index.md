@@ -33,6 +33,13 @@ Les tests sur captures restent partiels et ne couvrent pas tous les modèles, fi
 
 ---
 
+## Application cliente
+
+[TuxWheel](https://github.com/Tritbool/TuxWheel) est la première application cliente développée
+avec cette bibliothèque. Elle est disponible en pré-version ; sa publication sur F-Droid est prévue.
+
+---
+
 ## Features clés
 
 - **Prise en charge multi‑constructeurs**  
@@ -207,7 +214,7 @@ lancement manuel du workflow.
 - ExtremeBull utilise le décodage Gotway et dispose d'une capture Rocket dans la suite ; d'autres
   modèles et firmwares nécessitent davantage de tests sur appareils physiques.
 - Davantage de captures et de tests sur appareils physiques sont nécessaires.
-- Une application de démonstration et une couverture plus large des réglages/diagnostics restent à faire.
+- Une couverture plus large des réglages et diagnostics reste à faire.
 
 ---
 

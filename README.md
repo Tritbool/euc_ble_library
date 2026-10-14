@@ -8,6 +8,11 @@
 > and public APIs and behavior may evolve. Validate it with the specific wheel and firmware you
 > intend to use; do not assume that passing unit tests guarantees safe or complete behavior.
 
+## Client application
+
+[TuxWheel](https://github.com/Tritbool/TuxWheel) is the first client app built with this library.
+It is available as a pre-release, with publication on F-Droid planned.
+
 ## Usage (single entry point)
 
 `io.github.tritbool.euc.ble.EucBleClient` is the public BLE entry point for client applications.
