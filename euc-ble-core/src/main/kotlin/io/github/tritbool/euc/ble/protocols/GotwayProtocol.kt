@@ -316,8 +316,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private val smartBmsHalfVoltages: MutableMap<Int, Array<Double?>> = mutableMapOf()
 
     /** True when the wheel has reported imperial-units mode via bit 0 of the Type-B
-     *  settings word. Latched on every Type-B frame and applied in parseTypeA to
-     *  convert mph→km/h and miles→km transparently. */
+     *  settings word. Latched on every Type-B frame and applied to speed and distance
+     *  fields so EUCData always exposes km/h and km. */
     private var wheelInMiles = false
 
     init {
@@ -426,11 +426,11 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private fun parseTypeA(data: ByteArray): EUCData? {
 
         val speedRaw = ByteUtils.tryGetSignedShortBE(data, 4)?.toInt() ?: return null
-        val rawSpeedKmh = abs((speedRaw * 3.6) / 100.0)
+        val rawSpeed = abs((speedRaw * 3.6) / 100.0)
         // Apply imperial conversion: when the Begode app is set to mph the wheel
         // transmits speed in mph on the wire even though the spec says km/h. Multiply
         // by MILES_TO_KM so all downstream consumers always receive km/h.
-        val speed = if (wheelInMiles) rawSpeedKmh * MILES_TO_KM else rawSpeedKmh
+        val speed = if (wheelInMiles) rawSpeed * MILES_TO_KM else rawSpeed
         if (abs(speed) > 200.0) return null  // frame corrompue ou sentinel
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(data, 2) ?: return null
@@ -534,7 +534,9 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         val lightMode = ByteUtils.tryGetUnsignedByte(data, 15)?.and(0x03)
         val wheelAlarm = alertFlags?.let { (it and 0x01) == 1 }
 
-        lastKnownTotalDistance = distanceRaw.toDouble() / 1000.0
+        val rawTotalDistance = distanceRaw.toDouble() / 1000.0
+        lastKnownTotalDistance =
+            if (wheelInMiles) rawTotalDistance * MILES_TO_KM else rawTotalDistance
         val voltage = lastKnownVoltage ?: 0.0
         val current = lastKnownCurrent ?: 0.0
         val power = voltage * current

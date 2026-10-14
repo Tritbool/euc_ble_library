@@ -3,60 +3,70 @@ package io.github.tritbool.euc.ble.models
 /**
  * Represents real-time telemetry data from an Electric Unicycle.
  *
- * Contains all decoded data fields from BLE characteristic notifications,
- * including speed, voltage, current, temperature, battery information, and
- * various device-specific settings and status flags.
+ * Physical measurements use metric units regardless of the wheel's display preference:
+ * speed in km/h, distance in km, voltage in V, current in A, temperature in °C, power in W,
+ * time durations in seconds, angles in degrees, torque in N·m, and tire pressure in kPa.
+ * [usesMiles] reports a wheel setting only; it does not change the units of these values.
  *
- * @param frameType Internal identifier for the frame format
- * @param speed Current speed in km/h
- * @param voltage Battery voltage in volts
- * @param current Current draw in amps (positive = discharge, negative = charge)
- * @param temperature Temperature in degrees Celsius
- * @param batteryLevel Battery level percentage (0-100)
- * @param distance Current trip distance in kilometers
- * @param power Current power consumption in watts
- * @param pwm PWM duty cycle percentage (0-100), null if unavailable
- * @param timestamp Timestamp in milliseconds
- * @param rawData Raw byte data from the BLE characteristic
- * @param manufacturer Manufacturer name
- * @param model Device model name
- * @param serialNumber Device serial number, null if unavailable
- * @param firmwareVersion Firmware version, null if unavailable
- * @param isCharging Current charging status
- * @param rideTime Total ride time in seconds
- * @param cellVoltages Individual cell voltages, null if unavailable
- * @param motorTemperature Motor temperature in degrees Celsius, null if unavailable
- * @param totalDistance Total distance traveled in kilometers, null if unavailable
- * @param pedalsMode Pedals mode value (legacy-mapped, typically 0..2)
- * @param alarmMode Encoded alarm mode value (firmware-dependent, usually 0..3)
- * @param rollAngleMode Encoded roll-angle mode value (firmware-dependent, usually 0..3)
- * @param usesMiles Whether the device uses miles instead of km/h
- * @param autoPowerOffMinutes Auto power-off time in minutes, null if unavailable
- * @param tiltBackSpeed Tilt-back speed threshold, null if unavailable
- * @param ledMode LED mode setting, null if unavailable
- * @param lightMode Front light mode setting (firmware-dependent, e.g. 0=off, 1=on, 2=strobe on Begode), null if unavailable
- * @param alertFlags Alert flags bitmap, null if unavailable
- * @param wheelAlarm Wheel alarm status, null if unavailable
- * @param topSpeed Session top speed in km/h, null if unavailable
- * @param fanStatus Fan on/off status, null if unavailable
- * @param chargingStatus Charging status byte, null if unavailable
- * @param mosfetTemperature MOSFET temperature in degrees Celsius, null if unavailable
- * @param boardTemperature Controller/board temperature in degrees Celsius, null if unavailable
- * @param imuTemperature IMU temperature in degrees Celsius, null if unavailable
- * @param cpuLoad CPU load percentage, null if unavailable
- * @param speedLimit Configured speed limit in km/h, null if unavailable
- * @param alarm1Speed Alarm 1 speed threshold, null if unavailable
- * @param alarm2Speed Alarm 2 speed threshold, null if unavailable
- * @param alarm3Speed Alarm 3 speed threshold, null if unavailable
- * @param wheelMaxSpeed Maximum speed setting, null if unavailable
- * @param wheelDistance Trip distance reported by wheel, null if unavailable
- * @param angle Pitch/tilt angle in degrees, null if unavailable
- * @param phaseCurrent Motor phase current in amps, null if unavailable
- * @param roll Roll angle in degrees, null if unavailable
- * @param torque Estimated torque in Nm, null if unavailable
- * @param mode Ride mode string (e.g. "active", "idle", "charging"), null if unavailable
- * @param totalRideTimeSeconds Cumulative ride time in seconds decoded from TotalStats, null if unavailable
- * @param totalPowerOnTimeSeconds Cumulative power-on time in seconds decoded from TotalStats, null if unavailable
+ * Some protocol settings are encoded integers whose meaning or mode mapping varies by
+ * manufacturer/firmware. Those fields are identified as protocol-specific below rather than
+ * assigning a possibly misleading shared interpretation. Unsupported or unavailable optional
+ * measurements are `null`.
+ *
+ * @param frameType Internal protocol frame identifier.
+ * @param speed Current signed speed in km/h.
+ * @param voltage Battery-pack voltage in V.
+ * @param current Battery current in A; sign convention can depend on the protocol.
+ * @param temperature Primary wheel temperature in °C; the physical sensor represented varies by protocol.
+ * @param batteryLevel Estimated or reported state of charge, in percent (0..100).
+ * @param distance Current trip distance in km where reported. Legacy Ninebot telemetry only supplies
+ * an odometer, which is exposed in both [distance] and [totalDistance].
+ * @param power Battery power in W, reported or derived from voltage and current.
+ * @param pwm PWM duty cycle in percent where available.
+ * @param timestamp Unix epoch timestamp in milliseconds.
+ * @param rawData Raw BLE frame bytes used to produce this value.
+ * @param manufacturer Manufacturer name.
+ * @param model Device model name.
+ * @param serialNumber Device serial number, if available.
+ * @param firmwareVersion Device firmware version, if available.
+ * @param isCharging Normalized charging state.
+ * @param rideTime Elapsed ride/session time in seconds; may be estimated when the wheel does not report it.
+ * @param cellVoltages Individual battery-cell voltages in V.
+ * @param motorTemperature Motor temperature in °C.
+ * @param totalDistance Lifetime/odometer distance in km.
+ * @param pedalsMode Protocol-specific pedals-mode code; mapping is not uniform across manufacturers.
+ * @param alarmMode Protocol-specific alarm-mode code.
+ * @param rollAngleMode Protocol-specific roll-angle-mode code.
+ * @param usesMiles True when the wheel reports imperial display mode, false for metric, or null when unknown.
+ * Metric units are still used for decoded physical measurements.
+ * @param autoPowerOffMinutes Configured auto-power-off delay in minutes.
+ * @param tiltBackSpeed Configured tilt-back speed threshold in km/h where its unit is defined by the protocol;
+ * otherwise the protocol's encoded integer is preserved.
+ * @param ledMode Protocol-specific LED mode code.
+ * @param lightMode Protocol-specific front-light mode code (for example, Begode 0=off, 1=on, 2=strobe).
+ * @param alertFlags Protocol-specific alert bit field.
+ * @param wheelAlarm Normalized wheel alarm state, if available.
+ * @param topSpeed Session top speed in km/h.
+ * @param fanStatus Protocol-specific fan status code; interpretation can vary.
+ * @param chargingStatus Protocol-specific charging status code; use [isCharging] for the normalized state.
+ * @param mosfetTemperature MOSFET temperature in °C.
+ * @param boardTemperature Controller/board temperature in °C.
+ * @param imuTemperature IMU temperature in °C.
+ * @param tirePressureKpa Tire pressure in kPa.
+ * @param cpuLoad CPU load in percent where available.
+ * @param speedLimit Configured speed limit in km/h.
+ * @param alarm1Speed Alarm 1 speed threshold in km/h.
+ * @param alarm2Speed Alarm 2 speed threshold in km/h.
+ * @param alarm3Speed Alarm 3 speed threshold in km/h.
+ * @param wheelMaxSpeed Configured maximum speed in km/h.
+ * @param wheelDistance KingSong-reported trip distance in km; null until that value is received.
+ * @param angle Pitch angle in degrees.
+ * @param phaseCurrent Motor phase current in A.
+ * @param roll Roll angle in degrees.
+ * @param torque Estimated torque in N·m.
+ * @param mode Protocol-reported ride state/name; values can vary by manufacturer.
+ * @param totalRideTimeSeconds Cumulative lifetime ride time in seconds.
+ * @param totalPowerOnTimeSeconds Cumulative lifetime powered-on time in seconds.
  */
 data class EUCData(
     internal val frameType: String = "BASE",
