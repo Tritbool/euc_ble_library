@@ -112,6 +112,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     override val manufacturer: String = "KingSong"
+    override val preferredWriteType: ProtocolWriteType = ProtocolWriteType.NO_RESPONSE
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -667,19 +668,24 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         return when (commandType) {
             CommandType.LIGHT_ON -> buildLegacyCommand(
                 command = 0x73,
-                payload2 = 0x13,
+                payload2 = 0x12,
                 payload3 = 0x01
             )
 
             CommandType.LIGHT_OFF -> buildLegacyCommand(
                 command = 0x73,
-                payload2 = 0x12,
+                payload2 = 0x13,
                 payload3 = 0x01
             )
 
             CommandType.SET_LIGHT_MODE -> {
                 val mode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
-                buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
+                val wireMode = when (mode) {
+                    0 -> 0x13
+                    1 -> 0x12
+                    else -> 0x14
+                }
+                buildLegacyCommand(command = 0x73, payload2 = wireMode, payload3 = 0x01)
             }
 
             CommandType.BEEP -> buildLegacyCommand(command = 0x88)
@@ -706,7 +712,12 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                     intVal >= 100 -> 2
                     else -> 1
                 }
-                buildLegacyCommand(command = 0x73, payload2 = mode + 0x12, payload3 = 0x01)
+                val wireMode = when (mode) {
+                    0 -> 0x13
+                    1 -> 0x12
+                    else -> 0x14
+                }
+                buildLegacyCommand(command = 0x73, payload2 = wireMode, payload3 = 0x01)
             }
 
             CommandType.SET_SPEED_LIMIT -> {

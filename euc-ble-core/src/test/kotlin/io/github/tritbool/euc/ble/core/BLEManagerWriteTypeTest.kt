@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
+import io.github.tritbool.euc.ble.protocols.KingsongProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -105,6 +106,26 @@ class BLEManagerWriteTypeTest {
             )
         } finally {
             gotway.close()
+        }
+    }
+
+    @Test
+    fun kingsongCommandsPreferWriteWithoutResponse() {
+        val kingsong = KingsongProtocol()
+        try {
+            manager.currentProtocol = kingsong
+            assertEquals(ProtocolWriteType.NO_RESPONSE, kingsong.preferredWriteType)
+            assertEquals(
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE,
+                manager.resolveWriteType(
+                    characteristic(
+                        BluetoothGattCharacteristic.PROPERTY_WRITE or
+                                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+                    )
+                )
+            )
+        } finally {
+            kingsong.close()
         }
     }
 
