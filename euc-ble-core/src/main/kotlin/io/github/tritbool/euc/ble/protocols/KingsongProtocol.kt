@@ -442,8 +442,9 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     /**
      * Frame 0xB9: Distance/Time/Fan/ChargingStatus/MotorTemperature
-     * Legacy: wheelDistance(uint32 LE @2), topSpeed(uint16 LE @8), fanStatus(@12),
-     *         chargingStatus(@13), motorTemperature(uint16 LE @14)
+     * Legacy: trip distance in meters (uint32 LE @2), top speed in 0.01 km/h
+     * (uint16 LE @8), fanStatus(@12), chargingStatus(@13), and
+     * motorTemperature in 0.01 °C (uint16 LE @14).
      */
     private fun parseTypeB9(data: ByteArray, base: Int) {
         if (ensureRange(data, base + 2, 4)) {

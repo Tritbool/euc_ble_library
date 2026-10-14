@@ -316,8 +316,8 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private val smartBmsHalfVoltages: MutableMap<Int, Array<Double?>> = mutableMapOf()
 
     /** True when the wheel has reported imperial-units mode via bit 0 of the Type-B
-     *  settings word. Latched on every Type-B frame and applied in parseTypeA to
-     *  convert mph→km/h and miles→km transparently. */
+     *  settings word. Latched on every Type-B frame and applied to speed and distance
+     *  fields so EUCData always exposes km/h and km. */
     private var wheelInMiles = false
 
     init {
