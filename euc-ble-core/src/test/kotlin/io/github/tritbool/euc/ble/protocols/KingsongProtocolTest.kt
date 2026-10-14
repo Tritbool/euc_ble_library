@@ -444,14 +444,16 @@ class KingsongProtocolTest {
     // --- Tests for frame 0xF6 (speed limit) ---
 
     @Test
-    fun decodeF6ThenA9IncludesSpeedLimit() = runTest {
+    fun decodeF6ThenA9IncludesOnlyDynamicSpeedLimit() = runTest {
         tearDown()
         protocol = KingsongProtocol(scope = backgroundScope)
         protocol.dataFlow.test {
             protocol.decode(createF6Frame(speedLimitRaw = 3000))
             protocol.decode(createA9Frame())
             val data = awaitItem()
-            assertEquals(30.0, data.speedLimit ?: -1.0, 0.01)
+            assertEquals(30.0, data.dynamicSpeedLimit ?: -1.0, 0.01)
+            assertNull(data.speedLimit)
+            assertNull(data.wheelMaxSpeed)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -470,6 +472,90 @@ class KingsongProtocolTest {
             assertEquals(30, data.alarm2Speed)
             assertEquals(40, data.alarm3Speed)
             assertEquals(50, data.wheelMaxSpeed)
+            assertEquals(50.0, data.speedLimit)
+            assertNull(data.dynamicSpeedLimit)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun capturedB5SettingsAndF6RuntimeLimitRemainIndependent() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        // Exact wheel notifications from the supplied S18 ksbtsnoop.hex capture.
+        val f6 = io.github.tritbool.euc.ble.core.ByteUtils.hexToBytes(
+            "AA55D0070000000000000000BF00E800F6145A5A"
+        )
+        val b5 = io.github.tritbool.euc.ble.core.ByteUtils.hexToBytes(
+            "AA550000000000002800280000000000B5145A5A"
+        )
+        protocol.dataFlow.test {
+            protocol.decode(f6 + b5 + createA9Frame())
+            val data = awaitItem()
+            assertEquals(20.0, data.dynamicSpeedLimit)
+            assertEquals(40.0, data.speedLimit)
+            assertEquals(40, data.wheelMaxSpeed)
+            assertEquals(0, data.alarm1Speed)
+            assertEquals(0, data.alarm2Speed)
+            assertEquals(40, data.alarm3Speed)
+            assertTrue(protocol.matchesQueryResponse(
+                protocol.getPollingPlan().startupQueries.first { it.id == "ks.request-alarms" }, b5
+            ))
+            protocol.decode(f6 + createA9Frame())
+            val updated = awaitItem()
+            assertEquals(40.0, updated.speedLimit)
+            assertEquals(20.0, updated.dynamicSpeedLimit)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun configured50AndRuntime25AreNotScaledOrOptimisticallyUpdated() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createA4Frame(alarm1 = 15, alarm2 = 20, alarm3 = 35, maxSpeed = 50) +
+                    createF6Frame(speedLimitRaw = 2500) + createA9Frame()
+            )
+            val data = awaitItem()
+            assertEquals(50.0, data.speedLimit)
+            assertEquals(50, data.wheelMaxSpeed)
+            assertEquals(25.0, data.dynamicSpeedLimit)
+            val alarms = protocol.createCommand(CommandType.SET_ALARM_SPEED, intArrayOf(10, 20, 30))
+            assertEquals(50.toByte(), alarms[8])
+            val maximum = protocol.createCommand(CommandType.SET_SPEED_LIMIT, 60)
+            assertEquals(0x85.toByte(), maximum[16])
+            assertEquals(15.toByte(), maximum[2])
+            assertEquals(20.toByte(), maximum[4])
+            assertEquals(35.toByte(), maximum[6])
+            assertEquals(60.toByte(), maximum[8])
+            protocol.decode(createF6Frame(speedLimitRaw = 1735) + createA9Frame())
+            val unchanged = awaitItem()
+            assertEquals(50.0, unchanged.speedLimit)
+            assertEquals(17.35, unchanged.dynamicSpeedLimit ?: -1.0, 0.001)
+            protocol.decode(createA4Frame(15, 20, 35, 60) + createA9Frame())
+            assertEquals(60.0, awaitItem().speedLimit)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun resetSessionDiscardsSpeedSettingsAndDynamicLimit() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA4Frame(15, 20, 35, 50) + createF6Frame(2500) + createA9Frame())
+            assertEquals(50.0, awaitItem().speedLimit)
+            protocol.resetSession()
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertNull(data.speedLimit)
+            assertNull(data.wheelMaxSpeed)
+            assertNull(data.dynamicSpeedLimit)
+            assertNull(data.alarm1Speed)
+            assertNull(data.alarm2Speed)
+            assertNull(data.alarm3Speed)
             cancelAndIgnoreRemainingEvents()
         }
     }

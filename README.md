@@ -68,6 +68,20 @@ fields. KingSong `distance` and `wheelDistance` are populated from its trip fram
 arrives, `distance` is zero and `wheelDistance` is null. Integer mode/status settings are protocol-
 specific codes unless otherwise documented on `EUCData`.
 
+For KingSong, `speedLimit` and `wheelMaxSpeed` expose the configured maximum/tilt-back speed
+from `A4`/`B5` byte 10; `alarm1Speed`/`alarm2Speed`/`alarm3Speed` are separate alarm thresholds
+at bytes 4/6/8. These settings remain null until a settings reply arrives (startup sends `98`).
+`dynamicSpeedLimit` exposes the independent runtime ceiling from `F6` bytes 2–3, unsigned
+little-endian hundredths of km/h. Previously, KingSong `speedLimit` exposed this F6 value;
+clients displaying the runtime ceiling should now use `dynamicSpeedLimit`.
+Do not double F6 or infer a configured setting from it: the supplied S18 `ksbtsnoop.hex`
+capture reports F6 `D0 07` (20 km/h) alongside B5 maximum `28` (40 km/h), whereas
+`kslockbtsnoop.hex` contains F6 but no A4/B5 settings reply. The captures do not establish
+why the runtime ceiling is lower (for example, a temporary restriction).
+`SET_SPEED_LIMIT` writes the configured maximum via `85` byte 8, not F6, and
+`SET_ALARM_SPEED` preserves the last reported configured maximum. Sending a command does
+not optimistically change telemetry; a subsequent settings reply confirms it.
+
 ```kotlin
 val client = EucBleClient(context)
 

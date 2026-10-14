@@ -32,7 +32,7 @@ import java.util.UUID
  * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
  *
  * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/motorTemperature), 0xBB (name/model/version),
- * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
+ * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (dynamic speed limit), 0xA4/0xB5 (speed settings),
  * 0xF1/0xF2 (Smart BMS data).
  */
 class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
@@ -190,6 +190,11 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             // A new channel isolates frames already queued by the previous connection.
             frameReassembler = FrameReassembler(byteParser)
             _securityStateFlow.value = WheelSecurityState()
+            lastKnownDynamicSpeedLimit = null
+            lastKnownWheelMaxSpeed = null
+            lastKnownAlarm1Speed = null
+            lastKnownAlarm2Speed = null
+            lastKnownAlarm3Speed = null
             startFrameCollection()
         }
     }
@@ -229,7 +234,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var lastKnownIsCharging: Boolean? = null
     private var lastKnownMotorTemperature: Double? = null
     private var lastKnownCpuLoad: Int? = null
-    private var lastKnownSpeedLimit: Double? = null
+    private var lastKnownDynamicSpeedLimit: Double? = null
     private var lastKnownAlarm1Speed: Int? = null
     private var lastKnownAlarm2Speed: Int? = null
     private var lastKnownAlarm3Speed: Int? = null
@@ -498,7 +503,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 fanStatus = lastKnownFanStatus,
                 chargingStatus = lastKnownChargingStatus,
                 cpuLoad = lastKnownCpuLoad,
-                speedLimit = lastKnownSpeedLimit,
+                speedLimit = lastKnownWheelMaxSpeed?.toDouble(),
+                dynamicSpeedLimit = lastKnownDynamicSpeedLimit,
                 alarm1Speed = lastKnownAlarm1Speed,
                 alarm2Speed = lastKnownAlarm2Speed,
                 alarm3Speed = lastKnownAlarm3Speed,
@@ -598,12 +604,12 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     /**
-     * Frame 0xF6: Speed limit
+     * Frame 0xF6: Runtime speed ceiling, not the configured max-speed setting.
      * uint16 LE @2, in 0.01 km/h units
      */
     private fun parseTypeF6(data: ByteArray, base: Int) {
         if (!ensureRange(data, base + 2, 2)) return
-        lastKnownSpeedLimit = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0
+        lastKnownDynamicSpeedLimit = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0
     }
 
     /**
