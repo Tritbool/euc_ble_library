@@ -1,20 +1,11 @@
 package io.github.tritbool.euc.ble.integration
 
-import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ProtocolSelection
 import io.github.tritbool.euc.ble.exceptions.BLEException
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import java.util.UUID
-
-/**
- * Types of BLE backend implementations available.
- */
-internal enum class BleBackendType {
-    LEGACY,
-    FRAMEWORK
-}
 
 sealed interface BleBackendEvent {
     data object ScanStarted : BleBackendEvent
@@ -62,24 +53,3 @@ fun interface BleBackendListener {
     fun onEvent(event: BleBackendEvent)
 }
 
-/**
- * Internal interface for BLE backend implementations.
- *
- * Backends handle the actual BLE operations (scanning, connecting, data transfer)
- * and forward events to registered listeners.
- */
-internal interface BleBackend {
-    val type: BleBackendType
-
-    fun initialize()
-    fun registerProtocol(protocol: EUCProtocol)
-    fun setListener(listener: BleBackendListener?)
-    fun startScan()
-    fun stopScan()
-    fun connect(device: EUCDevice)
-    fun disconnect()
-    fun sendCommand(command: ByteArray, characteristicUuid: UUID)
-    fun getConnectionState(): BLEConstants.ConnectionState
-    fun getConnectedDevice(): EUCDevice?
-    fun cleanup()
-}
