@@ -160,7 +160,15 @@ equal to 1 means authentication is required; 0 confirms authentication. A repeat
 a PIN means only that authentication is still required, **not definitive proof of an invalid PIN**.
 No confirmation/timeout result is inferred from a successful BLE write.
 
-Lock/unlock sends opcode `5D`, byte 2 = 1/0, with the remaining payload zeroed and the same framing.
+Lock/unlock sends opcode `5D`, byte 2 = 1/0, with the same framing. Lock has a zeroed
+remaining payload. Unlock additionally requires six ASCII token digits at bytes 10–15,
+derived from the latest `5F` challenge (ASCII digits at bytes 4, 6, and 8) and three random
+digits. The S18 `kslockbtsnoop.hex` capture contains this exchange; the encoder follows
+the [ESPHome KingSong codec](https://github.com/lufton/esphome-kingsong-euc/blob/main/components/kingsong_euc/codec.cpp).
+Wait for a challenge-bearing reply to `requestLockState()` before calling `unlock()`;
+without a valid challenge, unlock returns an empty payload and is not sent. A bare lock
+acknowledgement has no challenge. Challenge data is cleared on a new lock request,
+disconnect/reconnect, or protocol reset.
 **Unlock is experimental**, not verified across wheel models/firmware; do not use it as a safety
 guarantee. When the wheel reports authentication required, lock/unlock is rejected (including raw
 KingSong `5D` commands), also rechecked before queued submission. `UNKNOWN` does not imply that
@@ -170,8 +178,8 @@ blocked request must be explicitly submitted again after authentication.
 Query opcode `5E` requests lock status; only `5F` notifications with byte 2 = 1 (locked) or 0
 (unlocked) confirm it. Requests and transport acceptance never update the confirmed lock state.
 The existing delayed startup `5E` query is retained. Unknown status values are ignored.
-These wire contracts have synthetic regression coverage; hardware/firmware compatibility remains
-unverified.
+These wire contracts have capture-based and synthetic regression coverage; the corrected unlock
+has not been tested on live hardware, and compatibility across models/firmware remains unverified.
 
 The library does not persist PINs, include them in normal logs/state, or replay them on reconnect.
 Transient PIN bytes necessarily exist in the BLE write queue/platform; ordinary busy-stack
