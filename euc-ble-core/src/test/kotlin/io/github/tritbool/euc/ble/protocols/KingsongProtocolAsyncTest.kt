@@ -71,6 +71,7 @@ class KingsongProtocolAsyncTest {
             assertEquals(122.61, d.voltage, 0.01)
             assertEquals(16.75, d.speed, 0.01)
             assertTrue(d.distance >= 0.0)
+            assertEquals(891.402, d.totalDistance ?: -1.0, 0.000001)
             assertEquals(0.21, d.current, 0.01)
             assertEquals(33.0, d.temperature, 0.01)
             assertFalse(d.isCharging)
@@ -100,6 +101,7 @@ class KingsongProtocolAsyncTest {
             assertEquals(122.61, d.voltage, 0.01)
             assertEquals(16.75, d.speed, 0.01)
             assertTrue(d.distance >= 0.0)
+            assertEquals(891.402, d.totalDistance ?: -1.0, 0.000001)
 
             cancelAndIgnoreRemainingEvents()
         }
