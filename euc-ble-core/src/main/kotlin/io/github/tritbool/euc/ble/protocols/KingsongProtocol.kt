@@ -132,7 +132,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         CommandType.SET_CHARGE_LIMIT,
         CommandType.SET_STANDBY_DELAY,
         CommandType.SET_PEDAL_CUTOFF_ANGLE,
-        CommandType.SET_PEDAL_PITCH_TRIM
+        CommandType.SET_PEDAL_PITCH_TRIM,
+        CommandType.CUSTOM
     )
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
@@ -197,6 +198,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var lastKnownWheelDistance: Double? = null
     private var lastKnownTotalDistance: Double? = null
     private var lastKnownLightMode: Int? = null
+    private var inferredSeriesCells: Int? = null
 
     // BMS cell data: bmsIndex (1 or 2) -> array of cell voltages
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
@@ -236,7 +238,6 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         private const val BMS_PAGE_CELL_VOLTAGES_START = 0x02
 
         // Special byte values
-        private const val PEDALS_MODE_MARKER = 0xE0
         private const val BMS_FRAME_OFFSET = 0xF0
 
         // Serial number length
@@ -247,6 +248,54 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         private const val OFFSET_SPEED = 4
         private const val OFFSET_MESSAGE_TYPE = 16
         private const val OFFSET_PAGE_NUM = 17
+
+        private const val QUERY_ID_REQUEST_ALARMS = "ks.request-alarms"
+
+        // KingSong never transmits a battery percentage; it is derived from the
+        // per-cell pack voltage on a linear 3.10 V (0 %) .. 4.15 V (100 %) line,
+        // matching the official KingSong app (eucplanet KingsongParser captures).
+        private const val KS_EMPTY_V_PER_CELL = 3.10
+        private const val KS_FULL_V_PER_CELL = 4.15
+
+        // Upper bound per cell used to infer the pack class from voltage alone.
+        private const val MAX_V_PER_CELL_FOR_INFERENCE = 4.25
+
+        // KingSong pack classes: 67 V, 84 V, 100 V, 126 V, 151 V, 176 V.
+        private val KNOWN_SERIES_COUNTS = intArrayOf(16, 20, 24, 30, 36, 42)
+
+        /**
+         * Number of cells in series for a KingSong model name reported in frame 0xBB
+         * (e.g. "KS-S18", "KS-16X"), or null when the model is unknown.
+         */
+        internal fun seriesCellsForModel(model: String?): Int? {
+            val n = model?.lowercase() ?: return null
+            return when {
+                "s22" in n || "s20" in n -> 30
+                "s19" in n -> 24
+                "s18" in n || "s16" in n -> 20
+                "f22" in n -> 42
+                "f18" in n -> 36
+                "ks-18" in n || "ks18" in n -> 20
+                "ks-16x" in n || "ks16x" in n || "ks-16s" in n || "ks16s" in n -> 20
+                "ks-16" in n || "ks16" in n || "ks-14" in n || "ks14" in n -> 16
+                else -> null
+            }
+        }
+
+        /** Smallest known pack class able to reach [voltage]. */
+        internal fun seriesCellsForVoltage(voltage: Double): Int? {
+            if (voltage <= 0.0) return null
+            return KNOWN_SERIES_COUNTS.firstOrNull { voltage <= it * MAX_V_PER_CELL_FOR_INFERENCE }
+                ?: KNOWN_SERIES_COUNTS.last()
+        }
+
+        internal fun batteryPercentFromVoltage(voltage: Double, seriesCells: Int): Int {
+            if (voltage <= 0.0 || seriesCells <= 0) return 0
+            val perCell = voltage / seriesCells
+            val raw = (perCell - KS_EMPTY_V_PER_CELL) * 100.0 /
+                    (KS_FULL_V_PER_CELL - KS_EMPTY_V_PER_CELL)
+            return raw.toInt().coerceIn(0, 100)
+        }
     }
 
     init {
@@ -333,13 +382,10 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             val temperature = if (ensureRange(data, base + 12, 2))
                 ByteUtils.getSignedShortLE(data, base + 12) / 100.0 else 0.0
 
-            val statusByte = if (ensureRange(data, base + 14, 1))
-                ByteUtils.getUnsignedByte(data, base + 14) else 0
-            val batteryLevel = if (ensureRange(data, base + 15, 1)) {
-                ByteUtils.getUnsignedByte(data, base + 15).coerceIn(0, 100)
-            } else {
-                estimateBatteryPercent(voltage)
-            }
+            // Byte 14 carries the ride mode (when byte 15 is the 0xE0 marker) and byte 15
+            // is that marker, not a battery level: KingSong never transmits a battery
+            // percentage, so it is always derived from the pack voltage.
+            val batteryLevel = estimateBatteryPercent(voltage)
 
             // === Sanity filters ===
             if (voltage !in 40.0..180.0) return null
@@ -347,19 +393,9 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             if (temperature !in -40.0..100.0) return null
             if (current !in -200.0..200.0) return null
 
-            val isCharging = (statusByte and 0x01) != 0
+            // Charging state is reported by frame 0xB9 (byte 13).
+            val isCharging = (lastKnownChargingStatus ?: 0) != 0
             lastKnownIsCharging = isCharging
-
-            // Mode detection (legacy: byte 15 == PEDALS_MODE_MARKER means mode is in byte 14)
-            if (ensureRange(data, base + 15, 1) && ByteUtils.getUnsignedByte(
-                    data,
-                    base + 15
-                ) == PEDALS_MODE_MARKER
-            ) {
-                // pedals mode is in byte 14 — but only when byte 15 is the mode marker
-                // This conflicts with battery %; in legacy KS the battery is sent separately.
-                // We don't alter battery here, but note it for reference.
-            }
 
             lastKnownTotalDistance = totalDistRaw
 
@@ -421,6 +457,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         }
         if (ensureRange(data, base + 13, 1)) {
             lastKnownChargingStatus = ByteUtils.getUnsignedByte(data, base + 13)
+            lastKnownIsCharging = lastKnownChargingStatus != 0
         }
         if (ensureRange(data, base + 14, 2)) {
             lastKnownMotorTemperature = ByteUtils.getUnsignedShortLE(data, base + 14) / 100.0
@@ -620,7 +657,14 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     private fun estimateBatteryPercent(voltage: Double): Int {
-        return (((voltage - 50.0) / (100.0 - 50.0)) * 100.0).toInt().coerceIn(0, 100)
+        val fromVoltage = seriesCellsForVoltage(voltage)
+        // Latch the largest pack class seen so a deeply discharged 84 V pack is not
+        // later mistaken for a full 67 V one.
+        if (fromVoltage != null && fromVoltage > (inferredSeriesCells ?: 0)) {
+            inferredSeriesCells = fromVoltage
+        }
+        val series = seriesCellsForModel(lastKnownModel) ?: inferredSeriesCells ?: return 0
+        return batteryPercentFromVoltage(voltage, series)
     }
 
     private fun processFrame(frame: ByteArray) {
@@ -788,6 +832,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 buildWheelParamCommand(subByte = 0x01, value16 = raw)
             }
 
+            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+
             else -> byteArrayOf()
         }
     }
@@ -902,7 +948,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                     maxRetries = 3
                 ),
                 ProtocolQuerySpec(
-                    "ks.request-alarms",
+                    QUERY_ID_REQUEST_ALARMS,
                     CommandType.CUSTOM,
                     buildLegacyCommand(command = 0x98),
                     initialDelayMs = 400L,
@@ -949,7 +995,13 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         return when (query.commandType) {
             CommandType.REQUEST_FIRMWARE -> messageType == FRAME_TYPE_BB
             CommandType.REQUEST_SERIAL -> messageType == FRAME_TYPE_B3
-            CommandType.CUSTOM -> messageType == FRAME_TYPE_A4 || messageType == FRAME_TYPE_B5
+            CommandType.CUSTOM -> when (query.id) {
+                QUERY_ID_REQUEST_ALARMS ->
+                    messageType == FRAME_TYPE_A4 || messageType == FRAME_TYPE_B5
+                // Keep-alive / stream-start have no dedicated reply: any live
+                // telemetry frame proves the stream is flowing.
+                else -> messageType == FRAME_TYPE_A9 || messageType == FRAME_TYPE_B9
+            }
             else -> false
         }
     }

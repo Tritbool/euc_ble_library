@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.core
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -8,6 +9,7 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
@@ -30,17 +32,20 @@ import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
@@ -74,6 +79,9 @@ class BLEManager internal constructor(
         private const val TAG = "BLEManager"
         private const val MIN_QUERY_ATTEMPTS = 1
         private const val MIN_QUERY_TIMEOUT_MS = 200L
+        private const val MAX_WRITE_ATTEMPTS = 5
+        private const val WRITE_RETRY_DELAY_MS = 30L
+        private const val WRITE_ACK_TIMEOUT_MS = 300L
 
         val ENABLE_NOTIFICATION_VALUE_COMPAT = byteArrayOf(0x01, 0x00)
         val ENABLE_INDICATION_VALUE_COMPAT = byteArrayOf(0x02, 0x00)
@@ -113,6 +121,14 @@ class BLEManager internal constructor(
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
+
+    // Serialized GATT write queue (see sendCommand)
+    private class PendingWrite(val payload: ByteArray, val characteristicUuid: UUID)
+    private val writeQueue = Channel<PendingWrite>(Channel.UNLIMITED)
+    private var writeQueueJob: Job? = null
+
+    @Volatile
+    private var pendingWriteAck: CompletableDeferred<Unit>? = null
 
     // Callbacks
     private var platformScanCallback: AndroidScanCallback? = null
@@ -408,24 +424,74 @@ class BLEManager internal constructor(
         }
 
         val characteristic = getCharacteristic(characteristicUuid)
-        val payload = command.clone() // defensive copy
+        if (characteristic == null) {
+            errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
+            return
+        }
 
-        characteristic?.let { char ->
-            val writeType = resolveWriteType(char)
-            char.writeType = writeType
+        // Android allows a single outstanding GATT operation: a write issued while another
+        // one (or a CCCD descriptor write) is in flight is rejected and never reaches the
+        // wheel. Writes are therefore serialized through a queue and retried when busy.
+        ensureWriteQueueRunning()
+        writeQueue.trySend(PendingWrite(command.clone(), characteristicUuid)) // defensive copy
+    }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // new API 33+ overload
-                bluetoothGatt?.writeCharacteristic(char, payload, writeType)
-            } else {
-                // fallback for older APIs
-                @Suppress("DEPRECATION") run {
-                    char.setValue(payload)
-                    bluetoothGatt?.writeCharacteristic(char)
+    private fun ensureWriteQueueRunning() {
+        synchronized(writeQueue) {
+            if (writeQueueJob?.isActive == true) return
+            writeQueueJob = coroutineScope.launch {
+                for (write in writeQueue) {
+                    performQueuedWrite(write)
                 }
             }
-        } ?: run {
-            errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun performQueuedWrite(write: PendingWrite) {
+        for (attempt in 1..MAX_WRITE_ATTEMPTS) {
+            if (connectionState != BLEConstants.ConnectionState.CONNECTED) return
+            val characteristic = getCharacteristic(write.characteristicUuid) ?: run {
+                errorCallback?.onError(BLEException("Characteristic not found: ${write.characteristicUuid}"))
+                return
+            }
+
+            val ack = CompletableDeferred<Unit>()
+            pendingWriteAck = ack
+            if (writeCharacteristicNow(characteristic, write.payload)) {
+                // Wait for onCharacteristicWrite before issuing the next operation; the
+                // timeout only guards against a callback that never arrives.
+                withTimeoutOrNull(WRITE_ACK_TIMEOUT_MS.milliseconds) { ack.await() }
+                return
+            }
+            pendingWriteAck = null
+            if (attempt < MAX_WRITE_ATTEMPTS) delay((WRITE_RETRY_DELAY_MS * attempt).milliseconds)
+        }
+        errorCallback?.onError(
+            BLEException("BLE stack rejected write after $MAX_WRITE_ATTEMPTS attempts (${write.payload.size} bytes)")
+        )
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun writeCharacteristicNow(char: BluetoothGattCharacteristic, payload: ByteArray): Boolean {
+        val gatt = bluetoothGatt ?: return false
+        val writeType = resolveWriteType(char)
+        char.writeType = writeType
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // new API 33+ overload
+                gatt.writeCharacteristic(char, payload, writeType) == BluetoothStatusCodes.SUCCESS
+            } else {
+                // fallback for older APIs
+                @Suppress("DEPRECATION")
+                char.setValue(payload)
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(char)
+            }
+        } catch (e: Exception) {
+            logger.warn(TAG, "writeCharacteristic failed: ${e.message}")
+            false
         }
     }
 
@@ -853,6 +919,7 @@ class BLEManager internal constructor(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
         //super.onCharacteristicWrite(gatt, characteristic, status)
+        pendingWriteAck?.complete(Unit)
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Characteristic write failed: $status"))
