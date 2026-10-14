@@ -1,0 +1,41 @@
+---
+layout: default
+title: Project quality
+lang: en
+---
+<main id="quality-dashboard" lang="en" data-language="en"
+      data-summary-url="{{ '/quality/summary.json' | relative_url }}">
+  <p><a href="{{ '/quality/' | relative_url }}">FR</a> | <strong>EN</strong></p>
+  <h1>Project quality</h1>
+  <p>A snapshot of the latest published pipeline, not live results.</p>
+  <p>Snapshot freshness is checked anonymously against GitHub’s latest main
+    commit. If main has advanced, the snapshot is stale; if GitHub cannot be
+    reached, its freshness remains unavailable.</p>
+  <p><strong>Experimental project:</strong> code coverage and capture-based tests do not
+    guarantee support for every wheel or firmware, or safety on a device.
+    Testing with physical wheels remains essential.</p>
+  <p id="quality-loading" role="status">Loading reports…</p>
+  <section aria-labelledby="snapshot-heading">
+    <h2 id="snapshot-heading">Status and provenance</h2>
+    <div id="quality-snapshot"></div>
+  </section>
+  <section aria-labelledby="tests-heading">
+    <h2 id="tests-heading">Unit tests</h2><div id="quality-tests"></div>
+  </section>
+  <section aria-labelledby="lint-heading">
+    <h2 id="lint-heading">Android Lint</h2><div id="quality-lint"></div>
+  </section>
+  <section aria-labelledby="coverage-heading">
+    <h2 id="coverage-heading">JaCoCo coverage</h2>
+    <h3>Full</h3><div id="quality-coverage-full"></div>
+    <h3>Focused: protocols, models and frames</h3><div id="quality-coverage-focused"></div>
+  </section>
+  <section aria-labelledby="sonar-heading">
+    <h2 id="sonar-heading">SonarCloud</h2><div id="quality-sonar"></div>
+    <p>The quality gate belongs to this commit’s analysis. Metrics are shown only
+      when the latest analysis matches this same commit both before and after
+      collection; otherwise they are stale or unavailable.</p>
+  </section>
+  <noscript>JavaScript is required to read the JSON snapshot.</noscript>
+</main>
+<script src="{{ '/assets/quality.js' | relative_url }}" defer></script>

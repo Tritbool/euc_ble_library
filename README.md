@@ -3,6 +3,36 @@
 [![Tests](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml/badge.svg)](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml)
 [![Coverage (protocols/models/frames)](https://img.shields.io/badge/coverage-protocols%2Fmodels%2Fframes%20in%20CI%20summary-blue)](https://github.com/Tritbool/euc_ble_library/actions/workflows/ci.yml)
 
+## Automated quality checks
+
+CI runs Android Lint, unit tests and full/focused JaCoCo coverage on pushes and PRs.
+SonarCloud analyzes PRs and `main` updates; other branch pushes run the local checks only.
+The **Quality gate** check fails on lint errors, test failures, missing Sonar analysis or a failed
+Sonar quality gate. SonarCloud receives the full JaCoCo XML and Android Lint XML reports.
+The former separate Sonar workflow is consolidated into CI so reports describe the same run.
+
+The bilingual [quality dashboard](https://tritbool.github.io/euc_ble_library/en/quality/)
+is published after completed `main` push checks, including failures. It displays the commit,
+timestamp, test/lint results, coverage and Sonar quality gate, with detailed report links.
+Sonar results are collected only after the submitted analysis completes. The gate is fetched by
+analysis ID; metrics are omitted as stale if a newer analysis replaces that commit during collection.
+Missing reports are unavailable, not zero or passing. PR artifacts are never deployed to Pages.
+The dashboard anonymously checks GitHub's current `main` SHA to flag an older published snapshot;
+if GitHub cannot be reached, freshness is unavailable. No authentication is sent from the website.
+Manual Pages runs require a completed CI run for the current `main` commit and retained artifacts
+(30 days). Dokka generation failure does not prevent publication of a failed quality snapshot.
+
+Repository administrators must configure:
+
+- `SONAR_TOKEN` as an Actions secret with permission to analyze this SonarCloud project.
+  Disable SonarCloud automatic analysis if enabled, to use the CI-supplied reports.
+- GitHub Pages source: **GitHub Actions**.
+- A branch protection rule/ruleset for `main` requiring the **Quality gate** status check.
+  Workflow files cannot enable required checks themselves; select the check after its first run.
+- Fork PRs do not receive `SONAR_TOKEN`. Their lint/tests still run, but the gate fails explicitly
+  until a maintainer opens a trusted-branch PR for the reviewed change. Do not use
+  `pull_request_target` to execute fork code with secrets.
+
 > **Work in progress — version 0.1.0.** This library is experimental: protocol support is
 > incomplete, some features may be broken or behave differently across wheel/firmware versions,
 > and public APIs and behavior may evolve. Validate it with the specific wheel and firmware you
