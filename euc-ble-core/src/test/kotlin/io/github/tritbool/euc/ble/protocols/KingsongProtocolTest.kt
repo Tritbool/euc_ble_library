@@ -308,6 +308,90 @@ class KingsongProtocolTest {
 
     }
 
+    // --- Battery percentage (derived from voltage, never from A9 byte 15) ---
+
+    @Test
+    fun batteryIsDerivedFromVoltageForS18ModelIgnoringModeMarker() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createBBFrame("KS-S18-1234"))
+            // 76.00 V on a 20S (84 V) pack; byte 15 = 0xE0 mode marker must not read as 100 %.
+            protocol.decode(createA9Frame(voltageRaw = 7600, statusByte = 0x01, batteryByte = 0xE0))
+            val data = awaitItem()
+            assertEquals(66, data.batteryLevel)
+            assertFalse(data.isCharging)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun batteryInfersPackClassFromVoltageWhenModelUnknown() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame(voltageRaw = 7600, batteryByte = 100))
+            assertEquals(66, awaitItem().batteryLevel)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun batteryPercentHelpersCoverKnownPackClasses() {
+        assertEquals(20, KingsongProtocol.seriesCellsForModel("KS-S18"))
+        assertEquals(20, KingsongProtocol.seriesCellsForModel("KS-16X"))
+        assertEquals(16, KingsongProtocol.seriesCellsForModel("KS-16"))
+        assertEquals(30, KingsongProtocol.seriesCellsForModel("KS-S22"))
+        assertNull(KingsongProtocol.seriesCellsForModel("unknown"))
+        assertEquals(16, KingsongProtocol.seriesCellsForVoltage(60.0))
+        assertEquals(20, KingsongProtocol.seriesCellsForVoltage(76.0))
+        assertEquals(24, KingsongProtocol.seriesCellsForVoltage(95.0))
+        assertEquals(30, KingsongProtocol.seriesCellsForVoltage(122.61))
+        assertEquals(100, KingsongProtocol.batteryPercentFromVoltage(84.0, 20))
+        assertEquals(0, KingsongProtocol.batteryPercentFromVoltage(60.0, 20))
+    }
+
+    @Test
+    fun chargingStateComesFromB9Frame() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createB9Frame(
+                    wheelDistanceRaw = 0L,
+                    topSpeedRaw = 0,
+                    fanStatus = 0,
+                    chargingStatus = 1,
+                    motorTemperatureRaw = 2500
+                )
+            )
+            protocol.decode(createA9Frame())
+            assertTrue(awaitItem().isCharging)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    // --- Polling plan queries must actually produce bytes ---
+
+    @Test
+    fun pollingPlanCustomQueriesAreSupportedAndNonEmpty() {
+        val plan = protocol.getPollingPlan()
+        val queries = plan.startupQueries + plan.periodicQueries
+        val keepAlive = queries.first { it.id == "ks.keep-alive" }
+        val startStream = queries.first { it.id == "ks.start-stream" }
+        val alarms = queries.first { it.id == "ks.request-alarms" }
+
+        queries.forEach { query ->
+            assertEquals(CommandSupport.SUPPORTED, protocol.getCommandSupport(query.commandType))
+            assertTrue(protocol.createCommand(query.commandType, query.value).isNotEmpty())
+        }
+        assertArrayEquals(createLegacyCommand(command = 0x00), protocol.createCommand(keepAlive.commandType, keepAlive.value))
+        assertArrayEquals(createLegacyCommand(command = 0x5E), protocol.createCommand(startStream.commandType, startStream.value))
+        assertArrayEquals(createLegacyCommand(command = 0x98), protocol.createCommand(alarms.commandType, alarms.value))
+        assertTrue(protocol.matchesQueryResponse(keepAlive, createA9Frame()))
+        assertFalse(protocol.matchesQueryResponse(alarms, createA9Frame()))
+    }
+
     // --- Tests for frame 0xB3 (serial number) ---
 
     @Test
@@ -792,9 +876,11 @@ class KingsongProtocolTest {
         tearDown()
         protocol = KingsongProtocol(scope = backgroundScope)
         protocol.dataFlow.test {
+            // Battery % is derived from voltage: 63.00 V on a 20S KS-S18 pack -> 4 %.
+            protocol.decode(createBBFrame("KS-S18-1234"))
             protocol.decode(
                 createA9Frame(
-                    voltageRaw = 8400,
+                    voltageRaw = 6300,
                     temperatureRaw = 3500,
                     batteryByte = 3
                 )

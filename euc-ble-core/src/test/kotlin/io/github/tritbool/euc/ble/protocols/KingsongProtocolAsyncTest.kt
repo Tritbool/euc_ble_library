@@ -74,7 +74,8 @@ class KingsongProtocolAsyncTest {
             assertEquals(0.21, d.current, 0.01)
             assertEquals(33.0, d.temperature, 0.01)
             assertFalse(d.isCharging)
-            assertEquals(100, d.batteryLevel)
+            // 122.61 V on a 30S (126 V) pack: (4.087 - 3.10) / 1.05 -> 93 %
+            assertEquals(93, d.batteryLevel)
             assertNull(d.cellVoltages)
 
             cancelAndIgnoreRemainingEvents()
