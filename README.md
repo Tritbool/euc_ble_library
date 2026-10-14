@@ -68,6 +68,20 @@ fields. KingSong `distance` and `wheelDistance` are populated from its trip fram
 arrives, `distance` is zero and `wheelDistance` is null. Integer mode/status settings are protocol-
 specific codes unless otherwise documented on `EUCData`.
 
+For KingSong, `speedLimit` and `wheelMaxSpeed` expose the configured maximum/tilt-back speed
+from `A4`/`B5` byte 10; `alarm1Speed`/`alarm2Speed`/`alarm3Speed` are separate alarm thresholds
+at bytes 4/6/8. These settings remain null until a settings reply arrives (startup sends `98`).
+`dynamicSpeedLimit` exposes the independent runtime ceiling from `F6` bytes 2–3, unsigned
+little-endian hundredths of km/h. Previously, KingSong `speedLimit` exposed this F6 value;
+clients displaying the runtime ceiling should now use `dynamicSpeedLimit`.
+Do not double F6 or infer a configured setting from it: the supplied S18 `ksbtsnoop.hex`
+capture reports F6 `D0 07` (20 km/h) alongside B5 maximum `28` (40 km/h), whereas
+`kslockbtsnoop.hex` contains F6 but no A4/B5 settings reply. The captures do not establish
+why the runtime ceiling is lower (for example, a temporary restriction).
+`SET_SPEED_LIMIT` writes the configured maximum via `85` byte 8, not F6, and
+`SET_ALARM_SPEED` preserves the last reported configured maximum. Sending a command does
+not optimistically change telemetry; a subsequent settings reply confirms it.
+
 ```kotlin
 val client = EucBleClient(context)
 
@@ -110,6 +124,61 @@ For commands:
 ```kotlin
 client.sendCommand(CommandType.LIGHT_ON)
 ```
+
+## KingSong PIN authentication and lock control
+
+Collect `client.securityStateFlow` for a client-owned PIN popup and lock indicator.
+`WheelSecurityState`, `AuthenticationState`, and `WheelLockState` are in
+`io.github.tritbool.euc.ble.models`. The state is `null` without a selected security-capable
+protocol. For KingSong, authentication and lock status start as `UNKNOWN` and reset on
+disconnect/reconnect or protocol changes. `StateFlow` delivers the latest state to new collectors;
+it conflates identical updates. `client.securityEventFlow` emits each valid notification as
+`WheelSecurityEvent.AuthenticationStatus` or `WheelSecurityEvent.LockStatus` (also in `models`),
+including repeated authentication-required responses. Subscribe before submitting a PIN to
+observe replies and let the app offer retry/cancel; these events do not identify a particular
+attempt or contain the PIN. Events have no replay and bounded, drop-oldest buffering, so use the
+state flow as the authoritative latest snapshot and implement waiting/timeouts in the client.
+
+```kotlin
+client.securityStateFlow.collect { state ->
+    if (state?.authentication == AuthenticationState.REQUIRED) {
+        // Ask for a PIN in your app (switch to Main for UI).
+    }
+}
+// Explicit user actions, after checking getCommandSupport:
+client.authenticate("0012")  // exactly four ASCII digits; keep leading zeros
+client.requestLockState()
+client.lock()
+client.unlock()             // EXPERIMENTAL: validate on your wheel/firmware
+```
+
+Equivalent commands are `AUTHENTICATE` (String PIN), `REQUEST_LOCK_STATE`, `LOCK`, and `UNLOCK`.
+The typed PIN API rejects invalid input with `IllegalArgumentException`; generic invalid commands
+report through `ErrorCallback`. Authentication sends a standard 20-byte `AA 55` frame, ASCII PIN at
+offsets 2..5, opcode `44` at offset 16, and trailer `14 5A 5A`. A `46` notification with byte 2
+equal to 1 means authentication is required; 0 confirms authentication. A repeated 1 after submitting
+a PIN means only that authentication is still required, **not definitive proof of an invalid PIN**.
+No confirmation/timeout result is inferred from a successful BLE write.
+
+Lock/unlock sends opcode `5D`, byte 2 = 1/0, with the remaining payload zeroed and the same framing.
+**Unlock is experimental**, not verified across wheel models/firmware; do not use it as a safety
+guarantee. When the wheel reports authentication required, lock/unlock is rejected (including raw
+KingSong `5D` commands), also rechecked before queued submission. `UNKNOWN` does not imply that
+authentication is unnecessary. There is no automatic authentication, locking, or unlocking, and a
+blocked request must be explicitly submitted again after authentication.
+
+Query opcode `5E` requests lock status; only `5F` notifications with byte 2 = 1 (locked) or 0
+(unlocked) confirm it. Requests and transport acceptance never update the confirmed lock state.
+The existing delayed startup `5E` query is retained. Unknown status values are ignored.
+These wire contracts have synthetic regression coverage; hardware/firmware compatibility remains
+unverified.
+
+The library does not persist PINs, include them in normal logs/state, or replay them on reconnect.
+Transient PIN bytes necessarily exist in the BLE write queue/platform; ordinary busy-stack
+submission retries still apply. **Deliberate raw `trafficFlow` capture includes the plaintext PIN
+in outgoing `44` frames**. Disable recording during authentication or redact offsets 2..5 before
+storing/sharing traces, and never log the entered PIN. Android/platform buffers and caller Strings
+cannot be reliably erased by this library.
 
 ## Raw BLE traffic capture
 

@@ -54,7 +54,8 @@ package io.github.tritbool.euc.ble.models
  * @param imuTemperature IMU temperature in °C.
  * @param tirePressureKpa Tire pressure in kPa.
  * @param cpuLoad CPU load in percent where available.
- * @param speedLimit Configured speed limit in km/h.
+ * @param speedLimit Speed limit in km/h. KingSong reports the configured max-speed/tilt-back
+ * setting here (also in [wheelMaxSpeed]); InMotion and Ninebot may report a runtime limit.
  * @param alarm1Speed Alarm 1 speed threshold in km/h.
  * @param alarm2Speed Alarm 2 speed threshold in km/h.
  * @param alarm3Speed Alarm 3 speed threshold in km/h.
@@ -67,6 +68,8 @@ package io.github.tritbool.euc.ble.models
  * @param mode Protocol-reported ride state/name; values can vary by manufacturer.
  * @param totalRideTimeSeconds Cumulative lifetime ride time in seconds.
  * @param totalPowerOnTimeSeconds Cumulative lifetime powered-on time in seconds.
+ * @param dynamicSpeedLimit KingSong F6 runtime speed ceiling in km/h, independent of the
+ * configured [speedLimit]. Null until received; the reason for a reduction is not reported here.
  */
 data class EUCData(
     internal val frameType: String = "BASE",
@@ -107,7 +110,7 @@ data class EUCData(
     val imuTemperature: Double? = null,     // IMU temperature in degrees Celsius
     val tirePressureKpa: Double? = null,
     val cpuLoad: Int? = null,               // CPU load percentage
-    val speedLimit: Double? = null,         // configured speed limit in km/h
+    val speedLimit: Double? = null,         // speed limit; see protocol-specific semantics above
     val alarm1Speed: Int? = null,           // alarm 1 speed threshold
     val alarm2Speed: Int? = null,           // alarm 2 speed threshold
     val alarm3Speed: Int? = null,           // alarm 3 speed threshold
@@ -119,7 +122,8 @@ data class EUCData(
     val torque: Double? = null,           // Torque estimate (Nm), null if unavailable
     val mode: String? = null,            // Ride mode/state string (e.g. "active", "idle"), null if unavailable
     val totalRideTimeSeconds: Long? = null,    // Cumulative ride time in seconds (from TotalStats), null if unavailable
-    val totalPowerOnTimeSeconds: Long? = null  // Cumulative power-on time in seconds (from TotalStats), null if unavailable
+    val totalPowerOnTimeSeconds: Long? = null, // Cumulative power-on time in seconds (from TotalStats), null if unavailable
+    val dynamicSpeedLimit: Double? = null     // KingSong runtime speed ceiling in km/h
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

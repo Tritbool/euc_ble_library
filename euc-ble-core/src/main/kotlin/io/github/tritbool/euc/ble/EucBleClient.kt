@@ -17,6 +17,8 @@ import io.github.tritbool.euc.ble.core.QueryTraceEvent
 import io.github.tritbool.euc.ble.core.TrafficEvent
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCDevice
+import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -33,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Main public entry point for EUC BLE discovery, connection and telemetry.
@@ -85,6 +88,32 @@ class EucBleClient(
     fun getCommandSupport(commandType: CommandType): CommandSupport {
         return bleManager.getCommandSupport(commandType)
     }
+
+    /** Latest wheel-confirmed security state. Null when unavailable; collect for client PIN UI. */
+    val securityStateFlow: StateFlow<WheelSecurityState?> = bleManager.securityStateFlow
+
+    /** Individual status notifications, including repeats. No replay; see [BLEManager.securityEventFlow]. */
+    val securityEventFlow: SharedFlow<WheelSecurityEvent> = bleManager.securityEventFlow
+
+    /** Submit a four-ASCII-digit KingSong PIN. No persistent storage or reconnect replay. */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun authenticate(pin: String) {
+        require(pin.length == 4 && pin.all { it in '0'..'9' }) {
+            "PIN must contain exactly four ASCII digits"
+        }
+        sendCommand(CommandType.AUTHENTICATE, pin)
+    }
+
+    /** Explicit request only; confirmation arrives via [securityStateFlow]. */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun lock() = sendCommand(CommandType.LOCK)
+
+    /** Experimental KingSong unlock request; verify on the specific wheel/firmware. */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun unlock() = sendCommand(CommandType.UNLOCK)
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun requestLockState() = sendCommand(CommandType.REQUEST_LOCK_STATE)
 
     fun getConnectionState(): BLEConstants.ConnectionState = bleManager.getConnectionState()
 

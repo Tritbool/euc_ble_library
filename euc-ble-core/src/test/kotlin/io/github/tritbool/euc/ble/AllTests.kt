@@ -22,6 +22,7 @@ import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
 import io.github.tritbool.euc.ble.protocols.InmotionNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongProtocolAsyncTest
+import io.github.tritbool.euc.ble.protocols.KingsongSecurityTest
 import io.github.tritbool.euc.ble.protocols.LeaperkimNoDropTest
 import io.github.tritbool.euc.ble.protocols.LeaperkimProtocolTest
 import io.github.tritbool.euc.ble.protocols.NinebotNoDropTest
@@ -52,6 +53,8 @@ import org.junit.platform.suite.api.Suite
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
     KingsongProtocolTest::class,
+    KingsongSecurityTest::class,
+    EucBleClientSecurityTest::class,
     ProtocolParityContractTest::class,
     BleFrequencyAnalysisTest::class,
     BLEManagerGattFingerprintTest::class,

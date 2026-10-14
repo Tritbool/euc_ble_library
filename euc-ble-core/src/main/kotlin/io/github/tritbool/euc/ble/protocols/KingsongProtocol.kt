@@ -6,15 +6,23 @@ import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.frames.FrameReassembler
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.AuthenticationState
+import io.github.tritbool.euc.ble.models.WheelLockState
+import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -24,7 +32,7 @@ import java.util.UUID
  * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
  *
  * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/motorTemperature), 0xBB (name/model/version),
- * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (speed limit), 0xA4/0xB5 (alarm speeds),
+ * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (dynamic speed limit), 0xA4/0xB5 (speed settings),
  * 0xF1/0xF2 (Smart BMS data).
  */
 class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
@@ -120,6 +128,10 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         CommandType.LIGHT_BRIGHTNESS,
         CommandType.BEEP,
         CommandType.POWER_OFF,
+        CommandType.AUTHENTICATE,
+        CommandType.LOCK,
+        CommandType.UNLOCK,
+        CommandType.REQUEST_LOCK_STATE,
         CommandType.SET_PEDALS_MODE,
         CommandType.SET_LED_MODE,
         CommandType.SET_LED_STROBE,
@@ -159,7 +171,39 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private val byteParser = ByteByByteFrameParser(unpacker, resetUnpacker = {
         unpackBuffer.clear()
     })
-    private val frameReassembler = FrameReassembler(byteParser)
+    private var frameReassembler = FrameReassembler(byteParser)
+    private val sessionLock = Any()
+    private var frameCollectorJob: Job? = null
+    private val _securityStateFlow = MutableStateFlow(WheelSecurityState())
+    override val securityStateFlow: StateFlow<WheelSecurityState> = _securityStateFlow.asStateFlow()
+    private val _securityEventFlow = MutableSharedFlow<WheelSecurityEvent>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val securityEventFlow: Flow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
+    override fun getSecurityState(): WheelSecurityState = securityStateFlow.value
+
+    override fun resetSession() {
+        synchronized(sessionLock) {
+            frameCollectorJob?.cancel()
+            frameReassembler.reset()
+            // A new channel isolates frames already queued by the previous connection.
+            frameReassembler = FrameReassembler(byteParser)
+            _securityStateFlow.value = WheelSecurityState()
+            lastKnownDynamicSpeedLimit = null
+            lastKnownWheelMaxSpeed = null
+            lastKnownAlarm1Speed = null
+            lastKnownAlarm2Speed = null
+            lastKnownAlarm3Speed = null
+            startFrameCollection()
+        }
+    }
+
+    override fun canSendCommand(payload: ByteArray): Boolean {
+        val isLockCommand = payload.size >= 17 &&
+            payload[0] == header[0] && payload[1] == header[1] && payload[16] == 0x5D.toByte()
+        return !isLockCommand || securityStateFlow.value.authentication != AuthenticationState.REQUIRED
+    }
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
     override val dataFlow: Flow<EUCData> = _channel.receiveAsFlow()
@@ -190,7 +234,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var lastKnownIsCharging: Boolean? = null
     private var lastKnownMotorTemperature: Double? = null
     private var lastKnownCpuLoad: Int? = null
-    private var lastKnownSpeedLimit: Double? = null
+    private var lastKnownDynamicSpeedLimit: Double? = null
     private var lastKnownAlarm1Speed: Int? = null
     private var lastKnownAlarm2Speed: Int? = null
     private var lastKnownAlarm3Speed: Int? = null
@@ -299,10 +343,16 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     init {
-        // Start observing frames asynchronously and process them
-        scope.launch {
-            frameReassembler.observeFrames().collect { frame ->
-                processFrame(frame)
+        startFrameCollection()
+    }
+
+    private fun startFrameCollection() {
+        val reassembler = frameReassembler
+        frameCollectorJob = scope.launch {
+            reassembler.observeFrames().collect { frame ->
+                synchronized(sessionLock) {
+                    if (reassembler === frameReassembler) processFrame(frame)
+                }
             }
         }
     }
@@ -325,6 +375,32 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
         val messageType = ByteUtils.getUnsignedByte(data, headerIdx + OFFSET_MESSAGE_TYPE)
         return when (messageType) {
+            0x46, 0x5F -> {
+                // Only known status values with the standard trailer can confirm security state.
+                if (data[headerIdx + 17] == 0x14.toByte() &&
+                    data[headerIdx + 18] == 0x5A.toByte() &&
+                    data[headerIdx + 19] == 0x5A.toByte()
+                ) {
+                    val status = ByteUtils.getUnsignedByte(data, headerIdx + 2)
+                    val state = _securityStateFlow.value
+                    if (status == 0 || status == 1) {
+                        _securityStateFlow.value = if (messageType == 0x46) {
+                            state.copy(authentication = if (status == 1)
+                                AuthenticationState.REQUIRED else AuthenticationState.AUTHENTICATED)
+                        } else {
+                            state.copy(lock = if (status == 1)
+                                WheelLockState.LOCKED else WheelLockState.UNLOCKED)
+                        }
+                        val confirmed = _securityStateFlow.value
+                        _securityEventFlow.tryEmit(if (messageType == 0x46) {
+                            WheelSecurityEvent.AuthenticationStatus(confirmed.authentication)
+                        } else {
+                            WheelSecurityEvent.LockStatus(confirmed.lock)
+                        })
+                    }
+                }
+                null
+            }
             FRAME_TYPE_A9 -> parseTypeA9(data, headerIdx)
             FRAME_TYPE_B9 -> {
                 parseTypeB9(data, headerIdx)
@@ -427,7 +503,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 fanStatus = lastKnownFanStatus,
                 chargingStatus = lastKnownChargingStatus,
                 cpuLoad = lastKnownCpuLoad,
-                speedLimit = lastKnownSpeedLimit,
+                speedLimit = lastKnownWheelMaxSpeed?.toDouble(),
+                dynamicSpeedLimit = lastKnownDynamicSpeedLimit,
                 alarm1Speed = lastKnownAlarm1Speed,
                 alarm2Speed = lastKnownAlarm2Speed,
                 alarm3Speed = lastKnownAlarm3Speed,
@@ -527,12 +604,12 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     /**
-     * Frame 0xF6: Speed limit
+     * Frame 0xF6: Runtime speed ceiling, not the configured max-speed setting.
      * uint16 LE @2, in 0.01 km/h units
      */
     private fun parseTypeF6(data: ByteArray, base: Int) {
         if (!ensureRange(data, base + 2, 2)) return
-        lastKnownSpeedLimit = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0
+        lastKnownDynamicSpeedLimit = ByteUtils.getUnsignedShortLE(data, base + 2) / 100.0
     }
 
     /**
@@ -692,6 +769,11 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     }
 
     override fun close() {
+        synchronized(sessionLock) {
+            frameCollectorJob?.cancel()
+            frameReassembler.reset()
+            _securityStateFlow.value = WheelSecurityState()
+        }
         scope.cancel()
         lastKnownPwm = null
         _channel.close()
@@ -702,8 +784,14 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         _rawFrameFlow.tryEmit(data.clone())
 
         // Let the reassembler handle the incoming bytes asynchronously
-        scope.launch {
-            frameReassembler.processIncomingBytes(data)
+        val snapshot = data.clone()
+        synchronized(sessionLock) {
+            val reassembler = frameReassembler
+            scope.launch {
+                synchronized(sessionLock) {
+                    if (reassembler === frameReassembler) reassembler.processIncomingBytes(snapshot)
+                }
+            }
         }
         // Return null because data is emitted asynchronously via the dataFlow
         return null
@@ -711,6 +799,22 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {
+            CommandType.AUTHENTICATE -> {
+                val pin = value as? String ?: return byteArrayOf()
+                if (pin.length != 4 || pin.any { it !in '0'..'9' }) return byteArrayOf()
+                buildLegacyCommand(command = 0x44).also { frame ->
+                    pin.forEachIndexed { index, digit -> frame[index + 2] = digit.code.toByte() }
+                }
+            }
+
+            CommandType.LOCK, CommandType.UNLOCK -> {
+                if (securityStateFlow.value.authentication == AuthenticationState.REQUIRED) {
+                    return byteArrayOf()
+                }
+                buildLegacyCommand(command = 0x5D, payload2 = if (commandType == CommandType.LOCK) 1 else 0)
+            }
+
+            CommandType.REQUEST_LOCK_STATE -> buildLegacyCommand(command = 0x5E)
             CommandType.LIGHT_ON -> buildLegacyCommand(
                 command = 0x73,
                 payload2 = 0x12,
@@ -955,13 +1059,10 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                     initialDelayMs = 400L,
                     maxRetries = 2
                 ),
-                // KingSong firmware stops pushing 0xA9/0xB9 telemetry when the app goes
-                // silent. Sending the start-stream opcode (0x5E) shortly after connecting
-                // re-arms the stream. eucplanet dispatches this ~2.5 s post-connect.
+                // Retain the existing delayed 0x5E query; its dedicated status reply is 0x5F.
                 ProtocolQuerySpec(
                     "ks.start-stream",
-                    CommandType.CUSTOM,
-                    buildLegacyCommand(command = 0x5E),
+                    CommandType.REQUEST_LOCK_STATE,
                     initialDelayMs = 2_500L,
                     responseTimeoutMs = 500L,
                     maxRetries = 1
@@ -996,6 +1097,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         return when (query.commandType) {
             CommandType.REQUEST_FIRMWARE -> messageType == FRAME_TYPE_BB
             CommandType.REQUEST_SERIAL -> messageType == FRAME_TYPE_B3
+            CommandType.REQUEST_LOCK_STATE -> messageType == 0x5F
             CommandType.CUSTOM -> when (query.id) {
                 QUERY_ID_REQUEST_ALARMS ->
                     messageType == FRAME_TYPE_A4 || messageType == FRAME_TYPE_B5
