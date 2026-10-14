@@ -81,12 +81,6 @@ android {
                 if (isCi) {
                     //excludeTags("slow") // NoDrop exclus en CI
                 }
-
-                lint {
-                    xmlReport = true
-                    htmlReport = true
-                    abortOnError = true
-                }
             }
 
             testTask.maxParallelForks =
@@ -96,6 +90,12 @@ android {
 
             testTask.jvmArgs("-Xmx1g")
         }
+    }
+
+    lint {
+        xmlReport = true
+        htmlReport = true
+        abortOnError = true
     }
 }
 
