@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import java.security.SecureRandom
 import java.util.UUID
 
 /**
@@ -173,6 +174,8 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     })
     private var frameReassembler = FrameReassembler(byteParser)
     private val sessionLock = Any()
+    private var unlockChallenge: IntArray? = null
+    private val unlockRandom = SecureRandom()
     private var frameCollectorJob: Job? = null
     private val _securityStateFlow = MutableStateFlow(WheelSecurityState())
     override val securityStateFlow: StateFlow<WheelSecurityState> = _securityStateFlow.asStateFlow()
@@ -190,6 +193,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             // A new channel isolates frames already queued by the previous connection.
             frameReassembler = FrameReassembler(byteParser)
             _securityStateFlow.value = WheelSecurityState()
+            unlockChallenge = null
             lastKnownDynamicSpeedLimit = null
             lastKnownWheelMaxSpeed = null
             lastKnownAlarm1Speed = null
@@ -384,6 +388,13 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                     val status = ByteUtils.getUnsignedByte(data, headerIdx + 2)
                     val state = _securityStateFlow.value
                     if (status == 0 || status == 1) {
+                        if (messageType == 0x5F &&
+                            (4..9).all { ByteUtils.getUnsignedByte(data, headerIdx + it) in 0x30..0x39 }
+                        ) {
+                            unlockChallenge = intArrayOf(4, 6, 8).map {
+                                ByteUtils.getUnsignedByte(data, headerIdx + it) - 0x30
+                            }.toIntArray()
+                        }
                         _securityStateFlow.value = if (messageType == 0x46) {
                             state.copy(authentication = if (status == 1)
                                 AuthenticationState.REQUIRED else AuthenticationState.AUTHENTICATED)
@@ -773,6 +784,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             frameCollectorJob?.cancel()
             frameReassembler.reset()
             _securityStateFlow.value = WheelSecurityState()
+            unlockChallenge = null
         }
         scope.cancel()
         lastKnownPwm = null
@@ -808,10 +820,30 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             }
 
             CommandType.LOCK, CommandType.UNLOCK -> {
-                if (securityStateFlow.value.authentication == AuthenticationState.REQUIRED) {
-                    return byteArrayOf()
+                synchronized(sessionLock) {
+                    if (securityStateFlow.value.authentication == AuthenticationState.REQUIRED) {
+                        return byteArrayOf()
+                    }
+                    if (commandType == CommandType.LOCK) {
+                        unlockChallenge = null
+                        buildLegacyCommand(command = 0x5D, payload2 = 1)
+                    } else {
+                        val challenge = unlockChallenge ?: return byteArrayOf()
+                        val x = unlockRandom.nextInt(10)
+                        val y = unlockRandom.nextInt(10)
+                        val z = unlockRandom.nextInt(10)
+                        // KingSong mixes the 5F challenge digits with three nonce digits.
+                        val sum = x + y + z
+                        val a = (sum + challenge[0] + challenge[1] + challenge[2]) % 10
+                        val b = (sum + a + challenge[1] + challenge[2]) % 10
+                        val c = (sum + a + b + challenge[2]) % 10
+                        buildLegacyCommand(command = 0x5D).also { frame ->
+                            intArrayOf(a, x, b, y, c, z).forEachIndexed { index, digit ->
+                                frame[10 + index] = (0x30 + digit).toByte()
+                            }
+                        }
+                    }
                 }
-                buildLegacyCommand(command = 0x5D, payload2 = if (commandType == CommandType.LOCK) 1 else 0)
             }
 
             CommandType.REQUEST_LOCK_STATE -> buildLegacyCommand(command = 0x5E)
