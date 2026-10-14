@@ -1546,9 +1546,9 @@ class BLEManager internal constructor(
  */
 // Callback interfaces
 interface ScanCallback {
-    fun onScanStarted()
-    fun onDeviceDiscovered(device: EUCDevice)
-    fun onScanCompleted(devices: List<EUCDevice>)
+    fun onScanStarted() {/*empty body to avoid multiple reimplementing*/}
+    fun onDeviceDiscovered(device: EUCDevice) {/*empty body to avoid multiple reimplementing*/}
+    fun onScanCompleted(devices: List<EUCDevice>) {/*empty body to avoid multiple reimplementing*/}
 }
 
 /**
@@ -1567,14 +1567,14 @@ interface ScanCallback {
  *   publish the event into a UI-observed state holder.
  */
 abstract class ConnectionCallback : io.github.tritbool.euc.ble.core.ScanCallback {
-    open abstract fun onConnecting()
-    open abstract fun onConnected()
-    open abstract fun onDisconnected()
-    open abstract fun onConnectionFailed(error: BLEException)
-    open abstract fun onServicesDiscovered(services: List<BluetoothGattService>)
-    open abstract fun onMtuChanged(mtu: Int)
-    open abstract fun onProtocolSelectionRequired(protocols: List<EUCProtocol>)
-    open abstract fun onProtocolSelected(selection: ProtocolSelection)
+    open fun onConnecting() {/*empty body to avoid multiple reimplementing*/}
+    open fun onConnected() {/*empty body to avoid multiple reimplementing*/}
+    open fun onDisconnected() {/*empty body to avoid multiple reimplementing*/}
+    open  fun onConnectionFailed(error: BLEException) {/*empty body to avoid multiple reimplementing*/}
+    open fun onServicesDiscovered(services: List<BluetoothGattService>) {/*empty body to avoid multiple reimplementing*/}
+    open fun onMtuChanged(mtu: Int) {/*empty body to avoid multiple reimplementing*/}
+    open fun onProtocolSelectionRequired(protocols: List<EUCProtocol>) {/*empty body to avoid multiple reimplementing*/}
+    open fun onProtocolSelected(selection: ProtocolSelection) {/*empty body to avoid multiple reimplementing*/}
 }
 
 /**
