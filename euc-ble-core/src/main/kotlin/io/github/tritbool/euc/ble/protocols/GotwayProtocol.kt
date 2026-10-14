@@ -669,7 +669,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     }
 
     private fun estimateBatteryLevel(voltage: Double): Int {
-        if (voltage <= 0.0) return 0
+        return if (voltage <= 0.0) 0
         else {
             val battSpecs = lastKnownModel
                 ?.let { model ->
@@ -677,11 +677,11 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
                         entry.key.equals(model, ignoreCase = true)
                     }?.value
                 }
-            return if (battSpecs != null) (((voltage - battSpecs.minVoltage) / (battSpecs.maxVoltage - battSpecs.minVoltage)) * 100.0)
+            if (battSpecs != null) (((voltage - battSpecs.minVoltage) / (battSpecs.maxVoltage - battSpecs.minVoltage)) * 100.0)
                 .toInt()
                 .coerceIn(0, 100)
             else
-                return (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
+                (((voltage - MIN_BATTERY_VOLTAGE) / (MAX_BATTERY_VOLTAGE - MIN_BATTERY_VOLTAGE)) * 100.0)
                     .toInt()
                     .coerceIn(0, 100)
         }
