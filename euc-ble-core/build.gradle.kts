@@ -10,6 +10,10 @@ plugins {
     id("org.sonarqube") version "7.5.0.8588"
 }
 
+dependencyLocking {
+    lockAllConfigurations()
+}
+
 sonar {
   properties {
     property("sonar.projectKey", "tritbool-github_euc-ble-library")
