@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.WheelSecurityState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.io.Closeable
@@ -63,6 +64,16 @@ interface EUCProtocol : Closeable {
      * Flow of commands or raw bytes that the protocol needs to write to the device automatically.
      */
     val writeFlow: Flow<ByteArray> get() = emptyFlow()
+
+    /** Notification-confirmed security state, if supported by this protocol. */
+    val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
+    fun getSecurityState(): WheelSecurityState? = null
+
+    /** Clears connection-specific state without closing this reusable protocol. */
+    fun resetSession() {}
+
+    /** Rechecked by the BLE write queue immediately before submission. */
+    fun canSendCommand(payload: ByteArray): Boolean = true
 
     /**
      * Decode raw BLE data into EUCData
@@ -214,6 +225,10 @@ enum class CommandType {
     SET_PEDAL_CUTOFF_ANGLE,
     /** KingSong: pedal pitch trim in tenths of a degree (signed), value = Int. */
     SET_PEDAL_PITCH_TRIM,
+    /** KingSong: exactly four ASCII digits as a String, preserving leading zeros. */
+    AUTHENTICATE,
+    /** KingSong: request notification-confirmed lock status (0x5E -> 0x5F). */
+    REQUEST_LOCK_STATE,
     CUSTOM
 }
 

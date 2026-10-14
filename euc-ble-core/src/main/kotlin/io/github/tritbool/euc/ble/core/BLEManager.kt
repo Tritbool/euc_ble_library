@@ -24,6 +24,7 @@ import io.github.tritbool.euc.ble.integration.BleBackendListener
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
+import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -43,8 +44,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -123,12 +127,18 @@ class BLEManager internal constructor(
     private var queryOrchestrationJob: Job? = null
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
+    private var securityFlowCollectorJob: Job? = null
+    private val _securityStateFlow = MutableStateFlow<WheelSecurityState?>(null)
+    /** Null without a selected security-capable protocol; state survives collector changes. */
+    val securityStateFlow: StateFlow<WheelSecurityState?> = _securityStateFlow.asStateFlow()
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
 
     // Serialized GATT write queue (see sendCommand)
-    private class PendingWrite(val payload: ByteArray, val characteristicUuid: UUID)
+    private class PendingWrite(val payload: ByteArray, val characteristicUuid: UUID, val generation: Long)
     private val writeQueue = Channel<PendingWrite>(Channel.UNLIMITED)
     private var writeQueueJob: Job? = null
+    @Volatile
+    private var writeGeneration = 0L
 
     @Volatile
     private var pendingWriteAck: CompletableDeferred<Unit>? = null
@@ -393,6 +403,7 @@ class BLEManager internal constructor(
         reconnectRetryCount = 0
         cancelPollingOrchestration()
         cancelDataFlowCollection()
+        resetProtocolSession()
 
         connectionJob?.cancel()
         bluetoothGatt?.disconnect()
@@ -435,23 +446,33 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun sendCommand(commandType: CommandType, value: Any = Unit) {
+        val generation = writeGeneration
         val protocol = currentProtocol ?: run {
             errorCallback?.onError(BLEException("No protocol selected; cannot send command"))
             return
         }
         val payload = createCommand(commandType, value)
         if (payload.isEmpty()) return
+        if (generation != writeGeneration || currentProtocol !== protocol) {
+            payload.fill(0)
+            return
+        }
         sendCommand(payload, protocol.getWriteCharacteristicUUID())
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
+        val generation = writeGeneration
         if (connectionState != BLEConstants.ConnectionState.CONNECTED) {
             errorCallback?.onError(BLEException("Not connected to a device"))
             return
         }
         if (command.isEmpty()) {
             errorCallback?.onError(BLEException("Cannot send empty command payload"))
+            return
+        }
+        if (currentProtocol?.canSendCommand(command) == false) {
+            errorCallback?.onError(BLEException("Wheel authentication required before lock/unlock"))
             return
         }
 
@@ -465,7 +486,7 @@ class BLEManager internal constructor(
         // one (or a CCCD descriptor write) is in flight is rejected and never reaches the
         // wheel. Writes are therefore serialized through a queue and retried when busy.
         ensureWriteQueueRunning()
-        writeQueue.trySend(PendingWrite(command.clone(), characteristicUuid)) // defensive copy
+        writeQueue.trySend(PendingWrite(command.clone(), characteristicUuid, generation))
     }
 
     private fun ensureWriteQueueRunning() {
@@ -473,7 +494,11 @@ class BLEManager internal constructor(
             if (writeQueueJob?.isActive == true) return
             writeQueueJob = coroutineScope.launch {
                 for (write in writeQueue) {
-                    performQueuedWrite(write)
+                    try {
+                        performQueuedWrite(write)
+                    } finally {
+                        write.payload.fill(0)
+                    }
                 }
             }
         }
@@ -482,7 +507,12 @@ class BLEManager internal constructor(
     @SuppressLint("MissingPermission")
     private suspend fun performQueuedWrite(write: PendingWrite) {
         for (attempt in 1..MAX_WRITE_ATTEMPTS) {
+            if (write.generation != writeGeneration) return
             if (connectionState != BLEConstants.ConnectionState.CONNECTED) return
+            if (currentProtocol?.canSendCommand(write.payload) == false) {
+                errorCallback?.onError(BLEException("Wheel authentication required before lock/unlock"))
+                return
+            }
             val characteristic = getCharacteristic(write.characteristicUuid) ?: run {
                 errorCallback?.onError(BLEException("Characteristic not found: ${write.characteristicUuid}"))
                 return
@@ -706,6 +736,9 @@ class BLEManager internal constructor(
 
             BluetoothProfile.STATE_DISCONNECTED -> {
                 cancelPollingOrchestration()
+                cancelDataFlowCollection()
+                resetProtocolSession()
+                currentProtocol = null
                 connectionState = BLEConstants.ConnectionState.DISCONNECTED
                 connectionCallback?.onDisconnected()
 
@@ -1021,6 +1054,12 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     internal fun startDataFlowCollection(protocol: EUCProtocol) {
         cancelDataFlowCollection()
+        _securityStateFlow.value = protocol.getSecurityState()
+        securityFlowCollectorJob = coroutineScope.launch {
+            protocol.securityStateFlow.collect { state ->
+                if (currentProtocol === protocol) _securityStateFlow.value = state
+            }
+        }
         dataFlowCollectorJob = coroutineScope.launch {
             protocol.dataFlow.collect { d ->
                 dataCallback?.onDataReceived(d)
@@ -1050,6 +1089,22 @@ class BLEManager internal constructor(
         dataFlowCollectorJob = null
         writeFlowCollectorJob?.cancel()
         writeFlowCollectorJob = null
+        securityFlowCollectorJob?.cancel()
+        securityFlowCollectorJob = null
+    }
+
+    private fun resetProtocolSession() {
+        writeGeneration++
+        writeQueueJob?.cancel()
+        writeQueueJob = null
+        pendingWriteAck?.cancel()
+        pendingWriteAck = null
+        while (true) {
+            val write = writeQueue.tryReceive().getOrNull() ?: break
+            write.payload.fill(0)
+        }
+        currentProtocol?.resetSession()
+        _securityStateFlow.value = null
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -1059,6 +1114,9 @@ class BLEManager internal constructor(
         selectionReason: ProtocolSelectionReason
     ) {
         if (currentProtocol === protocol) return
+        cancelDataFlowCollection()
+        resetProtocolSession()
+        protocol.resetSession()
         currentProtocol = protocol
         awaitingManualProtocolSelection = false
         logger.info(TAG, "Selected protocol ${protocol.javaClass.simpleName} via $reason")
