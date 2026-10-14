@@ -386,7 +386,7 @@ class GotwayProtocolTest {
             val result = awaitItem()
 
             assertNotNull(result.totalDistance)
-            assertEquals(456.789, result.totalDistance!!, 0.01)
+            assertEquals(456.789 * 1.60934, result.totalDistance!!, 0.01)
             assertEquals(1, result.pedalsMode)
             assertEquals(alarmRaw, result.alarmMode)
             assertEquals(rollRaw, result.rollAngleMode)

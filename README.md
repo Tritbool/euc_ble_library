@@ -25,6 +25,19 @@ Errors are exposed through `ErrorCallback`.
 Callbacks are invoked from background contexts and are not guaranteed to run on the Android main thread.
 Switch explicitly to the main thread before touching Android UI.
 
+## Telemetry units
+
+`EUCData` exposes physical measurements in metric units: speed in km/h, distance in km, voltage in V,
+current in A, temperature in °C, power in W, durations in seconds, angles in degrees, torque in N·m,
+and tire pressure in kPa. Decoders convert supported wheel imperial settings before publishing values;
+`usesMiles` is metadata for the wheel's preference and does not change those units.
+
+`distance` is trip distance when the protocol reports it, while `totalDistance` is lifetime/odometer
+distance. Legacy Ninebot telemetry only reports an odometer and therefore exposes that value in both
+fields. KingSong `distance` and `wheelDistance` are populated from its trip frame; before that frame
+arrives, `distance` is zero and `wheelDistance` is null. Integer mode/status settings are protocol-
+specific codes unless otherwise documented on `EUCData`.
+
 ```kotlin
 val client = EucBleClient(context)
 

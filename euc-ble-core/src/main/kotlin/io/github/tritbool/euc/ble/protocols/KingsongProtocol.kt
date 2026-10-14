@@ -409,7 +409,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 current = current,
                 temperature = temperature,
                 batteryLevel = batteryLevel,
-                distance = lastKnownWheelDistance ?: totalDistRaw,
+                distance = lastKnownWheelDistance ?: 0.0,
                 power = power,
                 pwm = lastKnownPwm,
                 timestamp = now,
@@ -432,7 +432,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                 alarm2Speed = lastKnownAlarm2Speed,
                 alarm3Speed = lastKnownAlarm3Speed,
                 wheelMaxSpeed = lastKnownWheelMaxSpeed,
-                wheelDistance = lastKnownWheelDistance ?: totalDistRaw,
+                wheelDistance = lastKnownWheelDistance,
                 lightMode = lastKnownLightMode
             )
         } catch (_: Exception) {
@@ -447,7 +447,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
      */
     private fun parseTypeB9(data: ByteArray, base: Int) {
         if (ensureRange(data, base + 2, 4)) {
-            lastKnownWheelDistance = ByteUtils.getUnsignedIntLE(data, base + 2).toDouble()
+            lastKnownWheelDistance = ByteUtils.getUnsignedIntLE(data, base + 2) / 1000.0
         }
         if (ensureRange(data, base + 8, 2)) {
             lastKnownTopSpeed = ByteUtils.getUnsignedShortLE(data, base + 8) / 100.0

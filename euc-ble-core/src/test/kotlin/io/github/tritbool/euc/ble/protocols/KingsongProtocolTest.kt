@@ -286,7 +286,23 @@ class KingsongProtocolTest {
             assertEquals(1, data.fanStatus)
             assertEquals(0, data.chargingStatus)
             assertEquals(42.0, data.motorTemperature ?: -1.0, 0.01)
-            assertEquals(5000.0, data.wheelDistance ?: -1.0, 0.01)
+            assertEquals(5.0, data.distance, 0.01)
+            assertEquals(5.0, data.wheelDistance ?: -1.0, 0.01)
+            assertEquals(12.345, data.totalDistance ?: -1.0, 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun decodeA9WithoutB9KeepsTripDistanceUnavailable() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame())
+            val data = awaitItem()
+            assertEquals(0.0, data.distance, 0.0)
+            assertNull(data.wheelDistance)
+            assertEquals(12.345, data.totalDistance ?: -1.0, 0.001)
             cancelAndIgnoreRemainingEvents()
         }
     }
