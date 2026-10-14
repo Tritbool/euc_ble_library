@@ -30,7 +30,7 @@ Repository administrators must configure:
 - A branch protection rule/ruleset for `main` requiring the **Quality gate** status check.
   Workflow files cannot enable required checks themselves; select the check after its first run.
 - Fork PRs do not receive `SONAR_TOKEN`. Their lint/tests still run, but the gate fails explicitly
-  until a maintainer analyzes a reviewed commit on a trusted branch. Do not use
+  until a maintainer opens a trusted-branch PR for the reviewed change. Do not use
   `pull_request_target` to execute fork code with secrets.
 
 > **Work in progress — version 0.1.0.** This library is experimental: protocol support is

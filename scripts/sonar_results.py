@@ -6,6 +6,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -81,13 +82,25 @@ def is_latest(client, project, scope, analysis_id, sha):
                 and items[0].get("revision") == sha)
 
 
+def scanner_revision(context):
+    if not isinstance(context, str):
+        return None
+    matches = re.findall(
+        r"^\s*(?:-\s*)?sonar\.scm\.revision\s*=\s*(\S+)\s*$",
+        context, flags=re.MULTILINE)
+    if len(set(matches)) > 1:
+        raise CollectionError("SonarCloud scanner context has conflicting revisions.")
+    return matches[0] if matches else None
+
+
 def collect(client, report, sha):
     task_id = report.get("ceTaskId")
     project = report.get("projectKey")
     if not task_id or not project:
         raise CollectionError("Sonar scanner report lacks task or project identifier.")
     while True:
-        task = client.get("ce/task", id=task_id).get("task", {})
+        task = client.get("ce/task", id=task_id,
+                          additionalFields="scannerContext").get("task", {})
         status = task.get("status")
         if status == "SUCCESS":
             break
@@ -99,14 +112,23 @@ def collect(client, report, sha):
         time.sleep(min(3, remaining))
     if task.get("componentKey") not in (None, project):
         raise CollectionError("SonarCloud task project does not match the scanner report.")
+    if task.get("id") not in (None, task_id):
+        raise CollectionError("SonarCloud task identifier does not match the scanner report.")
     analysis_id = task.get("analysisId")
     if not analysis_id:
         raise CollectionError("SonarCloud compute task lacks an analysis identifier.")
     scope = {}
-    if task.get("branch"):
+    if task.get("pullRequest"):
+        scope["pullRequest"] = task["pullRequest"]
+    elif task.get("branch"):
         scope["pullRequest" if task.get("branchType") == "PULL_REQUEST"
               else "branch"] = task["branch"]
     revision = task.get("revision")
+    context_revision = scanner_revision(task.get("scannerContext"))
+    if revision and context_revision and revision != context_revision:
+        raise CollectionError("SonarCloud task and scanner context revisions disagree.")
+    if not revision:
+        revision = context_revision
     if not revision:
         revision = find_revision(client, project, scope, analysis_id)
     if revision != sha:
@@ -122,6 +144,10 @@ def collect(client, report, sha):
         "dashboard_url": SERVER + "/dashboard?" + urlencode({"id": project, **scope}),
         "metrics_status": "unavailable",
     }
+    # project_analyses/search exposes branch history, not PR history. A task's
+    # scanner context proves gate provenance, but cannot prove latest PR measures.
+    if "pullRequest" in scope:
+        return result
     try:
         if not is_latest(client, project, scope, analysis_id, sha):
             result["metrics_status"] = "stale"

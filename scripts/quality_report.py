@@ -103,8 +103,11 @@ def sonar(root, outcome, sha):
         if not isinstance(data, dict):
             raise ValueError
         if not sha or data.get("sha") != sha:
-            return section(outcome, reason="Sonar snapshot belongs to another revision.",
-                           metrics_status="stale", gate_status="unavailable")
+            result = section(outcome, reason="Sonar snapshot belongs to another revision.",
+                             metrics_status="stale", gate_status="stale")
+            if result["status"] != "failed":
+                result["status"] = "stale"
+            return result
         result = section(outcome, data.get("available", False))
         # Explicit allowlist: never copy credentials or arbitrary collector fields.
         for key in ("gate_status", "analysis_id", "revision", "timestamp",
@@ -130,6 +133,7 @@ def main(root=Path("."), environ=None):
         "schema_version": 1, "timestamp": datetime.now(timezone.utc).isoformat(),
         "sha": sha, "run_id": env.get("GITHUB_RUN_ID"),
         "repository": env.get("GITHUB_REPOSITORY"),
+        "check_outcome": env.get("CHECK_OUTCOME", "unknown"),
         "tests": tests(build, test_outcome),
         "lint": lint(build, env.get("LINT_OUTCOME")),
         "coverage": {kind: coverage(build, kind, test_outcome)
@@ -139,7 +143,9 @@ def main(root=Path("."), environ=None):
     statuses = [result["tests"]["status"], result["lint"]["status"],
                 result["sonar"]["status"],
                 *(item["status"] for item in result["coverage"].values())]
-    result["status"] = ("failed" if "failed" in statuses else
+    result["status"] = ("failed" if "failed" in statuses or
+                        result["check_outcome"] in ("failure", "cancelled", "timed_out") else
+                        "stale" if "stale" in statuses else
                         "unavailable" if "unavailable" in statuses else "passed")
     output = root / "quality/summary.json"
     output.parent.mkdir(parents=True, exist_ok=True)

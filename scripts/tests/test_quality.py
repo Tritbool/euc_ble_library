@@ -101,6 +101,8 @@ class SnapshotTests(FixtureTest):
             "gate_status": "OK", "metrics": {"bugs": 0}}))
         result = quality_report.sonar(self.root, "success", "new")
         self.assertFalse(result["available"])
+        self.assertEqual(result["status"], "stale")
+        self.assertEqual(result["gate_status"], "stale")
         self.assertEqual(result["metrics_status"], "stale")
         self.assertNotIn("metrics", result)
 
@@ -125,6 +127,22 @@ class SnapshotTests(FixtureTest):
         self.assertEqual(result["run_id"], "42")
         self.assertEqual(result["status"], "failed")
         self.assertFalse(result["tests"]["available"])
+
+    def test_checks_job_failure_overrides_passing_reports(self):
+        passing = {"status": "passed", "available": True}
+        with patch.object(quality_report, "tests", return_value=passing), \
+                patch.object(quality_report, "lint", return_value=passing), \
+                patch.object(quality_report, "coverage", return_value=passing), \
+                patch.object(quality_report, "sonar", return_value=passing):
+            for outcome in ("failure", "cancelled", "success"):
+                with self.subTest(outcome=outcome), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(quality_report.main(self.root, {
+                        "GITHUB_SHA": "sha", "CHECK_OUTCOME": outcome}), 0)
+                result = json.loads((self.root / "quality/summary.json").read_text())
+                self.assertEqual(result["check_outcome"], outcome)
+                self.assertEqual(result["status"],
+                                 "passed" if outcome == "success" else "failed")
 
 
 class FakeClient:
@@ -171,7 +189,8 @@ class SonarTests(FixtureTest):
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["metrics"], {"coverage": 71.3, "bugs": 0})
         self.assertTrue(result["dashboard_url"].startswith("https://sonarcloud.io/"))
-        self.assertEqual(client.calls[0], ("ce/task", {"id": "task"}))
+        self.assertEqual(client.calls[0], ("ce/task", {
+            "id": "task", "additionalFields": "scannerContext"}))
         self.assertEqual(client.calls[1][1], {"analysisId": "analysis"})
 
     def test_metrics_stale_before_and_after(self):
@@ -207,6 +226,43 @@ class SonarTests(FixtureTest):
         result = sonar_results.collect(client, self.report, "sha")
         self.assertEqual(result["revision"], "sha")
         self.assertEqual(client.calls[1][1]["branch"], "main")
+
+    def test_pr_gate_with_scanner_revision_does_not_require_analysis_history(self):
+        for status in ("OK", "ERROR"):
+            with self.subTest(status=status):
+                client = FakeClient([
+                    ("ce/task", self.task(
+                        revision=None, pullRequest="123",
+                        scannerContext="Scanner properties:\n"
+                        "  - sonar.scm.revision=sha\n  - sonar.token=private-token\n")),
+                    ("qualitygates/project_status", self.gate(status))])
+                result = sonar_results.collect(client, self.report, "sha")
+                self.assertEqual(result["revision"], "sha")
+                self.assertEqual(result["gate_status"], status)
+                self.assertEqual(result["metrics_status"], "unavailable")
+                self.assertNotIn("metrics", result)
+                self.assertIn("pullRequest=123", result["dashboard_url"])
+                self.assertNotIn("private-token", json.dumps(result))
+                self.assertEqual([call[0] for call in client.calls],
+                                 ["ce/task", "qualitygates/project_status"])
+
+    def test_pr_scanner_context_mismatched_revision_fails(self):
+        client = FakeClient([
+            ("ce/task", self.task(revision=None, pullRequest="123",
+                                 scannerContext="  sonar.scm.revision=other\n"))])
+        with self.assertRaises(sonar_results.CollectionError):
+            sonar_results.collect(client, self.report, "sha")
+
+    def test_conflicting_context_and_task_revisions_fail(self):
+        for context in ("sonar.scm.revision=other",
+                        "sonar.scm.revision=sha\nsonar.scm.revision=other"):
+            client = FakeClient([("ce/task", self.task(scannerContext=context))])
+            with self.assertRaises(sonar_results.CollectionError):
+                sonar_results.collect(client, self.report, "sha")
+
+    def test_scanner_context_property_must_match_exact_key(self):
+        self.assertIsNone(sonar_results.scanner_revision(
+            "other.sonar.scm.revision=sha\nsonar.scm.revision.suffix=sha"))
 
     def test_revision_mismatch_and_unverifiable_revision_fail(self):
         for revision in ("different", None):
@@ -284,6 +340,21 @@ class SonarTests(FixtureTest):
                     if code else "OK"}), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(sonar_results.main(self.root, {
                     "SONAR_TOKEN": "secret", "GITHUB_SHA": "sha"}), code)
+
+    def test_raw_api_failure_and_context_never_enter_artifact(self):
+        self.write("euc-ble-core/build/sonar/report-task.txt",
+                   "projectKey=project\nceTaskId=task\n")
+        client = FakeClient([("ce/task", self.task(
+            status="FAILED", errorMessage="private-token",
+            scannerContext="sonar.token=private-token"))])
+        with patch.object(sonar_results, "Client", return_value=client), \
+                contextlib.redirect_stdout(io.StringIO()) as log:
+            self.assertEqual(sonar_results.main(self.root, {
+                "SONAR_TOKEN": "private-token", "GITHUB_SHA": "sha"}), 1)
+        artifact = (self.root / "quality/sonar.json").read_text()
+        self.assertNotIn("private-token", artifact + log.getvalue())
+        self.assertNotIn("scannerContext", artifact)
+        self.assertNotIn("errorMessage", artifact)
 
     def test_scannerwork_metadata_fallback(self):
         self.write("euc-ble-core/.scannerwork/report-task.txt",
