@@ -216,10 +216,11 @@ class KingsongProtocolTest {
         frame[3] = ((voltageRaw shr 8) and 0xFF).toByte()
         frame[4] = (speedRaw and 0xFF).toByte()
         frame[5] = ((speedRaw shr 8) and 0xFF).toByte()
-        frame[6] = (distanceRaw and 0xFF).toByte()
-        frame[7] = ((distanceRaw shr 8) and 0xFF).toByte()
-        frame[8] = ((distanceRaw shr 16) and 0xFF).toByte()
-        frame[9] = ((distanceRaw shr 24) and 0xFF).toByte()
+        // A9 sends the high 16-bit word first, with each word little-endian.
+        frame[6] = ((distanceRaw shr 16) and 0xFF).toByte()
+        frame[7] = ((distanceRaw shr 24) and 0xFF).toByte()
+        frame[8] = (distanceRaw and 0xFF).toByte()
+        frame[9] = ((distanceRaw shr 8) and 0xFF).toByte()
         frame[10] = (currentRaw and 0xFF).toByte()
         frame[11] = ((currentRaw shr 8) and 0xFF).toByte()
         frame[12] = (temperatureRaw and 0xFF).toByte()
@@ -303,6 +304,22 @@ class KingsongProtocolTest {
             assertEquals(0.0, data.distance, 0.0)
             assertNull(data.wheelDistance)
             assertEquals(12.345, data.totalDistance ?: -1.0, 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun decodeA9OdometerUsesWordSwappedMeters() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            for (meters in listOf(0L, 12345L, 65535L, 65536L, 123456L)) {
+                protocol.decode(createA9Frame(distanceRaw = meters))
+                val data = awaitItem()
+                assertEquals(meters / 1000.0, data.totalDistance ?: -1.0, 0.000001)
+                assertEquals(0.0, data.distance, 0.0)
+                assertNull(data.wheelDistance)
+            }
             cancelAndIgnoreRemainingEvents()
         }
     }
