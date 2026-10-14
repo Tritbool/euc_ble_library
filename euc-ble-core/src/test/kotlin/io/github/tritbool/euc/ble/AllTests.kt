@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble
 
 import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
+import io.github.tritbool.euc.ble.core.BLEManagerCallbackContractTest
 import io.github.tritbool.euc.ble.core.BLEManagerDeviceNameSelectionTest
 import io.github.tritbool.euc.ble.core.BLEManagerGattFingerprintTest
 import io.github.tritbool.euc.ble.core.BLEManagerProtocolSelectionTest
@@ -8,9 +9,12 @@ import io.github.tritbool.euc.ble.core.BLEManagerTrafficTest
 import io.github.tritbool.euc.ble.core.BLEManagerWriteTypeTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
+import io.github.tritbool.euc.ble.core.LoggerTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
 import io.github.tritbool.euc.ble.models.BMSDataTest
 import io.github.tritbool.euc.ble.models.EUCDataTest
+import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.EUCProtocolContractTest
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
@@ -55,6 +59,7 @@ import org.junit.platform.suite.api.Suite
     BLEManagerProtocolSelectionTest::class,
     BLEManagerWriteTypeTest::class,
     BLEManagerTrafficTest::class,
+    BLEManagerCallbackContractTest::class,
     WheelLogGotwayTest::class,
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,
@@ -73,6 +78,8 @@ import org.junit.platform.suite.api.Suite
     NosfetNoDropTest::class,
     NinebotNoDropTest::class,
     EucBleClientEntryPointWheelLogTest::class,
+    LoggerTest::class,
+    EUCProtocolContractTest::class,
 )
 class AllTests {
 }
