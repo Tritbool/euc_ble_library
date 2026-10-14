@@ -3,6 +3,7 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.io.Closeable
@@ -67,6 +68,8 @@ interface EUCProtocol : Closeable {
 
     /** Notification-confirmed security state, if supported by this protocol. */
     val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
+    /** Individual valid security notifications, including unchanged status reports. */
+    val securityEventFlow: Flow<WheelSecurityEvent> get() = emptyFlow()
     fun getSecurityState(): WheelSecurityState? = null
 
     /** Clears connection-specific state without closing this reusable protocol. */

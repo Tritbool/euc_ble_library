@@ -18,6 +18,7 @@ import io.github.tritbool.euc.ble.core.TrafficEvent
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -90,6 +91,9 @@ class EucBleClient(
 
     /** Latest wheel-confirmed security state. Null when unavailable; collect for client PIN UI. */
     val securityStateFlow: StateFlow<WheelSecurityState?> = bleManager.securityStateFlow
+
+    /** Individual status notifications, including repeats. No replay; see [BLEManager.securityEventFlow]. */
+    val securityEventFlow: SharedFlow<WheelSecurityEvent> = bleManager.securityEventFlow
 
     /** Submit a four-ASCII-digit KingSong PIN. No persistent storage or reconnect replay. */
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)

@@ -118,7 +118,12 @@ Collect `client.securityStateFlow` for a client-owned PIN popup and lock indicat
 `io.github.tritbool.euc.ble.models`. The state is `null` without a selected security-capable
 protocol. For KingSong, authentication and lock status start as `UNKNOWN` and reset on
 disconnect/reconnect or protocol changes. `StateFlow` delivers the latest state to new collectors;
-it conflates identical updates, so it is not a per-attempt result/event stream.
+it conflates identical updates. `client.securityEventFlow` emits each valid notification as
+`WheelSecurityEvent.AuthenticationStatus` or `WheelSecurityEvent.LockStatus` (also in `models`),
+including repeated authentication-required responses. Subscribe before submitting a PIN to
+observe replies and let the app offer retry/cancel; these events do not identify a particular
+attempt or contain the PIN. Events have no replay and bounded, drop-oldest buffering, so use the
+state flow as the authoritative latest snapshot and implement waiting/timeouts in the client.
 
 ```kotlin
 client.securityStateFlow.collect { state ->

@@ -17,6 +17,7 @@ import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelLockState
 import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
@@ -42,6 +43,10 @@ class EucBleClientSecurityTest {
         assertEquals(CommandSupport.SUPPORTED, client.getCommandSupport(CommandType.LOCK))
         assertEquals(WheelSecurityState(), client.securityStateFlow.value)
         val events = collectTraffic(client)
+        val securityEvents = mutableListOf<WheelSecurityEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            client.securityEventFlow.collect { securityEvents.add(it) }
+        }
         val errorMessages = mutableListOf<String>()
         client.setErrorCallback(object : ErrorCallback {
             override fun onError(error: BLEException) { errorMessages.add(error.message.orEmpty()) }
@@ -66,6 +71,12 @@ class EucBleClientSecurityTest {
         assertEquals(0x44.toByte(), auth.bytes[16])
         assertArrayEquals("0012".toByteArray(Charsets.US_ASCII), auth.bytes.copyOfRange(2, 6))
         assertTrue(errorMessages.none { "0012" in it })
+        protocol.decode(notification(0x46, 1))
+        runCurrent()
+        assertEquals(2, securityEvents.count {
+            it == WheelSecurityEvent.AuthenticationStatus(AuthenticationState.REQUIRED)
+        })
+        assertTrue(client.securityEventFlow.replayCache.isEmpty())
         protocol.decode(notification(0x46, 0))
         runCurrent()
         advanceTimeBy(300)
@@ -158,6 +169,26 @@ class EucBleClientSecurityTest {
         assertNull(client.securityStateFlow.value)
         assertEquals(CommandSupport.UNSUPPORTED, client.getCommandSupport(CommandType.AUTHENTICATE))
         assertTrue(events.none { it.direction == TrafficDirection.TX && it.bytes.size == 20 && it.bytes[16] == 0x44.toByte() })
+    }
+
+    @Test
+    fun callbacksFromOldGattCannotChangeNewConnectionSecurityState() = runTest {
+        val (client, protocol, oldGatt) = connectedClient()
+        val newGatt = attachGatt(client.bleManager, protocol)
+        val characteristic = newGatt.services.single().characteristics.single()
+        val required = notification(0x46, 1)
+        client.bleManager.onCharacteristicChanged(oldGatt, characteristic, required)
+        @Suppress("DEPRECATION")
+        whenever(characteristic.value).thenReturn(notification(0x5F, 1))
+        @Suppress("DEPRECATION")
+        client.bleManager.onCharacteristicChanged(oldGatt, characteristic)
+        client.bleManager.onConnectionStateChange(oldGatt, BluetoothGatt.GATT_SUCCESS, BluetoothProfile.STATE_DISCONNECTED)
+        runCurrent()
+        assertEquals(BLEConstants.ConnectionState.CONNECTED, client.getConnectionState())
+        assertEquals(WheelSecurityState(), client.securityStateFlow.value)
+        client.bleManager.onCharacteristicChanged(newGatt, characteristic, required)
+        runCurrent()
+        assertEquals(AuthenticationState.REQUIRED, client.securityStateFlow.value?.authentication)
     }
 
     private fun TestScope.connectedClient(): Triple<EucBleClient, KingsongProtocol, BluetoothGatt> {

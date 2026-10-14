@@ -4,6 +4,7 @@ import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.WheelLockState
 import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -59,7 +60,9 @@ class KingsongSecurityTest {
     fun fragmentedAndConcatenatedNotificationsConfirmIndependentStateWithoutAutomaticWrites() = runTest {
         val protocol = KingsongProtocol(backgroundScope)
         val writes = mutableListOf<ByteArray>()
+        val securityEvents = mutableListOf<WheelSecurityEvent>()
         backgroundScope.launch { protocol.writeFlow.collect { writes.add(it) } }
+        backgroundScope.launch { protocol.securityEventFlow.collect { securityEvents.add(it) } }
         runCurrent()
         val required = notification(0x46, 1)
         protocol.decode(byteArrayOf(0x12) + required.copyOfRange(0, 7))
@@ -82,6 +85,13 @@ class KingsongSecurityTest {
         assertTrue(protocol.canSendCommand(notification(0x5D, 1)))
         assertTrue(protocol.createCommand(CommandType.LOCK, Unit).isNotEmpty())
         assertTrue(writes.isEmpty())
+        assertEquals(listOf(
+            WheelSecurityEvent.AuthenticationStatus(AuthenticationState.REQUIRED),
+            WheelSecurityEvent.LockStatus(WheelLockState.LOCKED),
+            WheelSecurityEvent.AuthenticationStatus(AuthenticationState.REQUIRED),
+            WheelSecurityEvent.AuthenticationStatus(AuthenticationState.AUTHENTICATED),
+            WheelSecurityEvent.LockStatus(WheelLockState.UNLOCKED)
+        ), securityEvents)
     }
 
     @Test

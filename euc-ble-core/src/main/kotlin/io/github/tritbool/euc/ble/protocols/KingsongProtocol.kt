@@ -9,6 +9,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.WheelLockState
 import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -175,6 +176,11 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var frameCollectorJob: Job? = null
     private val _securityStateFlow = MutableStateFlow(WheelSecurityState())
     override val securityStateFlow: StateFlow<WheelSecurityState> = _securityStateFlow.asStateFlow()
+    private val _securityEventFlow = MutableSharedFlow<WheelSecurityEvent>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val securityEventFlow: Flow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
     override fun getSecurityState(): WheelSecurityState = securityStateFlow.value
 
     override fun resetSession() {
@@ -380,6 +386,12 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
                             state.copy(lock = if (status == 1)
                                 WheelLockState.LOCKED else WheelLockState.UNLOCKED)
                         }
+                        val confirmed = _securityStateFlow.value
+                        _securityEventFlow.tryEmit(if (messageType == 0x46) {
+                            WheelSecurityEvent.AuthenticationStatus(confirmed.authentication)
+                        } else {
+                            WheelSecurityEvent.LockStatus(confirmed.lock)
+                        })
                     }
                 }
                 null

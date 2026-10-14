@@ -25,6 +25,7 @@ import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -128,9 +129,16 @@ class BLEManager internal constructor(
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
     private var securityFlowCollectorJob: Job? = null
+    private var securityEventCollectorJob: Job? = null
     private val _securityStateFlow = MutableStateFlow<WheelSecurityState?>(null)
     /** Null without a selected security-capable protocol; state survives collector changes. */
     val securityStateFlow: StateFlow<WheelSecurityState?> = _securityStateFlow.asStateFlow()
+    private val _securityEventFlow = MutableSharedFlow<WheelSecurityEvent>(
+        extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    /** No replay; bounded, best-effort notifications, including repeated authentication status. */
+    val securityEventFlow: SharedFlow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
     private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
 
     // Serialized GATT write queue (see sendCommand)
@@ -719,6 +727,7 @@ class BLEManager internal constructor(
     // BluetoothGattCallback implementations
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
 
         when (newState) {
             BluetoothProfile.STATE_CONNECTED -> {
@@ -817,6 +826,7 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -948,6 +958,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
     ) {
+        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
         val data = value.clone()
         handleIncomingBytes(data, characteristic.uuid)
     }
@@ -957,6 +968,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic
     ) {
+        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
         val raw = characteristic.value ?: return
         val data = raw.clone()
         handleIncomingBytes(data, characteristic.uuid)
@@ -979,6 +991,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicWrite(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
+        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
         pendingWriteAck?.complete(Unit)
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
@@ -1060,6 +1073,11 @@ class BLEManager internal constructor(
                 if (currentProtocol === protocol) _securityStateFlow.value = state
             }
         }
+        securityEventCollectorJob = coroutineScope.launch {
+            protocol.securityEventFlow.collect { event ->
+                if (currentProtocol === protocol) _securityEventFlow.tryEmit(event)
+            }
+        }
         dataFlowCollectorJob = coroutineScope.launch {
             protocol.dataFlow.collect { d ->
                 dataCallback?.onDataReceived(d)
@@ -1091,6 +1109,8 @@ class BLEManager internal constructor(
         writeFlowCollectorJob = null
         securityFlowCollectorJob?.cancel()
         securityFlowCollectorJob = null
+        securityEventCollectorJob?.cancel()
+        securityEventCollectorJob = null
     }
 
     private fun resetProtocolSession() {
