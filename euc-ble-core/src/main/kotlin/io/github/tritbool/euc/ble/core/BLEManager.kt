@@ -41,9 +41,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
@@ -136,15 +139,28 @@ class BLEManager internal constructor(
     private var dataCallback: DataCallback? = null
     private var errorCallback: ErrorCallback? = null
 
-    // Raw frame capture: every raw BLE characteristic notification is emitted here
-    private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
+    private val trafficLock = Any()
+    private var trafficSequence = 0L
+    private val _trafficFlow = MutableSharedFlow<TrafficEvent>(
         extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     /**
+     * RX notifications and TX writes accepted by Android, captured before decoding / ack waiting.
+     * No replay or history is retained without collectors. Subscribe before connecting to capture
+     * initialization. The shared buffer is bounded and drops oldest events for slow collectors;
+     * sequence gaps reveal missed events. Capture never suspends for collectors or performs I/O.
+     * Consumers must treat event bytes as read-only and perform storage on a background context.
+     */
+    val trafficFlow: SharedFlow<TrafficEvent> = _trafficFlow.asSharedFlow()
+
+    /**
      * Flow emitting every raw BLE characteristic notification received from the
-     * connected device as a defensive copy of the original byte array.
+     * connected device as a defensive snapshot of the original byte array.
+     * This is an RX-only view of [trafficFlow], sharing its payloads and bounded buffer.
+     * Treat bytes as read-only. Notification chunks are not necessarily complete protocol frames.
+     * The public type is now Flow rather than SharedFlow; ordinary collect usage is unchanged.
      *
      * This flow can be collected to implement raw frame logging, packet inspection,
      * or custom decoding pipelines independent from the built-in protocol decoder.
@@ -161,7 +177,23 @@ class BLEManager internal constructor(
      * }
      * ```
      */
-    val rawFrameFlow: SharedFlow<ByteArray> = _rawFrameFlow.asSharedFlow()
+    val rawFrameFlow: Flow<ByteArray> = trafficFlow
+        .filter { it.direction == TrafficDirection.RX }
+        .map { it.bytes }
+
+    private fun captureTraffic(direction: TrafficDirection, characteristicUuid: UUID, bytes: ByteArray) {
+        synchronized(trafficLock) {
+            _trafficFlow.tryEmit(
+                TrafficEvent(
+                    sequence = ++trafficSequence,
+                    timestampMs = System.currentTimeMillis(),
+                    direction = direction,
+                    characteristicUuid = characteristicUuid,
+                    bytes = bytes.clone()
+                )
+            )
+        }
+    }
 
     private val _queryTraceFlow = MutableSharedFlow<QueryTraceEvent>(
         extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
@@ -459,6 +491,7 @@ class BLEManager internal constructor(
             val ack = CompletableDeferred<Unit>()
             pendingWriteAck = ack
             if (writeCharacteristicNow(characteristic, write.payload)) {
+                captureTraffic(TrafficDirection.TX, write.characteristicUuid, write.payload)
                 // Wait for onCharacteristicWrite before issuing the next operation; the
                 // timeout only guards against a callback that never arrives.
                 withTimeoutOrNull(WRITE_ACK_TIMEOUT_MS.milliseconds) { ack.await() }
@@ -887,7 +920,7 @@ class BLEManager internal constructor(
     ) {
         //super.onCharacteristicChanged(gatt, characteristic, value)
         val data = value.clone()
-        handleIncomingBytes(data)
+        handleIncomingBytes(data, characteristic.uuid)
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -898,13 +931,13 @@ class BLEManager internal constructor(
         //super.onCharacteristicChanged(gatt, characteristic)
         val raw = characteristic.value ?: return
         val data = raw.clone()
-        handleIncomingBytes(data)
+        handleIncomingBytes(data, characteristic.uuid)
     }
 
     @VisibleForTesting(otherwise = PRIVATE)
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    internal fun handleIncomingBytes(data: ByteArray) {
-        _rawFrameFlow.tryEmit(data.clone())
+    internal fun handleIncomingBytes(data: ByteArray, characteristicUuid: UUID) {
+        captureTraffic(TrafficDirection.RX, characteristicUuid, data)
         currentProtocol?.let { protocol ->
             try {
                 matchPendingQueries(protocol, data)

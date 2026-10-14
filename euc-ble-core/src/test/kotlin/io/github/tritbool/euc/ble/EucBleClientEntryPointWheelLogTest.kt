@@ -233,7 +233,7 @@ class EucBleClientEntryPointWheelLogTest {
                 decodedFrames.trySend(data)
             }
         })
-        frames.forEach { frame -> bleManager.handleIncomingBytes(frame) }
+        frames.forEach { frame -> bleManager.handleIncomingBytes(frame, protocol.getDataCharacteristicUUID()) }
         decodedFrames.close()
         return buildList {
             for (item in decodedFrames) add(item)

@@ -14,6 +14,7 @@ import io.github.tritbool.euc.ble.core.ErrorCallback
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
+import io.github.tritbool.euc.ble.core.TrafficEvent
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandSupport
@@ -30,6 +31,7 @@ import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 
 /**
@@ -136,7 +138,11 @@ class EucBleClient(
         bleManager.setErrorCallback(callback)
     }
 
-    val rawFrameFlow: SharedFlow<ByteArray> = bleManager.rawFrameFlow
+    /** Bidirectional BLE capture; see [BLEManager.trafficFlow] for delivery and buffering semantics. */
+    val trafficFlow: SharedFlow<TrafficEvent> = bleManager.trafficFlow
+
+    /** RX-only view of [trafficFlow]. Bytes are shared, read-only notification chunks. */
+    val rawFrameFlow: Flow<ByteArray> = bleManager.rawFrameFlow
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = bleManager.queryTraceFlow
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
