@@ -7,6 +7,14 @@ plugins {
     id("jacoco")
     id("org.jetbrains.dokka") version "2.2.0"
     id("com.vanniktech.maven.publish") version "0.36.0"
+    id("org.sonarqube") version "7.5.0.8588"
+}
+
+sonar {
+  properties {
+    property("sonar.projectKey", "tritbool-github_euc-ble-library")
+    property("sonar.organization", "tritbool-github")
+  }
 }
 
 jacoco {
