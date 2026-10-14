@@ -132,6 +132,11 @@ client.startScan()
 
 ## Couverture de tests & qualité
 
+- [Tableau de qualité]({{ '/quality/' | relative_url }}) : tests, Android Lint,
+  couverture globale/ciblée et résultats SonarCloud associés au commit.
+- Actualisé après chaque analyse terminée de `main`, même en cas d'échec.
+  Les résultats absents ou périmés sont signalés ; ceux des PR restent dans GitHub et SonarCloud.
+
 ### Couverture et limites
 
 - La CI génère des rapports JaCoCo pour le module et pour `protocols`, `models` et `frames`.
@@ -203,8 +208,8 @@ La lib expose des erreurs structurées via `BLEException` et `ErrorCallback` pou
 - **Référence API Kotlin (Dokka)** :  
   [https://tritbool.github.io/euc_ble_library/api/](https://tritbool.github.io/euc_ble_library/api/)
 
-Le workflow Pages publie la référence Dokka générée lors de la publication d'une release ou d'un
-lancement manuel du workflow.
+Le workflow Pages publie la référence Dokka générée après les contrôles de qualité de `main`,
+ou manuellement à partir d'une analyse terminée du commit actuel de `main`.
 
 ---
 

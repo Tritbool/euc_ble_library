@@ -14,6 +14,11 @@ sonar {
   properties {
     property("sonar.projectKey", "tritbool-github_euc-ble-library")
     property("sonar.organization", "tritbool-github")
+    property("sonar.host.url", "https://sonarcloud.io")
+    property("sonar.coverage.jacoco.xmlReportPaths",
+        layout.buildDirectory.file("reports/jacoco/full/jacoco.xml").get().asFile.absolutePath)
+    property("sonar.androidLint.reportPaths",
+        layout.buildDirectory.file("reports/lint-results-debug.xml").get().asFile.absolutePath)
   }
 }
 
@@ -75,6 +80,12 @@ android {
             testTask.useJUnitPlatform {
                 if (isCi) {
                     //excludeTags("slow") // NoDrop exclus en CI
+                }
+
+                lint {
+                    xmlReport = true
+                    htmlReport = true
+                    abortOnError = true
                 }
             }
 

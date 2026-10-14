@@ -1,0 +1,38 @@
+---
+layout: default
+title: Qualité du projet
+lang: fr
+---
+<main id="quality-dashboard" lang="fr" data-language="fr"
+      data-summary-url="{{ '/quality/summary.json' | relative_url }}">
+  <p><strong>FR</strong> | <a href="{{ '/en/quality/' | relative_url }}">EN</a></p>
+  <h1>Qualité du projet</h1>
+  <p>Instantané du dernier pipeline publié, et non un résultat en temps réel.</p>
+  <p><strong>Projet expérimental :</strong> la couverture de code et les tests sur captures
+    ne garantissent ni la prise en charge de toutes les roues et de tous les firmwares,
+    ni la sécurité sur appareil. Les essais sur roues physiques restent indispensables.</p>
+  <p id="quality-loading" role="status">Chargement des rapports…</p>
+  <section aria-labelledby="snapshot-heading">
+    <h2 id="snapshot-heading">État et provenance</h2>
+    <div id="quality-snapshot"></div>
+  </section>
+  <section aria-labelledby="tests-heading">
+    <h2 id="tests-heading">Tests unitaires</h2><div id="quality-tests"></div>
+  </section>
+  <section aria-labelledby="lint-heading">
+    <h2 id="lint-heading">Android Lint</h2><div id="quality-lint"></div>
+  </section>
+  <section aria-labelledby="coverage-heading">
+    <h2 id="coverage-heading">Couverture JaCoCo</h2>
+    <h3>Complète</h3><div id="quality-coverage-full"></div>
+    <h3>Ciblée : protocoles, modèles et trames</h3><div id="quality-coverage-focused"></div>
+  </section>
+  <section aria-labelledby="sonar-heading">
+    <h2 id="sonar-heading">SonarCloud</h2><div id="quality-sonar"></div>
+    <p>Le contrôle qualité est lié à l’analyse de ce commit. Les métriques ne sont
+      affichées que si l’analyse la plus récente correspond à ce même commit
+      avant et après leur collecte ; sinon elles sont obsolètes ou indisponibles.</p>
+  </section>
+  <noscript>JavaScript est nécessaire pour lire l’instantané JSON.</noscript>
+</main>
+<script src="{{ '/assets/quality.js' | relative_url }}" defer></script>
