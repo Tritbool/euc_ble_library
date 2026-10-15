@@ -9,6 +9,8 @@ class NosfetProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
 
     override val manufacturer: String = "Nosfet"
 
+    override fun decodeSpeed(speedRaw: Short): Double = speedRaw / 10.0
+
     override fun matchesDeviceName(deviceName: String): Boolean {
         val lower = deviceName.lowercase()
         return lower.contains("nosfet") || lower.contains("apex") ||

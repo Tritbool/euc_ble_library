@@ -38,7 +38,7 @@ class NosfetProtocolTest {
 
         val frame = createFrame(
             voltageRaw = 12525,
-            speedRaw = 1234,
+            speedRaw = 390,
             distanceRaw = 54321,
             totalDistanceRaw = 65432,
             currentRaw = -250,
@@ -57,6 +57,7 @@ class NosfetProtocolTest {
             assertEquals("Nosfet Aero", telemetry.model)
             assertEquals("043.0.01", telemetry.firmwareVersion)
             assertEquals(100, telemetry.batteryLevel)
+            assertEquals(39.0, telemetry.speed, 0.000001)
             assertEquals(54.321, telemetry.distance, 0.000001)
             assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.000001)
             assertEquals(65.5, telemetry.pwm ?: -1.0, 0.01)
@@ -64,6 +65,58 @@ class NosfetProtocolTest {
 
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun speedUsesSignedTenthsOfKmhForAllNosfetModels() = runTest {
+        protocol = NosfetProtocol(scope = backgroundScope)
+        protocol.dataFlow.test(timeout = 5.seconds) {
+            for (version in listOf(42001, 43001, 44001)) {
+                for (raw in listOf(-390, 0, 390)) {
+                    protocol.decode(createFrame(versionRaw = version, speedRaw = raw))
+                    assertEquals(raw / 10.0, awaitItem().speed, 0.000001)
+                }
+            }
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun frameDetectionReassemblesFragmentsAndPreservesFollowingBytes() {
+        val detector = NosfetFrameDetector()
+        for (version in listOf(42001, 43001, 44001)) {
+            val frame = createFrame(versionRaw = version)
+            val following = frame.copyOfRange(0, 15)
+            assertNull(detector.detect(byteArrayOf(1, 2, 3) + frame.copyOfRange(0, 20)))
+            assertArrayEquals(
+                frame + following,
+                detector.detect(frame.copyOfRange(20, frame.size) + following)
+            )
+        }
+    }
+
+    @Test
+    fun frameDetectionRejectsInvalidCrcBmsPagesAndOtherFirmware() {
+        val detector = NosfetFrameDetector()
+        val frame = createBmsFrame(0)
+        assertNull(detector.detect(frame.clone().apply {
+            this[lastIndex] = (this[lastIndex].toInt() xor 1).toByte()
+        }))
+        assertNull(detector.detect(createBmsFrame(3)))
+        assertNull(detector.detect(createFrame(versionRaw = 9001)))
+        assertArrayEquals(frame, detector.detect(frame))
+    }
+
+    @Test
+    fun frameDetectionResynchronizesAfterBadLengthAndClearsPartialFrames() {
+        val detector = NosfetFrameDetector()
+        val frame = createFrame()
+        val corruptHeader = byteArrayOf(0xDC.toByte(), 0x5A, 0x5C, 0xFF.toByte())
+        assertArrayEquals(frame, detector.detect(corruptHeader + frame))
+        assertNull(detector.detect(frame.copyOfRange(0, 20)))
+        detector.reset()
+        assertNull(detector.detect(frame.copyOfRange(20, frame.size)))
+        assertArrayEquals(frame, detector.detect(ByteArray(1024) + frame))
     }
 
     @Test

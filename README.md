@@ -279,6 +279,12 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
   GATT fingerprint matching (case-insensitive). Forced selection still takes precedence.
   Model identification comes from firmware bytes 28–29 divided by 1000: 42 = Apex,
   43 = Aero, 44 = AEON. The name alone cannot distinguish those models.
+- Automatic selection also recognizes those firmware IDs in complete Veteran-format
+  telemetry on FFE1, including fragmented notifications, without relying on the BLE name.
+  This can correct an automatic GATT match; forced and manual selections are preserved.
+  Unknown serial-bridge devices stay connected while waiting for identification.
+- Nosfet speed is a signed value in tenths of km/h: raw 390 means 39 km/h.
+  Leaperkim speed scaling is unchanged.
 - Trip and lifetime distances are unsigned metres encoded as big-endian 16-bit words,
   low word first, at offsets 8 and 12. Both are exposed in kilometres; do not sum successive
   `distance` values as if they were increments. For example, trip bytes `00 17 00 00`
