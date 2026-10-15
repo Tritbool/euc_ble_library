@@ -32,6 +32,7 @@ import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
+import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import kotlinx.coroutines.CompletableDeferred
@@ -878,7 +879,26 @@ class BLEManager internal constructor(
             return
         }
 
-        // Try GATT fingerprint matching — primary automatic selection strategy
+        // Nosfet shares the Veteran serial bridge; its explicit name takes precedence over GATT.
+        if (device.name.contains("nosfet", ignoreCase = true)) {
+            val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
+            if (nosfet != null) {
+                nosfet.getCandidateDataCharacteristicUUIDs().distinct()
+                    .forEach { enableNotifications(it) }
+                connectionCallback?.onServicesDiscovered(gatt.services)
+                if (!activateProtocolIfReady(
+                        nosfet,
+                        ProtocolSelectionReason.AUTO_DEVICE_NAME,
+                        "explicit Nosfet device name"
+                    )
+                ) {
+                    disconnect()
+                }
+                return
+            }
+        }
+
+        // Try GATT fingerprint matching for other device names.
         logger.debug(TAG + ":onServicesDiscovered", "NB Found services: ${gatt.services.size}")
         logger.debug(TAG + ":onServicesDiscovered", "Services: ${gatt.services}")
 

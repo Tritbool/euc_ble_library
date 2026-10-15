@@ -273,6 +273,34 @@ Each `BMSData` entry carries pack voltage/current, remaining and factory capacit
 temperature probes, cell voltages and the pack charging status (`isCharging`).
 `null` is returned when the connected wheel does not expose BMS data.
 
+### Nosfet / Veteran telemetry
+
+- An explicit `NOSFET` token in the BLE name selects `NosfetProtocol` before automatic
+  GATT fingerprint matching (case-insensitive). Forced selection still takes precedence.
+  Model identification comes from firmware bytes 28–29 divided by 1000: 42 = Apex,
+  43 = Aero, 44 = AEON. The name alone cannot distinguish those models.
+- Trip and lifetime distances are unsigned metres encoded as big-endian 16-bit words,
+  low word first, at offsets 8 and 12. Both are exposed in kilometres; do not sum successive
+  `distance` values as if they were increments. For example, trip bytes `00 17 00 00`
+  represent 23 metres, not 5.888 km.
+- Correct AEON identification selects the 151-V-class voltage curve: 145.24 V estimates
+  86%, not 100%. This remains a voltage-based estimate, not a BMS-reported state of charge.
+- Detailed BMS pages arrive unsolicited. Poll `getBMSData()` after frames have arrived to
+  obtain per-pack currents, temperatures and individual cell voltages. AEON/Apex have
+  36 cells per pack; unused tail slots are excluded. Pack voltage, capacity and cycle
+  counts remain `null` because this decoder has no verified mapping for them. Missing
+  pages yield incomplete/empty snapshots, not fabricated readings; page 8 is not decoded.
+- Statistics pages should consume `distance`, `totalDistance`, and available live telemetry
+  regardless of brand. `rideTime` here is elapsed connection-session time, not moving time.
+  Lifetime ride/power-on times and wheel-reported top speed are unavailable (`null`);
+  client applications own session aggregates and statistics UI.
+
+Wire semantics were cross-checked against EUC Planet's
+[Veteran parser](https://github.com/Tritbool/eucplanet/blob/27dffb1f5210e8c0a5fb2e1dac3584c65f172923/app/src/main/java/com/eried/eucplanet/ble/VeteranParser.kt)
+and model mappings. The included Nosfet recording is Aero firmware 043.2.54, not AEON.
+Live AEON confirmation still needs the tester's RX capture, including firmware and BMS
+page IDs; a screenshot cannot establish which detailed pages its firmware transmits.
+
 ## Testing
 
 Coverage reports for protocol/model/frame code are generated in CI and published in each
