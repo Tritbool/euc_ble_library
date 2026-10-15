@@ -220,53 +220,7 @@ class BLEManagerDeviceNameSelectionTest {
         val leaperkim = LeaperkimProtocol().also(protocolsToClose::add)
         val nosfet = NosfetProtocol().also(protocolsToClose::add)
         manager.registerProtocol(gotway)
-        manager.registerProtocol(leaperkim)Bonjour,
-
-J'ai pris connaissance du refus de mon article « Le plafond de 25 km/h des EDPM à l'épreuve des accidents recensés » (nº 19625).
-
-Vous reconnaissez l'intérêt du sujet et la pertinence de la problématique, et je vous en sais gré.
-
-Je suis disposé à reprendre le manuscrit et à présenter une nouvelle soumission, si cette possibilité est ouverte. Vos remarques nécessitent toutefois des précisions pour permettre une révision effective.
-
-Vous mentionnez des « assertions non démontrées », des hypothèses à conforter, notamment dans le tableau 1, et des résultats dont la méthode ou la modélisation ne seraient pas précisées. Merci d'identifier les assertions et les résultats concernés, ainsi que les éléments que vous estimez manquants.
-
-Concernant le tableau 1, attendez-vous une justification du choix des hypothèses, les résultats de l'étude source permettant de les examiner, ou des références extérieures ? Ce tableau rassemble des propositions empiriques, des interprétations et des propositions normatives, dont les exigences de justification diffèrent. Merci de préciser les lignes concernées et la nature du complément attendu.
-
-Le manuscrit présente les données, l'appariement et la standardisation, puis renvoie à une étude source bien plus complète pour les développements détaillés. Estimez-vous que les justifications sont insuffisantes dans cette étude, que les renvois ne sont pas assez précis, ou que certains développements doivent être repris directement dans l'article ? Ces problèmes sont distincts et appellent des corrections différentes.
-
-Les contraintes de format des CST m'ont conduit à réduire certains développements et à reporter des précisions dans l'étude source. Je le déplore, car cette réduction limite le détail de la démonstration dans l'article. Pour réviser utilement le texte, j'ai donc besoin de savoir quels éléments doivent impérativement y figurer et quelle place leur consacrer dans le format demandé.
-
-Concernant la structure, je me suis notamment inspiré d'articles publiés dans les CST. La brièveté d'une section ne constitue pas, à elle seule, une insuffisance scientifique ou rédactionnelle. Quant au caractère « particulier » de la structuration, cette appréciation ne permet pas d'identifier ce qui doit être corrigé. Merci de préciser quelles sections vous jugez insuffisamment développées, quel raisonnement y manque ou en quoi leur articulation nuit à la compréhension. De même, des exemples des formulations jugées trop techniques ou jargonnantes me permettraient de les reprendre.
-
-Je m'interroge également sur la cohérence des exigences de justification appliquées. Dans « Quel avenir pour les trottinettes électriques ? » (Héran et Scornavacca, CST, nº 85), le tableau 2 estime un risque relatif à partir de victimes recensées sur trois ans et de comptages de passages sur les ponts de Paris effectués lors de journées d'octobre. La représentativité de ces comptages comme mesure de l'exposition relative des deux modes n'y est pas démontrée. Le texte affirme pourtant que l'incertitude sur cette exposition n'a « sans doute guère d'incidence », sans la quantifier, puis conclut que la trottinette est « environ trois fois plus dangereuse que le vélo ».
-
-Cet exemple ne constitue en aucun cas un argument pour accepter mon manuscrit. Il motive en revanche ma demande de comprendre précisément le niveau de justification attendu et les points sur lesquels ma démonstration est jugée insuffisante.
-
-Pouvez-vous donc m'adresser un retour plus détaillé et m'indiquer si une nouvelle soumission substantiellement révisée serait envisageable ?
-
-Bien cordialement,
-
-Dr Gauthier Le Bartz Lyan
-
-
-Le 15 oct. 2026 18:58, Laurent Carnis <cst@episciences.org> a écrit :
-Bonjour Gauthier Le Bartz Lyan,
-
-L'article (#19625 - Le plafond de 25 km/h des EDPM à l'épreuve des accidents recensés) que vous aviez proposé le 8 octobre 2026 a été refusé par le comité éditorial.
-
-Après lecture attentive du manuscrit, le sujet a été jugé intéressant et soulève une problématique pertinente en s'interrogeant sur les fondements d'une réglementation.
-
-Toutefois, l'article proposé présente certains défauts :
-
-sa structuration est quelque peu particulière avec des sections courtes et des assertions non démontrées.
-certaines hypothèses méritent d'être confortées par des éléments empiriques ou des références, notamment pour ce qui figure dans le tableau 1. Leur nature peut également faire l'objet de développements.
-Le style d'écriture est rapide, comprenant des mots anglais, et parfois le vocabulaire utilisé est à la fois technique et jargonnant, pas toujours facile d'accès pour le public des CST.
-Par ailleurs, un certain nombre de résultats sont avancés sans que ne soient précisés ni la méthode, la modelisation utilisée et les résultats obtenus qui viendraient en appui de la démonstration.
-
-Sincères salutations,
---
-Laurent Carnis
-Episciences.org
+        manager.registerProtocol(leaperkim)
         manager.registerProtocol(nosfet)
         val gatt = gotwayGatt()
         assertEquals(gotway, manager.selectByGattFingerprint(gatt.services).first)
