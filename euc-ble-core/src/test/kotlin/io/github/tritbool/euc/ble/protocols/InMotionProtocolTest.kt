@@ -203,13 +203,14 @@ class InMotionProtocolTest {
     }
 
     @Test
-    fun getPollingPlanDoesNotProbeV14BmsAddressesOnP6() {
+    fun getPollingPlanUsesTwoP6PacksInsteadOfFourV14Packs() {
         protocol.decode(buildCarTypeFrame(series = 13, type = 1)) // P6
 
         val plan = protocol.getPollingPlan()
 
-        assertEquals(1, plan.periodicQueries.size)
-        assertEquals("inmotion.realtime", plan.periodicQueries.single().id)
+        assertEquals(7, plan.periodicQueries.size)
+        assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
+        assertFalse(plan.periodicQueries.any { it.id.startsWith("inmotion.v14-pack-") })
     }
 
     @Test

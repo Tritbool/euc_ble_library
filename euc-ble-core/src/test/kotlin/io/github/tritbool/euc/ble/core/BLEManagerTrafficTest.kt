@@ -6,6 +6,10 @@ import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.InMotionProtocol
+import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
+import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
+import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
@@ -31,6 +35,107 @@ import java.util.UUID
 @OptIn(ExperimentalCoroutinesApi::class)
 class BLEManagerTrafficTest {
     private val characteristicUuid = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
+
+    @Test
+    fun v2GattFingerprintDialectIsReappliedAfterSessionResetBeforePolling() = runTest {
+        val manager = manager()
+        val protocol = InMotionProtocol(NoOpLogger())
+        manager.registerProtocol(protocol)
+        val signature = EucFingerprintDatabase.entries
+            .first { it.protocolId == "InMotionProtocol" }.gattSignatures
+            .first { specs -> specs.any { it.version == 2 } }
+        val services = signature.map { spec ->
+            mock<BluetoothGattService>().also { service ->
+                whenever(service.uuid).thenReturn(spec.uuid)
+                whenever(service.characteristics).thenReturn(spec.requiredCharacteristicUUIDs.map { uuid ->
+                    mock<BluetoothGattCharacteristic>().also { characteristic ->
+                        whenever(characteristic.uuid).thenReturn(uuid)
+                    }
+                })
+            }
+        }
+        val gatt = mock<BluetoothGatt>()
+        whenever(gatt.services).thenReturn(services)
+        setField(manager, "bluetoothGatt", gatt)
+        setField(manager, "connectionState", BLEConstants.ConnectionState.CONNECTED)
+        setField(manager, "currentDevice", EUCDevice(
+            name = "InMotion P6", address = "AA:BB:CC:DD:EE:FF",
+            manufacturerId = 0, manufacturerData = null, rssi = -50
+        ))
+
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+
+        assertSame(protocol, manager.currentProtocol)
+        assertEquals(UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC),
+            protocol.getWriteCharacteristicUUID())
+        assertEquals(UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC),
+            protocol.getDataCharacteristicUUID())
+        assertTrue(protocol.getPollingPlan().enabled)
+    }
+
+    @Test
+    fun pollingRefreshesAfterP6IdentificationWithoutRestartingConnection() = runTest {
+        val manager = manager()
+        val realProtocol = InMotionProtocol(NoOpLogger())
+        // Isolate periodic orchestration from handshake retry delays.
+        val protocol = object : EUCProtocol by realProtocol {
+            override fun getPollingPlan(): ProtocolPollingPlan =
+                realProtocol.getPollingPlan().copy(startupQueries = emptyList())
+        }
+        manager.currentProtocol = protocol
+        attachGatt(manager).also { acceptWrites(it.first) }
+        val traces = mutableListOf<QueryTraceEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.queryTraceFlow.collect { traces += it }
+        }
+        BLEManager::class.java.getDeclaredMethod("startPollingOrchestration", EUCProtocol::class.java)
+            .apply { isAccessible = true }.invoke(manager, protocol)
+        runCurrent()
+        assertTrue(traces.none { it.queryId.startsWith("inmotion.p6-pack-") })
+
+        manager.handleIncomingBytes(ByteUtils.hexToBytes("aaaa11058201020d0199"), characteristicUuid)
+        advanceTimeBy(3_000)
+        runCurrent()
+
+        val sentP6Ids = traces.filter {
+            it.phase == QueryTracePhase.SENT && it.queryId.startsWith("inmotion.p6-pack-")
+        }.map { it.queryId }.toSet()
+        assertEquals(realProtocol.getPollingPlan().periodicQueries
+            .filter { it.id.startsWith("inmotion.p6-pack-") }.map { it.id }.toSet(), sentP6Ids)
+        assertEquals(6, sentP6Ids.size)
+    }
+
+    @Test
+    fun completedP6IdentityJobsAreNotRestartedByPollingPlanRefresh() = runTest {
+        val manager = manager()
+        val realProtocol = InMotionProtocol(NoOpLogger())
+        realProtocol.decode(ByteUtils.hexToBytes("aaaa11058201020d0199"))
+        val protocol = object : EUCProtocol by realProtocol {
+            override fun getPollingPlan(): ProtocolPollingPlan {
+                val plan = realProtocol.getPollingPlan()
+                return plan.copy(startupQueries = emptyList(), periodicQueries =
+                    plan.periodicQueries.filter { it.id.endsWith("-4") }.map {
+                        it.copy(initialDelayMs = 0L, responseTimeoutMs = 1L, maxRetries = 0)
+                    })
+            }
+        }
+        manager.currentProtocol = protocol
+        attachGatt(manager)
+        val sentIdentities = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.queryTraceFlow.collect {
+                if (it.phase == QueryTracePhase.SENT) sentIdentities += it.queryId
+            }
+        }
+        BLEManager::class.java.getDeclaredMethod("startPollingOrchestration", EUCProtocol::class.java)
+            .apply { isAccessible = true }.invoke(manager, protocol)
+
+        advanceTimeBy(125_000)
+        runCurrent()
+
+        assertEquals(listOf("inmotion.p6-pack-1-4", "inmotion.p6-pack-2-4"),
+            sentIdentities.sorted())
+    }
 
     @Test
     fun rxSnapshotIsCapturedBeforeDecodeAndSharedWithRawView() = runTest {

@@ -273,6 +273,23 @@ Each `BMSData` entry carries pack voltage/current, remaining and factory capacit
 temperature probes, cell voltages and the pack charging status (`isCharging`).
 `null` is returned when the connected wheel does not expose BMS data.
 
+### InMotion P6 BMS
+
+- The two packs are addressed independently (`0x24` and `0x25`) and exposed as
+  `bmsIndex` 1 and 2, each with 56 cell voltages in volts.
+- Summary, cell and identity replies update each pack independently. `getBMSData()`
+  reads the latest snapshots; it does not initiate BLE requests.
+  The protocol polls summaries and cells after P6 identification and requests
+  identity once per session. These use V2 command `0x02` with the pack address and
+  subtype `0x01` (summary), `0x02` (cells) or `0x04` (identity).
+- Pack voltage, serial number, BMS firmware version and separate positive
+  `chargeCurrent` / `dischargeCurrent` readings are available when reported.
+  Net `current` uses the library convention: discharge minus charge, in amps.
+  Charging is derived from that pack's current, not the wheel's charging state.
+- Capacity, cycle count, temperature probes and individual status/error/warning
+  bits remain unset until their mappings are independently verified. Whole-wheel
+  current and temperatures are not substituted for pack measurements.
+
 ### Nosfet / Veteran telemetry
 
 - An explicit `NOSFET` token in the BLE name selects `NosfetProtocol` before automatic
