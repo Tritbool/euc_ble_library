@@ -45,13 +45,14 @@ class BLEManagerTrafficTest {
             .first { it.protocolId == "InMotionProtocol" }.gattSignatures
             .first { specs -> specs.any { it.version == 2 } }
         val services = signature.map { spec ->
+            val characteristics = spec.requiredCharacteristicUUIDs.map { uuid ->
+                mock<BluetoothGattCharacteristic>().also { characteristic ->
+                    whenever(characteristic.uuid).thenReturn(uuid)
+                }
+            }
             mock<BluetoothGattService>().also { service ->
                 whenever(service.uuid).thenReturn(spec.uuid)
-                whenever(service.characteristics).thenReturn(spec.requiredCharacteristicUUIDs.map { uuid ->
-                    mock<BluetoothGattCharacteristic>().also { characteristic ->
-                        whenever(characteristic.uuid).thenReturn(uuid)
-                    }
-                })
+                whenever(service.characteristics).thenReturn(characteristics)
             }
         }
         val gatt = mock<BluetoothGatt>()

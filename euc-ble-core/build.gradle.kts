@@ -1,6 +1,7 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
+import org.gradle.process.CommandLineArgumentProvider
 
 plugins {
     id("com.android.library") version "9.1.0"
@@ -27,7 +28,19 @@ sonar {
 }
 
 jacoco {
-    toolVersion = "0.8.12"
+    toolVersion = "0.8.14"
+}
+
+val mockitoAgent = configurations.create("mockitoAgent") {
+    isTransitive = false
+}
+
+abstract class MockitoAgentArgumentProvider : CommandLineArgumentProvider {
+    @get:Classpath
+    abstract val agentClasspath: ConfigurableFileCollection
+
+    override fun asArguments(): Iterable<String> =
+        listOf("-javaagent:${agentClasspath.singleFile.absolutePath}")
 }
 
 val jacocoClassExclusions = listOf(
@@ -61,6 +74,10 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+
+    testCoverage {
+        jacocoVersion = "0.8.14"
     }
 
     compileOptions {
@@ -97,6 +114,11 @@ android {
                     ?: Runtime.getRuntime().availableProcessors()
 
             testTask.jvmArgs("-Xmx1g")
+            testTask.jvmArgumentProviders.add(
+                objects.newInstance<MockitoAgentArgumentProvider>().apply {
+                    agentClasspath.from(mockitoAgent)
+                }
+            )
         }
     }
 
@@ -193,6 +215,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("app.cash.turbine:turbine:1.1.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
+    mockitoAgent("org.mockito:mockito-core:5.23.0")
 
 }
 
