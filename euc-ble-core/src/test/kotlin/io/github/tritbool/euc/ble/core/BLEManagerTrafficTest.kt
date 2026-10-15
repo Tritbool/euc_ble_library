@@ -41,7 +41,7 @@ class BLEManagerTrafficTest {
         val manager = manager()
         val protocol = InMotionProtocol(NoOpLogger())
         manager.registerProtocol(protocol)
-        val gatt = attachInMotionV2Gatt(manager)
+        val gatt = attachInMotionGatt(manager)
 
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
@@ -59,7 +59,7 @@ class BLEManagerTrafficTest {
             val manager = manager()
             val protocol = InMotionProtocol(NoOpLogger())
             manager.registerProtocol(protocol)
-            val gatt = attachInMotionV2Gatt(manager)
+            val gatt = attachInMotionGatt(manager)
             val write = gatt.services.flatMap { it.characteristics }.first {
                 it.uuid == UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC)
             }
@@ -117,6 +117,22 @@ class BLEManagerTrafficTest {
             assertTrue(protocol.getPollingPlan().periodicQueries.none { it.id == "inmotion.identification" })
             manager.disconnect()
             assertEquals(null, manager.getBMSData())
+        }
+    }
+
+    @Test
+    fun forcedAndManualLegacySelectionStillRunStartupAuthentication() = runTest {
+        for (forced in listOf(false, true)) {
+            val manager = manager()
+            val protocol = InMotionProtocol(NoOpLogger())
+            manager.registerProtocol(protocol)
+            attachInMotionGatt(manager, version = 0)
+
+            assertTrue(if (forced) manager.forceProtocol(protocol) else manager.selectProtocol(protocol))
+            assertEquals(UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC),
+                protocol.getWriteCharacteristicUUID())
+            assertTrue(protocol.getPollingPlan().startupQueries.any { it.id == "inmotion.v1-pin" })
+            manager.disconnect()
         }
     }
 
@@ -388,10 +404,10 @@ class BLEManagerTrafficTest {
 
     private fun TestScope.manager() = BLEManager(mock<Context>(), NoOpLogger(), backgroundScope)
 
-    private fun attachInMotionV2Gatt(manager: BLEManager): BluetoothGatt {
+    private fun attachInMotionGatt(manager: BLEManager, version: Int = 2): BluetoothGatt {
         val signature = EucFingerprintDatabase.entries
             .first { it.protocolId == "InMotionProtocol" }.gattSignatures
-            .first { specs -> specs.any { it.version == 2 } }
+            .first { specs -> specs.any { it.version == version } }
         val services = signature.map { spec ->
             val characteristics = spec.requiredCharacteristicUUIDs.map { uuid ->
                 mock<BluetoothGattCharacteristic>().also { characteristic ->
@@ -411,7 +427,7 @@ class BLEManagerTrafficTest {
         setField(manager, "bluetoothGatt", gatt)
         setField(manager, "connectionState", BLEConstants.ConnectionState.CONNECTED)
         setField(manager, "currentDevice", EUCDevice(
-            name = "InMotion P6", address = "AA:BB:CC:DD:EE:FF",
+            name = if (version == 2) "InMotion P6" else "InMotion V8", address = "AA:BB:CC:DD:EE:FF",
             manufacturerId = 0, manufacturerData = null, rssi = -50
         ))
         return gatt

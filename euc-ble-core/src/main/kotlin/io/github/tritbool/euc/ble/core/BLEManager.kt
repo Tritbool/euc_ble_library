@@ -1489,8 +1489,6 @@ class BLEManager internal constructor(
             fingerprintDialect ?: when {
                 getCharacteristic(UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC)) != null &&
                     getCharacteristic(UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)) != null -> 2
-                getCharacteristic(UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC)) != null &&
-                    getCharacteristic(UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)) != null -> 1
                 else -> null
             }
         } else null
