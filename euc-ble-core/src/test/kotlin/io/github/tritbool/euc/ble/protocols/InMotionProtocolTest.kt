@@ -193,6 +193,30 @@ class InMotionProtocolTest {
     }
 
     @Test
+    fun unidentifiedV2KeepsRequestingModelUntilCarTypeArrives() {
+        protocol.setDialect(2)
+        val query = protocol.getPollingPlan().periodicQueries
+            .single { it.id == "inmotion.identification" }
+        assertEquals(CommandType.REQUEST_FIRMWARE, query.commandType)
+        assertTrue(query.intervalMs > 0L)
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa11010212"),
+            protocol.createCommand(query.commandType, query.value))
+
+        // A serial-only MAIN_INFO page must not stop retries for the model page.
+        protocol.decode(buildV2ResponseFrame(flag = 0x11, command = 0x02,
+            payload = byteArrayOf(0x02) + ByteArray(16) { '0'.code.toByte() }))
+        assertTrue(protocol.getPollingPlan().periodicQueries.any { it.id == query.id })
+
+        protocol.decode(buildCarTypeFrame(series = 13, type = 1))
+        assertFalse(protocol.getPollingPlan().periodicQueries.any { it.id == query.id })
+        assertEquals(6, protocol.getPollingPlan().periodicQueries
+            .count { it.id.startsWith("inmotion.p6-pack-") })
+
+        protocol.resetSession()
+        assertTrue(protocol.getPollingPlan().periodicQueries.any { it.id == query.id })
+    }
+
+    @Test
     fun getPollingPlanDoesNotProbeV14BmsAddressesOnV9() {
         protocol.decode(buildCarTypeFrame(series = 12, type = 1)) // V9
 
