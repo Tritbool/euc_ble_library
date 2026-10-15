@@ -117,6 +117,8 @@ class BLEManagerDeviceNameSelectionTest {
         manager.registerProtocol(leaperkim)
         manager.registerProtocol(nosfet)
         assertEquals(nosfet, manager.selectByDeviceName("Nosfet Apex"))
+        assertEquals(nosfet, manager.selectByDeviceName("Nosfet"))
+        assertEquals(nosfet, manager.selectByDeviceName("NOSFET"))
         assertEquals(leaperkim,manager.selectByDeviceName("Veteran Sherman"))
     }
 
@@ -228,7 +230,7 @@ class BLEManagerDeviceNameSelectionTest {
         val gatt = buildGatt(
             listOf(serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), leaperkimCharUuid))
         )
-        attachSession(device("Nosfet Apex Pro", 0), gatt)
+        attachSession(device("Nosfet", 0), gatt)
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
         assertNotNull(manager.currentProtocol)

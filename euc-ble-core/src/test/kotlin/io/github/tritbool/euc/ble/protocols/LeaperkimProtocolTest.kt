@@ -88,6 +88,30 @@ class LeaperkimProtocolTest {
     }
 
     @Test
+    fun distancesPreserveBothWordsAndAll32Bits() = runTest {
+        tearDown()
+        protocol = LeaperkimProtocol(scope = backgroundScope)
+        val frame = createLeaperkimFrame().apply {
+            // Wire order 23 45 01 81 encodes unsigned 0x01812345 metres.
+            this[8] = 0x23
+            this[9] = 0x45
+            this[10] = 0x01
+            this[11] = 0x81.toByte()
+            this[12] = 0xFF.toByte()
+            this[13] = 0xFE.toByte()
+            this[14] = 0x80.toByte()
+            this[15] = 0x01
+        }
+        protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
+            protocol.decode(frame)
+            val telemetry = awaitItem()
+            assertEquals(0x01812345L / 1000.0, telemetry.distance, 0.000001)
+            assertEquals(0x8001FFFEL / 1000.0, telemetry.totalDistance ?: -1.0, 0.000001)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun decodeOutOfRangeVoltageFrameIsDropped() = runTest {
         tearDown()
         protocol = LeaperkimProtocol(scope = backgroundScope)
@@ -464,14 +488,14 @@ class LeaperkimProtocolTest {
         frame[5] = (voltageRaw and 0xFF).toByte()
         frame[6] = ((speedRaw shr 8) and 0xFF).toByte()
         frame[7] = (speedRaw and 0xFF).toByte()
-        frame[8] = (distanceRaw and 0xFF).toByte()
-        frame[9] = ((distanceRaw shr 8) and 0xFF).toByte()
-        frame[10] = ((distanceRaw shr 16) and 0xFF).toByte()
-        frame[11] = ((distanceRaw shr 24) and 0xFF).toByte()
-        frame[12] = (totalDistanceRaw and 0xFF).toByte()
-        frame[13] = ((totalDistanceRaw shr 8) and 0xFF).toByte()
-        frame[14] = ((totalDistanceRaw shr 16) and 0xFF).toByte()
-        frame[15] = ((totalDistanceRaw shr 24) and 0xFF).toByte()
+        frame[8] = ((distanceRaw shr 8) and 0xFF).toByte()
+        frame[9] = (distanceRaw and 0xFF).toByte()
+        frame[10] = ((distanceRaw shr 24) and 0xFF).toByte()
+        frame[11] = ((distanceRaw shr 16) and 0xFF).toByte()
+        frame[12] = ((totalDistanceRaw shr 8) and 0xFF).toByte()
+        frame[13] = (totalDistanceRaw and 0xFF).toByte()
+        frame[14] = ((totalDistanceRaw shr 24) and 0xFF).toByte()
+        frame[15] = ((totalDistanceRaw shr 16) and 0xFF).toByte()
         frame[16] = ((currentRaw shr 8) and 0xFF).toByte()
         frame[17] = (currentRaw and 0xFF).toByte()
         frame[18] = ((temperatureRaw shr 8) and 0xFF).toByte()

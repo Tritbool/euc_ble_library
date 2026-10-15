@@ -221,6 +221,9 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     private fun processFrame(frame: ByteArray) {
         debugFramesObserved++
+        if (frame.size < 4) return
+        val len = ByteUtils.getUnsignedByte(frame, 3)
+        if (frame.size != len + 4 || (len > 38 && !isCrcValid(frame, len))) return
         // Smart-BMS equipped wheels (Lynx S, Patton, Oryx) cycle through four frame layouts.
         // Frames with LEN == 0x5F carry BMS ADC readings at bytes 4..5, NOT pack voltage.
         // Parsing them as regular telemetry produces ~3–7 V voltage spikes every ~200 ms.
@@ -252,8 +255,6 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
         val voltageRaw = ByteUtils.tryGetUnsignedShortBE(frame, 4) ?: return null
         val speedRaw = ByteUtils.tryGetSignedShortBE(frame, 6) ?: return null
-        val distanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 8) ?: return null
-        val totalDistanceRaw = ByteUtils.tryGetUnsignedIntLE(frame, 12) ?: return null
         val currentRaw = ByteUtils.tryGetSignedShortBE(frame, 16) ?: return null
         val tempRaw = ByteUtils.tryGetSignedShortBE(frame, 18) ?: return null
         val angleRaw = ByteUtils.tryGetSignedShortBE(frame, 32)
@@ -298,8 +299,8 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
             estimateBatteryPercent(voltageRaw, majorVersion)
         }
 
-        val tripDistanceKm = decodeDistanceKm(distanceRaw)
-        val totalDistanceKm = decodeDistanceKm(totalDistanceRaw)
+        val tripDistanceKm = decodeDistanceKm(frame, 8)
+        val totalDistanceKm = decodeDistanceKm(frame, 12)
         val now = System.currentTimeMillis()
         val rideTimeSeconds = deriveRideTimeSeconds(now)
 
@@ -334,7 +335,9 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     private fun parseSmartBms(frame: ByteArray) {
         val packetNum = ByteUtils.tryGetUnsignedByte(frame, 46) ?: return
+        if (packetNum !in 0..7) return
         val bmsIndex = if (packetNum < 4) 1 else 2
+        val cellCount = bmsCellCount(lastMajorVersion)
         val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(LEAPERKIM_MAX_BMS_CELLS) }
         when (packetNum) {
             0, 4 -> {
@@ -347,7 +350,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
             1, 5 -> {
                 for (i in 0 until 15) {
                     val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue
-                    cells[i] = raw / 1000.0
+                    if (i < cellCount) cells[i] = raw / 1000.0
                 }
             }
 
@@ -355,7 +358,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
                 for (i in 0 until 15) {
                     val raw = ByteUtils.tryGetUnsignedShortBE(frame, 53 + i * 2) ?: continue
                     val index = i + 15
-                    if (index in cells.indices) {
+                    if (index < cellCount) {
                         cells[index] = raw / 1000.0
                     }
                 }
@@ -365,7 +368,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
                 for (i in 0 until 12) {
                     val raw = ByteUtils.tryGetUnsignedShortBE(frame, 59 + i * 2) ?: continue
                     val index = i + 30
-                    if (index in cells.indices) {
+                    if (index < cellCount) {
                         cells[index] = raw / 1000.0
                     }
                 }
@@ -385,7 +388,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     private fun getCombinedCellVoltages(): List<Double>? {
         if (bmsCellPages.isEmpty()) return null
         val combined = bmsCellPages.values
-            .flatMap { it.asList() }
+            .flatMap { it.take(bmsCellCount(lastMajorVersion)) }
             .filter { it > 0.0 }
         return combined.ifEmpty { null }
     }
@@ -402,7 +405,8 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
                 factoryCapacity = null,
                 cycles = null,
                 temperatures = bmsTemperatures[index],
-                cellVoltages = bmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null },
+                cellVoltages = bmsCellPages[index]?.take(bmsCellCount(lastMajorVersion))
+                    ?.filter { it > 0.0 }?.ifEmpty { null },
                 isCharging = resolveBmsChargingState(
                     bmsCurrents[index],
                     lastKnownChargeMode?.let { it > 0 }
@@ -410,6 +414,8 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
             )
         }
     }
+
+    protected open fun bmsCellCount(majorVersion: Int?): Int = LEAPERKIM_MAX_BMS_CELLS
 
     private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
         if (frame.size < len + 4) return false
@@ -420,9 +426,11 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         return calc == provided
     }
 
-    private fun decodeDistanceKm(raw: Long): Double {
-        val masked = raw and 0x00FF_FFFFL
-        return masked / 1000.0
+    private fun decodeDistanceKm(frame: ByteArray, offset: Int): Double {
+        // Metres: big-endian 16-bit words, with the low word transmitted first.
+        val low = ByteUtils.getUnsignedShortBE(frame, offset).toLong()
+        val high = ByteUtils.getUnsignedShortBE(frame, offset + 2).toLong()
+        return ((high shl 16) or low) / 1000.0
     }
 
     protected open fun modelByMajorVersion(version: Int): String {
