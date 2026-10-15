@@ -219,6 +219,65 @@ class BLEManagerDeviceNameSelectionTest {
     // ── onServicesDiscovered: device-name-only path (no fingerprint match) ──
 
     @Test
+    fun `explicit Nosfet name takes precedence over conflicting Gotway fingerprint`() {
+        val gotway = GotwayProtocol().also(protocolsToClose::add)
+        val leaperkim = LeaperkimProtocol().also(protocolsToClose::add)
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(gotway)
+        manager.registerProtocol(leaperkim)
+        manager.registerProtocol(nosfet)
+        val gatt = buildGatt(
+            listOf(
+                service(uuid("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0")),
+                serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid)
+            )
+        )
+        assertEquals(gotway, manager.selectByGattFingerprint(gatt.services).first)
+        attachSession(device("nOsFeT", 0), gatt)
+
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+
+        assertEquals(nosfet, manager.currentProtocol)
+        assertEquals(ProtocolSelectionReason.AUTO_DEVICE_NAME, callback.selectedProtocols.single().reason)
+    }
+
+    @Test
+    fun `forced protocol takes precedence over explicit NOSFET name`() {
+        val leaperkim = LeaperkimProtocol().also(protocolsToClose::add)
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(leaperkim)
+        manager.registerProtocol(nosfet)
+        assertTrue(manager.forceProtocol(leaperkim))
+        val gatt = buildGatt(
+            listOf(serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid))
+        )
+        attachSession(device("NOSFET AEON", 0), gatt)
+
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+
+        assertEquals(leaperkim, manager.currentProtocol)
+        assertEquals(ProtocolSelectionReason.FORCED, callback.selectedProtocols.single().reason)
+    }
+
+    @Test
+    fun `NOSFET name retains GATT fallback when Nosfet protocol is not registered`() {
+        val gotway = GotwayProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(gotway)
+        val gatt = buildGatt(
+            listOf(
+                service(uuid("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0")),
+                serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid)
+            )
+        )
+        attachSession(device("NOSFET", 0), gatt)
+
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+
+        assertEquals(gotway, manager.currentProtocol)
+        assertEquals(ProtocolSelectionReason.AUTO_GATT_FINGERPRINT, callback.selectedProtocols.single().reason)
+    }
+
+    @Test
     fun `onServicesDiscovered selects Nosfet by device name when no fingerprint matches`() {
         val leaperkim = LeaperkimProtocol().also(protocolsToClose::add)
         val nosfet = NosfetProtocol().also(protocolsToClose::add)

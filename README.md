@@ -275,7 +275,8 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
 
 ### Nosfet / Veteran telemetry
 
-- The generic BLE name `Nosfet` already selects `NosfetProtocol` through device-name fallback.
+- An explicit `NOSFET` token in the BLE name selects `NosfetProtocol` before automatic
+  GATT fingerprint matching (case-insensitive). Forced selection still takes precedence.
   Model identification comes from firmware bytes 28–29 divided by 1000: 42 = Apex,
   43 = Aero, 44 = AEON. The name alone cannot distinguish those models.
 - Trip and lifetime distances are unsigned metres encoded as big-endian 16-bit words,
