@@ -26,7 +26,15 @@ data class BMSData(
      * `true` when the pack is being charged, `false` when it is not, `null` when the
      * protocol exposes neither a charging flag nor a signed BMS current.
      */
-    val isCharging: Boolean? = null
+    val isCharging: Boolean? = null,
+    /** Battery pack serial number, when reported independently of the wheel. */
+    val serialNumber: String? = null,
+    /** Battery management firmware version. */
+    val firmwareVersion: String? = null,
+    /** Positive charging-channel current in amps. */
+    val chargeCurrent: Double? = null,
+    /** Positive discharging-channel current in amps. */
+    val dischargeCurrent: Double? = null
 )
 
 /** Minimum negative BMS current (in amps) considered as an actual charge current. */

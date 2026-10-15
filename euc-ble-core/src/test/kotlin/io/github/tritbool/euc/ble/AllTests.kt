@@ -19,6 +19,7 @@ import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
+import io.github.tritbool.euc.ble.protocols.InMotionP6BmsTest
 import io.github.tritbool.euc.ble.protocols.InmotionNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongProtocolAsyncTest
@@ -50,6 +51,7 @@ import org.junit.platform.suite.api.Suite
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,
+    InMotionP6BmsTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
     KingsongProtocolTest::class,

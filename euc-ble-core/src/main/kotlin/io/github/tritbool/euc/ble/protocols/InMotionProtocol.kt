@@ -194,6 +194,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private val parseLock = Any()
     private val v2Buffer = ArrayList<Byte>()
     private val legacyBuffer = ArrayList<Byte>()
+    private var lastV2Chunk: ByteArray? = null
+    private var lastV2ChunkSnapshot: ByteArray? = null
+    private var lastV2Frames: List<ByteArray> = emptyList()
+    @Volatile
+    private var p6Packs: Map<Int, BMSData> = emptyMap()
 
     private enum class Dialect { UNKNOWN, LEGACY_V1, V2 }
 
@@ -253,7 +258,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         _rawFrameFlow.tryEmit(data.clone())
         var lastDecoded: EUCData? = null
 
-        val v2Frames = extractV2Frames(data)
+        val v2Frames = synchronized(parseLock) {
+            val frames = validatedV2Frames(data)
+            // Matching belongs to this notification only. A later decode may reuse
+            // exactly the same array (even the same bytes) for a new notification.
+            lastV2Chunk = null
+            lastV2ChunkSnapshot = null
+            lastV2Frames = emptyList()
+            frames
+        }
         for (frame in v2Frames) {
             val decoded = parseV2Frame(frame) ?: continue
             lastDecoded = decoded
@@ -282,8 +295,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     }
 
+    // BLEManager matches each pending query before decode. Share framing, not parsing,
+    // so a notification is consumed once even when several queries inspect it.
+    private fun validatedV2Frames(chunk: ByteArray): List<ByteArray> = synchronized(parseLock) {
+        if (lastV2Chunk !== chunk || lastV2ChunkSnapshot?.contentEquals(chunk) != true) {
+            lastV2Frames = extractV2Frames(chunk)
+            lastV2Chunk = chunk
+            lastV2ChunkSnapshot = chunk.copyOf()
+        }
+        lastV2Frames
+    }
+
     private fun extractV2Frames(chunk: ByteArray): List<ByteArray> {
-        if (!isLikelyV2Chunk(chunk) && v2Buffer.isEmpty()) return emptyList()
         synchronized(parseLock) {
             for (b in chunk) v2Buffer.add(b)
             val out = mutableListOf<ByteArray>()
@@ -335,6 +358,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 // scan left off. But it's simpler to scan from scratch for all len+2 bytes.
                 val checksumIdx =
                     findChecksumIndex(v2Buffer, startIdx = 2, targetUnescaped = len + 2)
+                if (checksumIdx == -2) {
+                    v2Buffer.removeAt(0)
+                    continue
+                }
                 if (checksumIdx < 0) break  // frame incomplete, wait for more data
 
                 // Step 3: verify the checksum over the unescaped payload bytes
@@ -401,8 +428,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             val b = buffer[rawIdx].toInt() and 0xFF
             if (b == ESCAPE_MARKER) {
                 if (rawIdx + 1 >= buffer.size) return -1  // incomplete escape
+                val escaped = buffer[rawIdx + 1].toInt() and 0xFF
+                if (escaped != ESCAPE_MARKER && escaped != 0xAA) return -2
                 rawIdx += 2
             } else {
+                if (b == 0xAA) return -2
                 rawIdx++
             }
             n++
@@ -500,15 +530,6 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return -1
     }
 
-    private fun isLikelyV2Chunk(chunk: ByteArray): Boolean {
-        if (chunk.size < MIN_FRAME_SIZE) return false
-        if (chunk[0] != HEADER[0] || chunk[1] != HEADER[1]) return false
-        val flags = chunk[2].toInt() and 0xFF
-        if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED) return false
-        val len = chunk[3].toInt() and 0xFF
-        return len in 1..MAX_LEN
-    }
-
     private fun isLikelyLegacyChunk(chunk: ByteArray): Boolean {
         if (chunk.size >= 2 && chunk[0] == HEADER[0] && chunk[1] == HEADER[1]) {
             if (chunk.size >= 4) {
@@ -560,7 +581,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
             in V14_BMS_PACK_ADDRESSES -> {
                 lastDetectedDialect = Dialect.V2
-                parseV14PackCellsResponse(command, payload)
+                if (modelName == P6) {
+                    if (flags == FLAG_EXTENDED) parseP6Pack(command, payload)
+                } else {
+                    parseV14PackCellsResponse(command, payload)
+                }
                 null
             }
 
@@ -1113,6 +1138,52 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         updateBmsSnapshot(packCellVoltages = mapOf(packIndex to cells))
     }
 
+    private fun isP6PackPayload(command: Int, payload: ByteArray): Boolean {
+        if (command !in 0x24..0x25 || payload.size < 2 || payload[0] != 0x02.toByte()) return false
+        return when (payload[1].toInt() and 0xFF) {
+            0x81 -> payload.size == 60
+            0x82 -> payload.size == 114
+            0x84 -> payload.size == 62
+            else -> false
+        }
+    }
+
+    private fun parseP6Pack(command: Int, payload: ByteArray) {
+        if (!isP6PackPayload(command, payload)) return
+        synchronized(parseLock) {
+            val index = command - 0x23
+            val previous = p6Packs[index] ?: BMSData(
+                index, null, null, null, null, null, null, null
+            )
+            val updated = when (payload[1].toInt() and 0xFF) {
+                0x81 -> {
+                    // Offsets are relative to the data AFTER the 02 81 prefix.
+                    // The charging capture includes -21 cA on the idle discharge
+                    // sensor. Negative channel noise must not become 655.15 A.
+                    val charge = ByteUtils.getSignedShortLE(payload, 10).coerceAtLeast(0) / 100.0
+                    val discharge = ByteUtils.getSignedShortLE(payload, 12).coerceAtLeast(0) / 100.0
+                    previous.copy(
+                        voltage = ByteUtils.getUnsignedShortLE(payload, 8) / 100.0,
+                        chargeCurrent = charge,
+                        dischargeCurrent = discharge,
+                        current = discharge - charge,
+                        isCharging = charge > 0.1
+                    )
+                }
+                0x82 -> previous.copy(cellVoltages = List(56) {
+                    ByteUtils.getUnsignedShortLE(payload, 2 + it * 2) / 1000.0
+                })
+                else -> previous.copy(
+                    firmwareVersion = "${payload[13].toInt() and 0xFF}.${payload[12].toInt() and 0xFF}.${ByteUtils.getUnsignedShortLE(payload, 10)}",
+                    // Captures contain a fixed 20-byte serial after the 20-byte message.
+                    serialNumber = payload.copyOfRange(42, 62).decodeToString()
+                        .trimEnd('\u0000').ifEmpty { null }
+                )
+            }
+            p6Packs = p6Packs + (index to updated)
+        }
+    }
+
     private fun updateBmsSnapshot(
         voltage: Double? = null,
         current: Double? = null,
@@ -1292,7 +1363,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     responseTimeoutMs = 1_200L,
                     maxRetries = 1
                 ),
-            ) + if (supportsV14PackCellQueries()) listOf(
+            ) + if (modelName == P6) p6PollingQueries() else if (supportsV14PackCellQueries()) listOf(
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-1-cells",
                     commandType = CommandType.CUSTOM,
@@ -1334,17 +1405,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
-        if (data.size < 5 || data[0] != HEADER[0] || data[1] != HEADER[1]) return false
-        val command = data[4].toInt() and 0x7F
-        return when (query.commandType) {
+        return validatedV2Frames(data).any { frame ->
+            val command = frame[4].toInt() and 0x7F
+            when (query.commandType) {
             CommandType.REQUEST_SERIAL,
             CommandType.REQUEST_FIRMWARE -> command == COMMAND_MAIN_INFO
 
             CommandType.REQUEST_BATTERY_INFO ->
                 command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
 
-            CommandType.CUSTOM -> matchesCustomQueryResponse(query, command, data)
+            CommandType.CUSTOM -> matchesCustomQueryResponse(query, command, frame)
             else -> false
+            }
         }
     }
 
@@ -1357,20 +1429,32 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         if (request.size < 7 || request[4].toInt() and 0xFF != COMMAND_MAIN_INFO) return false
         val packAddress = request[5].toInt() and 0xFF
         val subCommand = request[6].toInt() and 0xFF
-        if (packAddress !in V14_BMS_PACK_ADDRESSES || subCommand != 0x02) return false
         if (command != packAddress) return false
-        // When the response bit (0x80) makes cmdByte equal 0xA5 or 0xAA (the two escape-
-        // trigger values), the device encodes the cmd byte as {0xA5, cmdByte} so the
-        // first payload byte is at position 6; otherwise it is at position 5.
-        val cmdByte = packAddress or 0x80
-        val escaped = data.size > 5 &&
-                (data[4].toInt() and 0xFF) == 0xA5 &&
-                (data[5].toInt() and 0xFF) == cmdByte
-        val payloadOffset = if (escaped) 6 else 5
-        if (data.size < payloadOffset + 2) return false
-        return (data[payloadOffset].toInt() and 0xFF) == 0x02 &&
-                (data[payloadOffset + 1].toInt() and 0xFF) == 0x82
+        val payload = data.copyOfRange(5, data.lastIndex)
+        if (modelName == P6) {
+            return data[2].toInt() and 0xFF == FLAG_EXTENDED &&
+                isP6PackPayload(command, payload) &&
+                payload[1].toInt() and 0xFF == (subCommand or 0x80)
+        }
+        return packAddress in V14_BMS_PACK_ADDRESSES && subCommand == 0x02 &&
+            parseV14PackCells(payload) != null
     }
+
+    private fun p6PollingQueries(): List<ProtocolQuerySpec> =
+        (0x24..0x25).flatMap { pack ->
+            listOf(1, 2, 4).map { subtype ->
+                ProtocolQuerySpec(
+                    id = "inmotion.p6-pack-${pack - 0x23}-$subtype",
+                    commandType = CommandType.CUSTOM,
+                    value = buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO,
+                        byteArrayOf(pack.toByte(), subtype.toByte())),
+                    initialDelayMs = ((pack - 0x24) * 3 + subtype) * 250L,
+                    intervalMs = if (subtype == 4) 0L else 4_000L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 1
+                )
+            }
+        }
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
         buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO, byteArrayOf(packAddress.toByte(), 0x02))
@@ -1477,6 +1561,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     override fun getBMSData(): List<BMSData>? {
+        if (modelName == P6) return p6Packs.toSortedMap().values.toList().ifEmpty { null }
         val snapshot = lastKnownBmsSnapshot
         val voltage = snapshot.voltage
         val current = snapshot.current
@@ -1554,6 +1639,31 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 isCharging = resolveBmsChargingState(current, lastKnownIsCharging)
             )
         )
+    }
+
+    override fun resetSession() = synchronized(parseLock) {
+        v2Buffer.clear()
+        legacyBuffer.clear()
+        lastV2Chunk = null
+        lastV2ChunkSnapshot = null
+        lastV2Frames = emptyList()
+        p6Packs = emptyMap()
+        lastDetectedDialect = Dialect.UNKNOWN
+        lastKnownIsCharging = null
+        modelName = manufacturer
+        serialNumber = null
+        firmwareVersion = null
+        totalDistanceKm = null
+        v2SessionStartTimestampMs = null
+        hasSeenV2MainInfo = false
+        hasSeenV2Realtime = false
+        hasSeenLegacyRealtime = false
+        lastKnownBmsSnapshot = InMotionBmsSnapshot()
+        totalRideTimeSeconds = null
+        totalPowerOnTimeSeconds = null
+        lastP6StatsQueryAtMs = 0L
+        while (_writeChannel.tryReceive().isSuccess) { /* discard previous-session writes */ }
+        while (_channel.tryReceive().isSuccess) { /* discard previous-session telemetry */ }
     }
 
     override fun close() {

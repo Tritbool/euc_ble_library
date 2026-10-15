@@ -953,7 +953,7 @@ class BLEManager internal constructor(
             else "GATT fingerprint"
             selected.getCandidateDataCharacteristicUUIDs().distinct()
                 .forEach { enableNotifications(it) }
-            if (!activateProtocolIfReady(selected, reason, logReason)) {
+            if (!activateProtocolIfReady(selected, reason, logReason, fingerprintMatchVersion)) {
                 disconnect()
             }
         } else {
@@ -1107,15 +1107,29 @@ class BLEManager internal constructor(
                 executeQueryWithRetry(protocol, query)
             }
 
-            plan.periodicQueries.forEach { query ->
-                launch {
-                    if (query.initialDelayMs > 0L) delay(query.initialDelayMs.milliseconds)
-                    while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
-                        executeQueryWithRetry(protocol, query)
-                        if (query.intervalMs <= 0L) break
-                        delay(query.intervalMs.milliseconds)
+            val periodicJobs = mutableMapOf<String, Job>()
+            while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
+                // Model-dependent queries may become available only after startup replies.
+                val currentPlan = protocol.getPollingPlan()
+                val queries = if (currentPlan.enabled) currentPlan.periodicQueries else emptyList()
+                val ids = queries.map { it.id }.toSet()
+                (periodicJobs.keys - ids).forEach {
+                    periodicJobs.remove(it)?.cancel()
+                    pendingQueries.remove(it)
+                }
+                queries.forEach { query ->
+                    if (query.id !in periodicJobs) {
+                        periodicJobs[query.id] = launch {
+                            if (query.initialDelayMs > 0L) delay(query.initialDelayMs.milliseconds)
+                            while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
+                                executeQueryWithRetry(protocol, query)
+                                if (query.intervalMs <= 0L) break
+                                delay(query.intervalMs.milliseconds)
+                            }
+                        }
                     }
                 }
+                delay(250.milliseconds)
             }
         }
     }
@@ -1196,7 +1210,8 @@ class BLEManager internal constructor(
     private fun setActiveProtocol(
         protocol: EUCProtocol,
         reason: String,
-        selectionReason: ProtocolSelectionReason
+        selectionReason: ProtocolSelectionReason,
+        fingerprintDialect: Int? = null
     ) {
         if (currentProtocol === protocol) {
             currentSelectionReason = selectionReason
@@ -1205,6 +1220,9 @@ class BLEManager internal constructor(
         cancelDataFlowCollection()
         resetProtocolSession()
         protocol.resetSession()
+        if (protocol is InMotionProtocol && fingerprintDialect != null) {
+            protocol.setDialect(fingerprintDialect)
+        }
         currentProtocol = protocol
         currentSelectionReason = selectionReason
         awaitingManualProtocolSelection = false
@@ -1468,7 +1486,8 @@ class BLEManager internal constructor(
     private fun activateProtocolIfReady(
         protocol: EUCProtocol,
         selectionReason: ProtocolSelectionReason,
-        logReason: String
+        logReason: String,
+        fingerprintDialect: Int? = null
     ): Boolean {
         val hasReadableCharacteristic =
             protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
@@ -1487,7 +1506,7 @@ class BLEManager internal constructor(
             return false
         }
         logger.info(TAG, "Applied protocol $protocol")
-        setActiveProtocol(protocol, logReason, selectionReason)
+        setActiveProtocol(protocol, logReason, selectionReason, fingerprintDialect)
         return true
     }
 
