@@ -461,11 +461,18 @@ class BLEManager internal constructor(
         }
         val payload = createCommand(commandType, value)
         if (payload.isEmpty()) return
+        val sensitivePayload = commandType == CommandType.AUTHENTICATE ||
+            commandType == CommandType.SET_PASSWORD || commandType == CommandType.CHANGE_PASSWORD ||
+            commandType == CommandType.REMOVE_PASSWORD
         if (generation != writeGeneration || currentProtocol !== protocol) {
-            payload.fill(0)
+            if (sensitivePayload) payload.fill(0)
             return
         }
-        sendCommand(payload, protocol.getWriteCharacteristicUUID())
+        try {
+            sendCommand(payload, protocol.getWriteCharacteristicUUID())
+        } finally {
+            if (sensitivePayload) payload.fill(0)
+        }
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -480,7 +487,7 @@ class BLEManager internal constructor(
             return
         }
         if (currentProtocol?.canSendCommand(command) == false) {
-            errorCallback?.onError(BLEException("Wheel authentication required before lock/unlock"))
+            errorCallback?.onError(BLEException("Command blocked by protocol security state or pending operation"))
             return
         }
 
@@ -494,7 +501,8 @@ class BLEManager internal constructor(
         // one (or a CCCD descriptor write) is in flight is rejected and never reaches the
         // wheel. Writes are therefore serialized through a queue and retried when busy.
         ensureWriteQueueRunning()
-        writeQueue.trySend(PendingWrite(command.clone(), characteristicUuid, generation))
+        val write = PendingWrite(command.clone(), characteristicUuid, generation)
+        if (writeQueue.trySend(write).isFailure) write.payload.fill(0)
     }
 
     private fun ensureWriteQueueRunning() {
@@ -514,11 +522,13 @@ class BLEManager internal constructor(
 
     @SuppressLint("MissingPermission")
     private suspend fun performQueuedWrite(write: PendingWrite) {
+        var attempts = 0
         for (attempt in 1..MAX_WRITE_ATTEMPTS) {
             if (write.generation != writeGeneration) return
             if (connectionState != BLEConstants.ConnectionState.CONNECTED) return
-            if (currentProtocol?.canSendCommand(write.payload) == false) {
-                errorCallback?.onError(BLEException("Wheel authentication required before lock/unlock"))
+            val protocol = currentProtocol
+            if (protocol?.canSendCommand(write.payload) == false) {
+                errorCallback?.onError(BLEException("Command blocked by protocol security state or pending operation"))
                 return
             }
             val characteristic = getCharacteristic(write.characteristicUuid) ?: run {
@@ -528,7 +538,11 @@ class BLEManager internal constructor(
 
             val ack = CompletableDeferred<Unit>()
             pendingWriteAck = ack
+            attempts = attempt
             if (writeCharacteristicNow(characteristic, write.payload)) {
+                if (write.generation == writeGeneration && currentProtocol === protocol) {
+                    protocol?.onCommandSubmitted(write.payload)
+                }
                 captureTraffic(TrafficDirection.TX, write.characteristicUuid, write.payload)
                 // Wait for onCharacteristicWrite before issuing the next operation; the
                 // timeout only guards against a callback that never arrives.
@@ -536,10 +550,11 @@ class BLEManager internal constructor(
                 return
             }
             pendingWriteAck = null
+            if (protocol?.canRetryCommand(write.payload) == false) break
             if (attempt < MAX_WRITE_ATTEMPTS) delay((WRITE_RETRY_DELAY_MS * attempt).milliseconds)
         }
         errorCallback?.onError(
-            BLEException("BLE stack rejected write after $MAX_WRITE_ATTEMPTS attempts (${write.payload.size} bytes)")
+            BLEException("BLE stack rejected write after $attempts attempts (${write.payload.size} bytes)")
         )
     }
 

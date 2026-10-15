@@ -19,8 +19,24 @@ data class WheelSecurityState(
     val lock: WheelLockState = WheelLockState.UNKNOWN
 )
 
-/** A wheel notification, including repeated status reports. Contains no PIN or raw bytes. */
+enum class PasswordOperation {
+    SET,
+    CHANGE,
+    REMOVE
+}
+
+enum class PasswordOperationStatus {
+    CONFIRMED,
+    /** No matching confirmation; this does not mean that the password was incorrect. */
+    TIMEOUT_UNCONFIRMED
+}
+
+/** A security notification or local password-operation timeout. Contains no PIN or raw bytes. */
 sealed interface WheelSecurityEvent {
     data class AuthenticationStatus(val state: AuthenticationState) : WheelSecurityEvent
     data class LockStatus(val state: WheelLockState) : WheelSecurityEvent
+    data class PasswordOperationResult(
+        val operation: PasswordOperation,
+        val status: PasswordOperationStatus
+    ) : WheelSecurityEvent
 }

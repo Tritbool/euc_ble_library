@@ -18,8 +18,11 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelLockState
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
+import io.github.tritbool.euc.ble.models.PasswordOperation
+import io.github.tritbool.euc.ble.models.PasswordOperationStatus
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -33,9 +36,199 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.mockito.Mockito.mockingDetails
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EucBleClientSecurityTest {
+    @Test
+    fun customCallerBufferIsNotWipedWhenProtocolReturnsItDirectly() = runTest {
+        val (client, protocol, _) = connectedClient()
+        client.bleManager.currentProtocol = object : EUCProtocol by protocol {
+            override fun createCommand(commandType: CommandType, value: Any): ByteArray =
+                if (commandType == CommandType.CUSTOM) value as ByteArray else protocol.createCommand(commandType, value)
+        }
+        val traffic = collectTraffic(client)
+        val callerBuffer = notification(0x88, 0)
+        val expected = callerBuffer.clone()
+        client.sendCommand(CommandType.CUSTOM, callerBuffer)
+        assertArrayEquals(expected, callerBuffer)
+        callerBuffer.fill(0)
+        runCurrent()
+        assertArrayEquals(expected, traffic.single { it.direction == TrafficDirection.TX }.bytes)
+    }
+
+    @Test
+    fun passwordApisValidateWithoutExposingInputAndOnlyKingsongSupportsThem() = runTest {
+        val (client, _, _) = connectedClient()
+        val commands = listOf(CommandType.SET_PASSWORD, CommandType.CHANGE_PASSWORD, CommandType.REMOVE_PASSWORD)
+        for (protocol in client.getRegisteredProtocols()) {
+            for (command in commands) {
+                assertEquals(
+                    if (protocol is KingsongProtocol) CommandSupport.SUPPORTED else CommandSupport.UNSUPPORTED,
+                    protocol.getCommandSupport(command)
+                )
+            }
+        }
+        for (invalid in listOf("", "123", "12345", "12a3", "１２３４", "١٢٣٤")) {
+            for (call in listOf<() -> Unit>(
+                { client.setPassword(invalid) },
+                { client.changePassword(invalid, "0012") },
+                { client.changePassword("0012", invalid) },
+                { client.removePassword(invalid) }
+            )) {
+                val error = assertThrows(IllegalArgumentException::class.java) { call() }
+                assertEquals("Password must contain exactly four ASCII digits", error.message)
+            }
+        }
+        val errors = mutableListOf<String>()
+        client.setErrorCallback(object : ErrorCallback {
+            override fun onError(error: BLEException) { errors.add(error.message.orEmpty()) }
+        })
+        client.bleManager.currentProtocol = client.getRegisteredProtocols().first { it.manufacturer == "Gotway" }
+        val traffic = collectTraffic(client)
+        client.setPassword("0012")
+        client.changePassword("0012", "0034")
+        client.removePassword("0034")
+        runCurrent()
+        assertEquals(3, errors.size)
+        assertTrue(errors.all { "Unsupported command" in it && "0012" !in it && "0034" !in it })
+        assertTrue(traffic.isEmpty())
+    }
+
+    @Test
+    fun acceptedPasswordWritesForwardResultsWithoutChangingAuthenticationOrLock() = runTest {
+        val (client, protocol, _) = connectedClient()
+        val events = mutableListOf<WheelSecurityEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            client.securityEventFlow.collect { events.add(it) }
+        }
+        protocol.decode(notification(0x46, 1) + notification(0x5F, 1))
+        runCurrent()
+        val state = client.securityStateFlow.value
+        events.clear()
+        for ((call, operation, target) in listOf(
+            Triple<() -> Unit, PasswordOperation, ByteArray>(
+                { client.setPassword("0012") }, PasswordOperation.SET, "0012".toByteArray(Charsets.US_ASCII)
+            ),
+            Triple<() -> Unit, PasswordOperation, ByteArray>(
+                { client.changePassword("0012", "0034") }, PasswordOperation.CHANGE, "0034".toByteArray(Charsets.US_ASCII)
+            ),
+            Triple<() -> Unit, PasswordOperation, ByteArray>(
+                { client.removePassword("0034") }, PasswordOperation.REMOVE, ByteArray(4) { 0xFF.toByte() }
+            )
+        )) {
+            call()
+            runCurrent()
+            assertTrue(events.isEmpty())
+            val reply = notification(0x43, 0).also {
+                target.copyInto(it, 2)
+                it[6] = 1
+            }
+            protocol.decode(reply)
+            runCurrent()
+            assertEquals(listOf(
+                WheelSecurityEvent.PasswordOperationResult(operation, PasswordOperationStatus.CONFIRMED)
+            ), events)
+            assertEquals(state, client.securityStateFlow.value)
+            events.clear()
+            advanceTimeBy(300)
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun passwordTimeoutStartsAtAcceptedQueuedWriteAndOverlapIsNotAnAuthenticationError() = runTest {
+        val (client, _, _) = connectedClient()
+        val traffic = collectTraffic(client)
+        val results = mutableListOf<WheelSecurityEvent>()
+        val errors = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            client.securityEventFlow.collect { results.add(it) }
+        }
+        client.setErrorCallback(object : ErrorCallback {
+            override fun onError(error: BLEException) { errors.add(error.message.orEmpty()) }
+        })
+        client.sendCommand(CommandType.BEEP)
+        client.setPassword("0012")
+        client.changePassword("0012", "0034")
+        client.removePassword("0012")
+        runCurrent()
+        advanceTimeBy(299)
+        runCurrent()
+        assertTrue(traffic.none { it.direction == TrafficDirection.TX && it.bytes[16] == 0x41.toByte() })
+        assertTrue(results.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        advanceTimeBy(300)
+        runCurrent()
+        assertEquals(2, errors.size)
+        assertTrue(errors.all { it == "Command blocked by protocol security state or pending operation" })
+        assertEquals(1, traffic.count {
+            it.direction == TrafficDirection.TX && it.bytes[16].toInt() in 0x41..0x42
+        })
+        advanceTimeBy(2699)
+        runCurrent()
+        assertTrue(results.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(WheelSecurityEvent.PasswordOperationResult(
+            PasswordOperation.SET, PasswordOperationStatus.TIMEOUT_UNCONFIRMED
+        )), results)
+    }
+
+    @Test
+    fun rejectedPasswordWriteIsNeverRetriedAndDoesNotStartConfirmationTimeout() = runTest {
+        val (client, _, gatt) = connectedClient()
+        @Suppress("DEPRECATION")
+        whenever(gatt.writeCharacteristic(any())).thenReturn(false)
+        whenever(gatt.writeCharacteristic(any(), any(), any())).thenReturn(1)
+        val traffic = collectTraffic(client)
+        val results = mutableListOf<WheelSecurityEvent>()
+        val errors = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            client.securityEventFlow.collect { results.add(it) }
+        }
+        client.setErrorCallback(object : ErrorCallback {
+            override fun onError(error: BLEException) { errors.add(error.message.orEmpty()) }
+        })
+        client.changePassword("0012", "0034")
+        runCurrent()
+        advanceTimeBy(6000)
+        runCurrent()
+        assertTrue(results.isEmpty())
+        assertTrue(traffic.none { it.direction == TrafficDirection.TX })
+        assertEquals(1, mockingDetails(gatt).invocations.count { it.method.name == "writeCharacteristic" })
+        assertEquals(listOf("BLE stack rejected write after 1 attempts (20 bytes)"), errors)
+    }
+
+    @Test
+    fun disconnectDropsQueuedPasswordAndCancelsAlreadySubmittedTimeout() = runTest {
+        val (client, protocol, _) = connectedClient()
+        val traffic = collectTraffic(client)
+        val results = mutableListOf<WheelSecurityEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            client.securityEventFlow.collect { results.add(it) }
+        }
+        client.setPassword("0012")
+        client.removePassword("0012")
+        runCurrent()
+        client.disconnect()
+        attachGatt(client.bleManager, protocol)
+        client.bleManager.currentProtocol = protocol
+        client.bleManager.startDataFlowCollection(protocol)
+        advanceTimeBy(6000)
+        runCurrent()
+        assertTrue(results.isEmpty())
+        assertTrue(traffic.none { it.direction == TrafficDirection.TX && it.bytes[16] == 0x42.toByte() })
+        protocol.decode(notification(0x43, 0).also {
+            "0012".toByteArray(Charsets.US_ASCII).copyInto(it, 2)
+            it[6] = 1
+        })
+        runCurrent()
+        assertTrue(results.isEmpty())
+        assertEquals(WheelSecurityState(), client.securityStateFlow.value)
+    }
+
     @Test
     fun publicApiReportsSupportValidatesPinAndPublishesNotificationState() = runTest {
         val (client, protocol, _) = connectedClient()

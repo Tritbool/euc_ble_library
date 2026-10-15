@@ -125,7 +125,7 @@ For commands:
 client.sendCommand(CommandType.LIGHT_ON)
 ```
 
-## KingSong PIN authentication and lock control
+## KingSong PIN authentication, password management, and lock control
 
 Collect `client.securityStateFlow` for a client-owned PIN popup and lock indicator.
 `WheelSecurityState`, `AuthenticationState`, and `WheelLockState` are in
@@ -175,6 +175,42 @@ KingSong `5D` commands), also rechecked before queued submission. `UNKNOWN` does
 authentication is unnecessary. There is no automatic authentication, locking, or unlocking, and a
 blocked request must be explicitly submitted again after authentication.
 
+Password management is explicit and KingSong-only:
+
+```kotlin
+client.setPassword("0012")              // initial password, not authentication
+client.changePassword("0012", "0034")   // old, new
+client.removePassword("0034")          // current password
+```
+
+Each input must be exactly four ASCII digits; leading zeros are preserved. Generic equivalents
+are `SET_PASSWORD` (String), `CHANGE_PASSWORD` (`protocols.PasswordChangeRequest(oldPassword,
+newPassword)`), and `REMOVE_PASSWORD` (String). Invalid typed API inputs throw
+`IllegalArgumentException`; invalid generic inputs produce no frame. The change request's
+`toString()` is redacted; do not persist or log its password properties.
+
+All use 20-byte `AA 55` frames with opcode at byte 16 and trailer `14 5A 5A`.
+Set uses opcode `41`, new digits at bytes 2..5, and **zero bytes**, not ASCII `"0000"`, at 6..9.
+Change uses `41`, new digits at 2..5 and old digits at 6..9. Remove uses `42`, current digits
+at 2..5 and zeros in the remaining payload. A matching `43` notification with byte 6 = `01`
+confirms new digits at 2..5 after set/change, or `FF FF FF FF` after removal.
+
+Subscribe to `securityEventFlow` before submitting. `WheelSecurityEvent.PasswordOperationResult`
+contains only `PasswordOperation.SET`/`CHANGE`/`REMOVE` and `PasswordOperationStatus.CONFIRMED`
+or `TIMEOUT_UNCONFIRMED` (both enums in `models`). The 3000 ms timeout starts only after GATT
+accepts the write, not when a command is encoded or queued. Missing replies **never prove a wrong
+password**, and a timeout does not prove the wheel made no change. Authentication and lock state
+are preserved. Only one password operation may be pending; overlapping writes are rejected by
+the queue's protocol-state check. Password operations are never polled, automatically retried,
+or replayed on reconnect. Disconnect, reset, or close cancels pending confirmation without a
+result. Check support and wait for each result before submitting another operation.
+
+KingSong replies have no request IDs: a delayed reply with the same expected target can be
+indistinguishable from a later operation's reply. Confirmation is not a transport-level
+transaction guarantee, and models/firmware may differ.
+OS acceptance does not guarantee delivery: a later GATT callback failure can still end in
+`TIMEOUT_UNCONFIRMED` when no matching wheel reply arrives.
+
 Query opcode `5E` requests lock status; only `5F` notifications with byte 2 = 1 (locked) or 0
 (unlocked) confirm it. Requests and transport acceptance never update the confirmed lock state.
 The existing delayed startup `5E` query is retained. Unknown status values are ignored.
@@ -183,10 +219,13 @@ has not been tested on live hardware, and compatibility across models/firmware r
 
 The library does not persist PINs, include them in normal logs/state, or replay them on reconnect.
 Transient PIN bytes necessarily exist in the BLE write queue/platform; ordinary busy-stack
-submission retries still apply. **Deliberate raw `trafficFlow` capture includes the plaintext PIN
-in outgoing `44` frames**. Disable recording during authentication or redact offsets 2..5 before
-storing/sharing traces, and never log the entered PIN. Android/platform buffers and caller Strings
-cannot be reliably erased by this library.
+submission retries still apply to authentication, but not password management. Pending password
+correlation retains only expected confirmation bytes and clears them on completion/reset.
+**Raw `trafficFlow` and protocol `rawFrameFlow` expose plaintext passwords**, including outgoing
+`41`/`42`/`44` and incoming `43` frames. Disable recording during these operations or redact all
+password fields (including old digits at 6..9 in `41`) before storing/sharing traces. Never log
+entered passwords. Android/platform buffers and caller Strings cannot be reliably erased by
+this library; no PIN persistence is provided.
 
 ## Raw BLE traffic capture
 

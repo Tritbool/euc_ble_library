@@ -10,11 +10,14 @@ import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.WheelLockState
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
+import io.github.tritbool.euc.ble.models.PasswordOperation
+import io.github.tritbool.euc.ble.models.PasswordOperationStatus
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -130,6 +133,9 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         CommandType.BEEP,
         CommandType.POWER_OFF,
         CommandType.AUTHENTICATE,
+        CommandType.SET_PASSWORD,
+        CommandType.CHANGE_PASSWORD,
+        CommandType.REMOVE_PASSWORD,
         CommandType.LOCK,
         CommandType.UNLOCK,
         CommandType.REQUEST_LOCK_STATE,
@@ -177,6 +183,13 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
     private var unlockChallenge: IntArray? = null
     private val unlockRandom = SecureRandom()
     private var frameCollectorJob: Job? = null
+    private class PendingPasswordOperation(
+        val operation: PasswordOperation,
+        val expected: ByteArray
+    ) {
+        var timeout: Job? = null
+    }
+    private var pendingPasswordOperation: PendingPasswordOperation? = null
     private val _securityStateFlow = MutableStateFlow(WheelSecurityState())
     override val securityStateFlow: StateFlow<WheelSecurityState> = _securityStateFlow.asStateFlow()
     private val _securityEventFlow = MutableSharedFlow<WheelSecurityEvent>(
@@ -193,6 +206,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             // A new channel isolates frames already queued by the previous connection.
             frameReassembler = FrameReassembler(byteParser)
             _securityStateFlow.value = WheelSecurityState()
+            clearPasswordOperation()
             unlockChallenge = null
             lastKnownDynamicSpeedLimit = null
             lastKnownWheelMaxSpeed = null
@@ -203,10 +217,71 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         }
     }
 
-    override fun canSendCommand(payload: ByteArray): Boolean {
+    override fun canSendCommand(payload: ByteArray): Boolean = synchronized(sessionLock) {
         val isLockCommand = payload.size >= 17 &&
             payload[0] == header[0] && payload[1] == header[1] && payload[16] == 0x5D.toByte()
-        return !isLockCommand || securityStateFlow.value.authentication != AuthenticationState.REQUIRED
+        (!isLockCommand || securityStateFlow.value.authentication != AuthenticationState.REQUIRED) &&
+            (!isPasswordCommand(payload) || pendingPasswordOperation == null)
+    }
+
+    private fun isPasswordCommand(payload: ByteArray): Boolean =
+        payload.size >= 17 && payload[0] == header[0] && payload[1] == header[1] &&
+            payload[16].toInt() in 0x41..0x42
+
+    override fun canRetryCommand(payload: ByteArray): Boolean = !isPasswordCommand(payload)
+
+    override fun onCommandSubmitted(payload: ByteArray) {
+        synchronized(sessionLock) {
+            if (!isPasswordCommand(payload) || !hasStandardTrailer(payload) ||
+                pendingPasswordOperation != null ||
+                (2..5).any { payload[it].toInt() !in 0x30..0x39 }
+            ) return
+            val operation = if (payload[16] == 0x42.toByte()) {
+                if ((6..15).any { payload[it] != 0.toByte() }) return
+                PasswordOperation.REMOVE
+            } else {
+                if ((10..15).any { payload[it] != 0.toByte() }) return
+                when {
+                    (6..9).all { payload[it] == 0.toByte() } -> PasswordOperation.SET
+                    (6..9).all { payload[it].toInt() in 0x30..0x39 } -> PasswordOperation.CHANGE
+                    else -> return
+                }
+            }
+            // Retain only the expected reply, never the old/current password.
+            val expected = if (operation == PasswordOperation.REMOVE) {
+                ByteArray(4) { 0xFF.toByte() }
+            } else {
+                payload.copyOfRange(2, 6)
+            }
+            val pending = PendingPasswordOperation(operation, expected)
+            pendingPasswordOperation = pending
+            pending.timeout = scope.launch {
+                delay(PASSWORD_OPERATION_TIMEOUT_MS)
+                synchronized(sessionLock) {
+                    if (pendingPasswordOperation === pending) {
+                        finishPasswordOperation(PasswordOperationStatus.TIMEOUT_UNCONFIRMED)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun hasStandardTrailer(frame: ByteArray, offset: Int = 0): Boolean =
+        offset >= 0 && frame.size - offset == FRAME_LENGTH && frame[offset + 17] == 0x14.toByte() &&
+            frame[offset + 18] == 0x5A.toByte() && frame[offset + 19] == 0x5A.toByte()
+
+    private fun clearPasswordOperation() {
+        pendingPasswordOperation?.let {
+            it.timeout?.cancel()
+            it.expected.fill(0)
+        }
+        pendingPasswordOperation = null
+    }
+
+    private fun finishPasswordOperation(status: PasswordOperationStatus) {
+        val operation = pendingPasswordOperation?.operation ?: return
+        clearPasswordOperation()
+        _securityEventFlow.tryEmit(WheelSecurityEvent.PasswordOperationResult(operation, status))
     }
 
     private val _channel = Channel<EUCData>(capacity = Channel.UNLIMITED)
@@ -298,6 +373,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         private const val OFFSET_PAGE_NUM = 17
 
         private const val QUERY_ID_REQUEST_ALARMS = "ks.request-alarms"
+        internal const val PASSWORD_OPERATION_TIMEOUT_MS = 3000L
 
         // KingSong never transmits a battery percentage; it is derived from the
         // per-cell pack voltage on a linear 3.10 V (0 %) .. 4.15 V (100 %) line,
@@ -379,6 +455,16 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
 
         val messageType = ByteUtils.getUnsignedByte(data, headerIdx + OFFSET_MESSAGE_TYPE)
         return when (messageType) {
+            0x43 -> {
+                val pending = pendingPasswordOperation
+                if (pending != null && hasStandardTrailer(data, headerIdx) &&
+                    data[headerIdx + 6] == 0x01.toByte() &&
+                    pending.expected.indices.all { data[headerIdx + 2 + it] == pending.expected[it] }
+                ) {
+                    finishPasswordOperation(PasswordOperationStatus.CONFIRMED)
+                }
+                null
+            }
             0x46, 0x5F -> {
                 // Only known status values with the standard trailer can confirm security state.
                 if (data[headerIdx + 17] == 0x14.toByte() &&
@@ -784,6 +870,7 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
             frameCollectorJob?.cancel()
             frameReassembler.reset()
             _securityStateFlow.value = WheelSecurityState()
+            clearPasswordOperation()
             unlockChallenge = null
         }
         scope.cancel()
@@ -809,8 +896,33 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         return null
     }
 
+    private fun isValidPassword(value: String): Boolean =
+        value.length == 4 && value.all { it in '0'..'9' }
+
     override fun createCommand(commandType: CommandType, value: Any): ByteArray {
         return when (commandType) {
+            CommandType.SET_PASSWORD, CommandType.CHANGE_PASSWORD, CommandType.REMOVE_PASSWORD -> {
+                val change = value as? PasswordChangeRequest
+                val password = if (commandType == CommandType.CHANGE_PASSWORD) {
+                    change?.newPassword
+                } else {
+                    value as? String
+                } ?: return byteArrayOf()
+                if (!isValidPassword(password) ||
+                    (commandType == CommandType.CHANGE_PASSWORD &&
+                        (change == null || !isValidPassword(change.oldPassword)))
+                ) return byteArrayOf()
+                buildLegacyCommand(
+                    command = if (commandType == CommandType.REMOVE_PASSWORD) 0x42 else 0x41
+                ).also { frame ->
+                    password.forEachIndexed { index, digit -> frame[index + 2] = digit.code.toByte() }
+                    if (commandType == CommandType.CHANGE_PASSWORD) {
+                        change!!.oldPassword.forEachIndexed { index, digit ->
+                            frame[index + 6] = digit.code.toByte()
+                        }
+                    }
+                }
+            }
             CommandType.AUTHENTICATE -> {
                 val pin = value as? String ?: return byteArrayOf()
                 if (pin.length != 4 || pin.any { it !in '0'..'9' }) return byteArrayOf()
