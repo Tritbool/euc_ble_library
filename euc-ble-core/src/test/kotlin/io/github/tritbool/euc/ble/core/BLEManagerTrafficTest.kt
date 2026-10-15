@@ -41,28 +41,7 @@ class BLEManagerTrafficTest {
         val manager = manager()
         val protocol = InMotionProtocol(NoOpLogger())
         manager.registerProtocol(protocol)
-        val signature = EucFingerprintDatabase.entries
-            .first { it.protocolId == "InMotionProtocol" }.gattSignatures
-            .first { specs -> specs.any { it.version == 2 } }
-        val services = signature.map { spec ->
-            val characteristics = spec.requiredCharacteristicUUIDs.map { uuid ->
-                mock<BluetoothGattCharacteristic>().also { characteristic ->
-                    whenever(characteristic.uuid).thenReturn(uuid)
-                }
-            }
-            mock<BluetoothGattService>().also { service ->
-                whenever(service.uuid).thenReturn(spec.uuid)
-                whenever(service.characteristics).thenReturn(characteristics)
-            }
-        }
-        val gatt = mock<BluetoothGatt>()
-        whenever(gatt.services).thenReturn(services)
-        setField(manager, "bluetoothGatt", gatt)
-        setField(manager, "connectionState", BLEConstants.ConnectionState.CONNECTED)
-        setField(manager, "currentDevice", EUCDevice(
-            name = "InMotion P6", address = "AA:BB:CC:DD:EE:FF",
-            manufacturerId = 0, manufacturerData = null, rssi = -50
-        ))
+        val gatt = attachInMotionV2Gatt(manager)
 
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
@@ -72,6 +51,73 @@ class BLEManagerTrafficTest {
         assertEquals(UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC),
             protocol.getDataCharacteristicUUID())
         assertTrue(protocol.getPollingPlan().enabled)
+    }
+
+    @Test
+    fun forcedAndManualV2SelectionRecoverIdentificationAndExposeP6Packs() = runTest {
+        for (forced in listOf(false, true)) {
+            val manager = manager()
+            val protocol = InMotionProtocol(NoOpLogger())
+            manager.registerProtocol(protocol)
+            val gatt = attachInMotionV2Gatt(manager)
+            val write = gatt.services.flatMap { it.characteristics }.first {
+                it.uuid == UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC)
+            }
+            @Suppress("DEPRECATION")
+            whenever(gatt.writeCharacteristic(any())).thenAnswer {
+                manager.onCharacteristicWrite(gatt, write, BluetoothGatt.GATT_SUCCESS)
+                true
+            }
+            whenever(gatt.writeCharacteristic(any(), any(), any())).thenAnswer {
+                manager.onCharacteristicWrite(gatt, write, BluetoothGatt.GATT_SUCCESS)
+                BluetoothStatusCodes.SUCCESS
+            }
+            val traffic = collectTraffic(manager)
+            val traces = mutableListOf<QueryTraceEvent>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                manager.queryTraceFlow.collect { traces += it }
+            }
+
+            assertTrue(if (forced) manager.forceProtocol(protocol) else manager.selectProtocol(protocol))
+            assertSame(protocol, manager.currentProtocol)
+            assertEquals(write.uuid, protocol.getWriteCharacteristicUUID())
+
+            // Drop every startup response, as can happen while notifications are enabling.
+            advanceTimeBy(16_000)
+            runCurrent()
+            assertTrue(traces.count {
+                it.queryId == "inmotion.identification" && it.phase == QueryTracePhase.SENT
+            } >= 2)
+            assertTrue(traffic.any { it.direction == TrafficDirection.TX })
+            assertTrue(traffic.filter { it.direction == TrafficDirection.TX }
+                .all { it.characteristicUuid == write.uuid })
+
+            val readUuid = UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
+            manager.handleIncomingBytes(ByteUtils.hexToBytes("aaaa11058201020d0199"), readUuid)
+            advanceTimeBy(3_000)
+            runCurrent()
+            val packRequests = traffic.filter { it.direction == TrafficDirection.TX }
+                .map { ByteUtils.bytesToHex(it.bytes, "").lowercase() }.toSet()
+            assertTrue("aaaa160302240132" in packRequests)
+            assertTrue("aaaa160302250230" in packRequests)
+
+            for (pack in 0x24..0x25) {
+                val cells = byteArrayOf(0x02, 0x82.toByte()) +
+                    ByteArray(112) { if (it % 2 == 0) 0x10 else 0x0F }
+                val body = byteArrayOf(0x16, (cells.size + 1).toByte(), (pack or 0x80).toByte()) + cells
+                val checksum = body.fold(0) { sum, byte -> sum xor (byte.toInt() and 0xFF) }
+                manager.handleIncomingBytes(
+                    byteArrayOf(0xAA.toByte(), 0xAA.toByte()) + body + checksum.toByte(), readUuid
+                )
+            }
+            val packs = manager.getBMSData()!!
+            assertEquals(listOf(1, 2), packs.map { it.bmsIndex })
+            assertTrue(packs.all { it.cellVoltages?.size == 56 })
+            assertEquals(3.856, packs[0].cellVoltages!!.first())
+            assertTrue(protocol.getPollingPlan().periodicQueries.none { it.id == "inmotion.identification" })
+            manager.disconnect()
+            assertEquals(null, manager.getBMSData())
+        }
     }
 
     @Test
@@ -341,6 +387,35 @@ class BLEManagerTrafficTest {
     }
 
     private fun TestScope.manager() = BLEManager(mock<Context>(), NoOpLogger(), backgroundScope)
+
+    private fun attachInMotionV2Gatt(manager: BLEManager): BluetoothGatt {
+        val signature = EucFingerprintDatabase.entries
+            .first { it.protocolId == "InMotionProtocol" }.gattSignatures
+            .first { specs -> specs.any { it.version == 2 } }
+        val services = signature.map { spec ->
+            val characteristics = spec.requiredCharacteristicUUIDs.map { uuid ->
+                mock<BluetoothGattCharacteristic>().also { characteristic ->
+                    whenever(characteristic.uuid).thenReturn(uuid)
+                    whenever(characteristic.properties).thenReturn(
+                        BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+                    )
+                }
+            }
+            mock<BluetoothGattService>().also { service ->
+                whenever(service.uuid).thenReturn(spec.uuid)
+                whenever(service.characteristics).thenReturn(characteristics)
+            }
+        }
+        val gatt = mock<BluetoothGatt>()
+        whenever(gatt.services).thenReturn(services)
+        setField(manager, "bluetoothGatt", gatt)
+        setField(manager, "connectionState", BLEConstants.ConnectionState.CONNECTED)
+        setField(manager, "currentDevice", EUCDevice(
+            name = "InMotion P6", address = "AA:BB:CC:DD:EE:FF",
+            manufacturerId = 0, manufacturerData = null, rssi = -50
+        ))
+        return gatt
+    }
 
     private fun TestScope.collectTraffic(manager: BLEManager): MutableList<TrafficEvent> {
         val events = mutableListOf<TrafficEvent>()

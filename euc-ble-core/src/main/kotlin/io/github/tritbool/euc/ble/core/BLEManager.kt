@@ -943,10 +943,6 @@ class BLEManager internal constructor(
             val subclassOverride = selectSubclassByDeviceName(fingerprintMatch, device.name)
             val selected = subclassOverride ?: fingerprintMatch
 
-            if (selected is InMotionProtocol) {
-                logger.info(TAG, "Found inmotion protocol")
-                selected.setDialect(fingerprintMatchVersion)
-            }
             val reason = if (subclassOverride != null) ProtocolSelectionReason.AUTO_DEVICE_NAME
             else ProtocolSelectionReason.AUTO_GATT_FINGERPRINT
             val logReason = if (subclassOverride != null) "GATT fingerprint + device name"
@@ -1489,6 +1485,18 @@ class BLEManager internal constructor(
         logReason: String,
         fingerprintDialect: Int? = null
     ): Boolean {
+        val resolvedDialect = if (protocol is InMotionProtocol) {
+            fingerprintDialect ?: when {
+                getCharacteristic(UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC)) != null &&
+                    getCharacteristic(UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)) != null -> 2
+                getCharacteristic(UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC)) != null &&
+                    getCharacteristic(UUID.fromString(BLEConstants.INMOTION_READ_CHARACTERISTIC)) != null -> 1
+                else -> null
+            }
+        } else null
+        if (protocol is InMotionProtocol && resolvedDialect != null) {
+            protocol.setDialect(resolvedDialect)
+        }
         val hasReadableCharacteristic =
             protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
                 getCharacteristic(uuid) != null
@@ -1506,7 +1514,7 @@ class BLEManager internal constructor(
             return false
         }
         logger.info(TAG, "Applied protocol $protocol")
-        setActiveProtocol(protocol, logReason, selectionReason, fingerprintDialect)
+        setActiveProtocol(protocol, logReason, selectionReason, resolvedDialect)
         return true
     }
 

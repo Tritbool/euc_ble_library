@@ -1363,7 +1363,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     responseTimeoutMs = 1_200L,
                     maxRetries = 1
                 ),
-            ) + if (modelName == P6) p6PollingQueries() else if (supportsV14PackCellQueries()) listOf(
+            ) + if (modelName == manufacturer) listOf(
+                ProtocolQuerySpec(
+                    id = "inmotion.identification",
+                    commandType = CommandType.REQUEST_FIRMWARE,
+                    intervalMs = 4_000L,
+                    responseTimeoutMs = 800L,
+                    maxRetries = 1
+                )
+            ) else if (modelName == P6) p6PollingQueries() else if (supportsV14PackCellQueries()) listOf(
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-1-cells",
                     commandType = CommandType.CUSTOM,

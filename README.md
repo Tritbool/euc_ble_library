@@ -282,6 +282,9 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
   The protocol polls summaries and cells after P6 identification and requests
   identity once per session. These use V2 command `0x02` with the pack address and
   subtype `0x01` (summary), `0x02` (cells) or `0x04` (identity).
+- V2 UART characteristics are selected for automatic, manual and forced connections.
+  If startup identification replies are lost, model requests continue until the
+  wheel identifies itself; P6 pack polling then starts without reconnecting.
 - Pack voltage, serial number, BMS firmware version and separate positive
   `chargeCurrent` / `dischargeCurrent` readings are available when reported.
   Net `current` uses the library convention: discharge minus charge, in amps.
