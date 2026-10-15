@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -106,9 +107,17 @@ class BLEManagerTrafficTest {
                     ByteArray(112) { if (it % 2 == 0) 0x10 else 0x0F }
                 val body = byteArrayOf(0x16, (cells.size + 1).toByte(), (pack or 0x80).toByte()) + cells
                 val checksum = body.fold(0) { sum, byte -> sum xor (byte.toInt() and 0xFF) }
-                manager.handleIncomingBytes(
-                    byteArrayOf(0xAA.toByte(), 0xAA.toByte()) + body + checksum.toByte(), readUuid
-                )
+                val response = ByteArrayOutputStream().apply {
+                    write(0xAA)
+                    write(0xAA)
+                    body.forEach {
+                        val value = it.toInt() and 0xFF
+                        if (value == 0xAA || value == 0xA5) write(0xA5)
+                        write(value)
+                    }
+                    write(checksum)
+                }.toByteArray()
+                manager.handleIncomingBytes(response, readUuid)
             }
             val packs = manager.getBMSData()!!
             assertEquals(listOf(1, 2), packs.map { it.bmsIndex })
@@ -126,7 +135,7 @@ class BLEManagerTrafficTest {
             val manager = manager()
             val protocol = InMotionProtocol(NoOpLogger())
             manager.registerProtocol(protocol)
-            attachInMotionGatt(manager, version = 0)
+            attachInMotionGatt(manager, version = 1)
 
             assertTrue(if (forced) manager.forceProtocol(protocol) else manager.selectProtocol(protocol))
             assertEquals(UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC),
