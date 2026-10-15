@@ -385,7 +385,7 @@ class BLEManagerDeviceNameSelectionTest {
     }
 
     private fun gotwayGatt(): BluetoothGatt = buildGatt(
-        EucFingerprintDatabase.getSignatures("GotwayProtocol").first().map { spec ->
+        EucFingerprintDatabase.getSignatures("GotwayProtocol").last().map { spec ->
             serviceWithChars(spec.uuid, spec.requiredCharacteristicUUIDs.toList())
         }
     )

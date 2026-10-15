@@ -90,7 +90,7 @@ class NosfetProtocolTest {
             assertNull(detector.detect(byteArrayOf(1, 2, 3) + frame.copyOfRange(0, 20)))
             assertArrayEquals(
                 frame + following,
-                detector.detect(frame.copyOfRange(20, frame.size) + following)
+                requireNotNull(detector.detect(frame.copyOfRange(20, frame.size) + following))
             )
         }
     }
@@ -104,7 +104,7 @@ class NosfetProtocolTest {
         }))
         assertNull(detector.detect(createBmsFrame(3)))
         assertNull(detector.detect(createFrame(versionRaw = 9001)))
-        assertArrayEquals(frame, detector.detect(frame))
+        assertArrayEquals(frame, requireNotNull(detector.detect(frame)))
     }
 
     @Test
@@ -112,11 +112,11 @@ class NosfetProtocolTest {
         val detector = NosfetFrameDetector()
         val frame = createFrame()
         val corruptHeader = byteArrayOf(0xDC.toByte(), 0x5A, 0x5C, 0xFF.toByte())
-        assertArrayEquals(frame, detector.detect(corruptHeader + frame))
+        assertArrayEquals(frame, requireNotNull(detector.detect(corruptHeader + frame)))
         assertNull(detector.detect(frame.copyOfRange(0, 20)))
         detector.reset()
         assertNull(detector.detect(frame.copyOfRange(20, frame.size)))
-        assertArrayEquals(frame, detector.detect(ByteArray(1024) + frame))
+        assertArrayEquals(frame, requireNotNull(detector.detect(ByteArray(1024) + frame)))
     }
 
     @Test
