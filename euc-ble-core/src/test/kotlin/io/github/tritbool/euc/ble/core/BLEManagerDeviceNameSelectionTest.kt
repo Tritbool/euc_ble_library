@@ -9,6 +9,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.LeaperkimProtocol
@@ -180,12 +181,7 @@ class BLEManagerDeviceNameSelectionTest {
         manager.registerProtocol(extremeBullProto)
 
         // GATT: Gotway OTA fingerprint service + shared data/write characteristic
-        val gatt = buildGatt(
-            listOf(
-                service(uuid("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0")),
-                serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid)
-            )
-        )
+        val gatt = gotwayGatt()
         attachSession(device("Extreme Bull Master", 0), gatt)
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
@@ -226,12 +222,7 @@ class BLEManagerDeviceNameSelectionTest {
         manager.registerProtocol(gotway)
         manager.registerProtocol(leaperkim)
         manager.registerProtocol(nosfet)
-        val gatt = buildGatt(
-            listOf(
-                service(uuid("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0")),
-                serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid)
-            )
-        )
+        val gatt = gotwayGatt()
         assertEquals(gotway, manager.selectByGattFingerprint(gatt.services).first)
         attachSession(device("nOsFeT", 0), gatt)
 
@@ -263,12 +254,7 @@ class BLEManagerDeviceNameSelectionTest {
     fun `NOSFET name retains GATT fallback when Nosfet protocol is not registered`() {
         val gotway = GotwayProtocol().also(protocolsToClose::add)
         manager.registerProtocol(gotway)
-        val gatt = buildGatt(
-            listOf(
-                service(uuid("1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0")),
-                serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid)
-            )
-        )
+        val gatt = gotwayGatt()
         attachSession(device("NOSFET", 0), gatt)
 
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
@@ -319,6 +305,91 @@ class BLEManagerDeviceNameSelectionTest {
 
     // ─────────────────────────── Helpers ───────────────────────────────
 
+    @Test
+    fun `fragmented Nosfet telemetry overrides conflicting GATT without a matching name`() {
+        val gotway = GotwayProtocol().also(protocolsToClose::add)
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(gotway)
+        manager.registerProtocol(nosfet)
+        val gatt = gotwayGatt()
+        attachSession(device("Unknown wheel", 0), gatt)
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+        assertEquals(gotway, manager.currentProtocol)
+
+        val frame = nosfetFrame()
+        manager.handleIncomingBytes(frame.copyOfRange(0, 20), dataCharUuid)
+        assertEquals(gotway, manager.currentProtocol)
+        manager.handleIncomingBytes(frame.copyOfRange(20, frame.size), dataCharUuid)
+
+        assertEquals(nosfet, manager.currentProtocol)
+        assertEquals(ProtocolSelectionReason.AUTO_TELEMETRY, callback.selectedProtocols.last().reason)
+    }
+
+    @Test
+    fun `unknown serial bridge waits for Nosfet telemetry in automatic mode`() {
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(nosfet)
+        val gatt = buildGatt(listOf(serviceWithChar(
+            uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid
+        )))
+        attachSession(device("", 0), gatt)
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+        assertNull(manager.currentProtocol)
+        manager.handleIncomingBytes(nosfetFrame(), dataCharUuid)
+        assertEquals(nosfet, manager.currentProtocol)
+    }
+
+    @Test
+    fun `Nosfet telemetry cannot override forced or manual selection`() {
+        val leaperkim = LeaperkimProtocol().also(protocolsToClose::add)
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(leaperkim)
+        manager.registerProtocol(nosfet)
+        val gatt = buildGatt(listOf(serviceWithChar(
+            uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid
+        )))
+        attachSession(device("", 0), gatt)
+        assertTrue(manager.forceProtocol(leaperkim))
+        manager.handleIncomingBytes(nosfetFrame(), dataCharUuid)
+        assertEquals(leaperkim, manager.currentProtocol)
+
+        manager.clearForcedProtocol()
+        manager.setProtocolSelectionMode(ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK)
+        assertTrue(manager.selectProtocol(leaperkim))
+        manager.handleIncomingBytes(nosfetFrame(), dataCharUuid)
+        assertEquals(leaperkim, manager.currentProtocol)
+    }
+
+    @Test
+    fun `other firmware or characteristic cannot trigger Nosfet selection`() {
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(nosfet)
+        val gatt = buildGatt(listOf(serviceWithChar(
+            uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), dataCharUuid
+        )))
+        attachSession(device("", 0), gatt)
+        manager.handleIncomingBytes(nosfetFrame(version = 9001), dataCharUuid)
+        manager.handleIncomingBytes(nosfetFrame(), UUID.randomUUID())
+        assertNull(manager.currentProtocol)
+    }
+
+    private fun nosfetFrame(version: Int = 44250): ByteArray = ByteArray(40).apply {
+        this[0] = 0xDC.toByte()
+        this[1] = 0x5A
+        this[2] = 0x5C
+        this[3] = 36
+        this[4] = 0x38
+        this[5] = 0xBC.toByte()
+        this[28] = (version shr 8).toByte()
+        this[29] = version.toByte()
+    }
+
+    private fun gotwayGatt(): BluetoothGatt = buildGatt(
+        EucFingerprintDatabase.getSignatures("GotwayProtocol").last().map { spec ->
+            serviceWithChars(spec.uuid, spec.requiredCharacteristicUUIDs.toList())
+        }
+    )
+
     private val dataCharUuid: UUID = uuid("0000ffe1-0000-1000-8000-00805f9b34fb")
 
     private fun uuid(v: String): UUID = UUID.fromString(v)
@@ -339,15 +410,21 @@ class BLEManagerDeviceNameSelectionTest {
     }
 
     private fun serviceWithChar(serviceUuid: UUID, charUuid: UUID): BluetoothGattService {
+        return serviceWithChars(serviceUuid, listOf(charUuid))
+    }
+
+    private fun serviceWithChars(serviceUuid: UUID, charUuids: List<UUID>): BluetoothGattService {
         val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)
-        val char = mock<BluetoothGattCharacteristic>().also { c ->
-            whenever(c.uuid).thenReturn(charUuid)
-            whenever(c.getDescriptor(cccdUuid)).thenReturn(mock<BluetoothGattDescriptor>())
+        val chars = charUuids.map { charUuid ->
+            mock<BluetoothGattCharacteristic>().also { c ->
+                whenever(c.uuid).thenReturn(charUuid)
+                whenever(c.getDescriptor(cccdUuid)).thenReturn(mock<BluetoothGattDescriptor>())
+            }
         }
         return mock<BluetoothGattService>().also { svc ->
             whenever(svc.uuid).thenReturn(serviceUuid)
-            whenever(svc.characteristics).thenReturn(listOf(char))
-            whenever(svc.getCharacteristic(charUuid)).thenReturn(char)
+            whenever(svc.characteristics).thenReturn(chars)
+            chars.forEach { c -> whenever(svc.getCharacteristic(c.uuid)).thenReturn(c) }
         }
     }
 

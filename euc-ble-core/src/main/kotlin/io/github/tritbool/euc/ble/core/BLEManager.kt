@@ -33,6 +33,7 @@ import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetProtocol
+import io.github.tritbool.euc.ble.protocols.NosfetFrameDetector
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import kotlinx.coroutines.CompletableDeferred
@@ -123,6 +124,8 @@ class BLEManager internal constructor(
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal var currentProtocol: EUCProtocol? = null
+    private val nosfetFrameDetector = NosfetFrameDetector()
+    private var currentSelectionReason: ProtocolSelectionReason? = null
     private var protocolSelectionMode: ProtocolSelectionMode = ProtocolSelectionMode.AUTO
     private var forcedProtocol: EUCProtocol? = null
     private var awaitingManualProtocolSelection: Boolean = false
@@ -980,6 +983,15 @@ class BLEManager internal constructor(
                     }
 
                     else -> {
+                        val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
+                        if (nosfet != null && nosfet.getCandidateDataCharacteristicUUIDs().any {
+                                getCharacteristic(it) != null
+                            }
+                        ) {
+                            nosfet.getCandidateDataCharacteristicUUIDs().distinct()
+                                .forEach { enableNotifications(it) }
+                            return
+                        }
                         errorCallback?.onError(BLEException("No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"))
                         disconnect()
                     }
@@ -1013,6 +1025,22 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     internal fun handleIncomingBytes(data: ByteArray, characteristicUuid: UUID) {
         captureTraffic(TrafficDirection.RX, characteristicUuid, data)
+        if (protocolSelectionMode != ProtocolSelectionMode.FORCED &&
+            currentSelectionReason != ProtocolSelectionReason.MANUAL_FALLBACK &&
+            currentProtocol !is NosfetProtocol
+        ) {
+            val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
+            if (nosfet != null && characteristicUuid in nosfet.getCandidateDataCharacteristicUUIDs()) {
+                val frame = nosfetFrameDetector.detect(data)
+                if (frame != null && activateProtocolIfReady(
+                        nosfet, ProtocolSelectionReason.AUTO_TELEMETRY, "Nosfet firmware in telemetry"
+                    )
+                ) {
+                    nosfet.decode(frame)
+                    return
+                }
+            }
+        }
         currentProtocol?.let { protocol ->
             try {
                 matchPendingQueries(protocol, data)
@@ -1149,6 +1177,8 @@ class BLEManager internal constructor(
     }
 
     private fun resetProtocolSession() {
+        nosfetFrameDetector.reset()
+        currentSelectionReason = null
         writeGeneration++
         writeQueueJob?.cancel()
         writeQueueJob = null
@@ -1168,11 +1198,15 @@ class BLEManager internal constructor(
         reason: String,
         selectionReason: ProtocolSelectionReason
     ) {
-        if (currentProtocol === protocol) return
+        if (currentProtocol === protocol) {
+            currentSelectionReason = selectionReason
+            return
+        }
         cancelDataFlowCollection()
         resetProtocolSession()
         protocol.resetSession()
         currentProtocol = protocol
+        currentSelectionReason = selectionReason
         awaitingManualProtocolSelection = false
         logger.info(TAG, "Selected protocol ${protocol.javaClass.simpleName} via $reason")
         startPollingOrchestration(protocol)
@@ -1791,7 +1825,8 @@ enum class ProtocolSelectionReason {
     AUTO_GATT_FINGERPRINT,
     AUTO_DEVICE_NAME,
     MANUAL_FALLBACK,
-    FORCED
+    FORCED,
+    AUTO_TELEMETRY
 }
 
 data class ProtocolSelection(

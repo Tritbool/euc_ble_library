@@ -268,7 +268,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0
 
         val voltage = voltageRaw / 100.0
-        val speed = speedRaw / 100.0
+        val speed = decodeSpeed(speedRaw)
         val current = currentRaw / 100.0
         val temperature = tempRaw / 100.0
         val pwm = pwmRaw / 100.0
@@ -419,6 +419,8 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     }
 
     protected open fun bmsCellCount(majorVersion: Int?): Int = LEAPERKIM_MAX_BMS_CELLS
+
+    protected open fun decodeSpeed(speedRaw: Short): Double = speedRaw / 100.0
 
     private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
         if (frame.size < len + 4) return false

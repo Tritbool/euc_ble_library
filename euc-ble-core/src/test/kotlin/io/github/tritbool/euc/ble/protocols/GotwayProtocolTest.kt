@@ -11,6 +11,11 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import app.cash.turbine.test
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertThrows
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 class GotwayProtocolTest {
 
@@ -1184,6 +1189,48 @@ class GotwayProtocolTest {
             speed = -5.0
         )
         assertFalse(protocol.isDeviceReady(negativeSpeedData))
+    }
+
+    @Test
+    fun testBmsProcessingSnapshotsAndCloseShareTheSameLock() {
+        val processFrame = GotwayProtocol::class.java
+            .getDeclaredMethod("processFrame", ByteArray::class.java)
+            .apply { isAccessible = true }
+        val bmsFrame = createGotwayBmsFrame(
+            frameType = 0x02, page = 0,
+            cellMillivolts = IntArray(8) { 4100 }
+        )
+        processFrame.invoke(protocol, bmsFrame)
+        val snapshot = protocol.getBMSData()
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val operations: List<() -> Unit> = listOf(
+                { processFrame.invoke(protocol, createGotwayFrame(voltageRaw = 6720)); Unit },
+                { processFrame.invoke(protocol, bmsFrame); Unit },
+                { protocol.getBMSData(); Unit },
+                { protocol.close() }
+            )
+            for (operation in operations) {
+                val started = CountDownLatch(1)
+                val future = synchronized(protocol) {
+                    val task = executor.submit {
+                        started.countDown()
+                        operation()
+                    }
+                    assertTrue(started.await(5, TimeUnit.SECONDS))
+                    assertThrows(TimeoutException::class.java) {
+                        task.get(100, TimeUnit.MILLISECONDS)
+                    }
+                    task
+                }
+                future.get(5, TimeUnit.SECONDS)
+            }
+            assertTrue(protocol.getBMSData().isEmpty())
+            assertEquals(List(8) { 4.1 }, snapshot.single().cellVoltages)
+        } finally {
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+        }
     }
 
     @Test

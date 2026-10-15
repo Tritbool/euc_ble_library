@@ -12,8 +12,8 @@ import java.util.UUID
  * the protocol matches if at least one signature matches. Each [GattSignature] is a list
  * of [GattServiceSpec] entries that must ALL match (AND semantics).
  *
- * Protocols without a fingerprint entry cannot be auto-detected and require
- * manual selection by the caller via [io.github.tritbool.euc.ble.EucBleClient.selectProtocol]
+ * Protocols without a fingerprint entry may be identified by device name or telemetry.
+ * Otherwise, callers can use [io.github.tritbool.euc.ble.EucBleClient.selectProtocol]
  * or [io.github.tritbool.euc.ble.EucBleClient.forceProtocol].
  */
 internal object EucFingerprintDatabase {
@@ -611,7 +611,7 @@ internal object EucFingerprintDatabase {
 
     // NinebotProtocol, LeaperkimProtocol, NosfetProtocol, ExtremeBullProtocol:
     // These protocols share service UUIDs (0000ffe0) with other manufacturers and cannot be
-    // uniquely identified by GATT fingerprint alone. Manual selection by the caller is required.
+    // uniquely identified by GATT fingerprint alone. Use device names, telemetry or manual selection.
 
 
     /**

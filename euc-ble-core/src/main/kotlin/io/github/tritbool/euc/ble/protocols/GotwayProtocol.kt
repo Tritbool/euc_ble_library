@@ -310,6 +310,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var boardTemperatureEncoding = BoardTemperatureEncoding.UNKNOWN
     private var gotwayFirmwareVariant: String? = null
     private var useHwPwm = false
+    // Guarded by this instance's monitor via processFrame, getBMSData and close.
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val smartBmsTemperatures: MutableMap<Int, Array<Double?>> = mutableMapOf()
     private val smartBmsCurrents: MutableMap<Int, Double> = mutableMapOf()
@@ -354,6 +355,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
      */
     override val preferredWriteType: ProtocolWriteType = ProtocolWriteType.NO_RESPONSE
 
+    @Synchronized
     override fun close() {
         scope.cancel()
         smartBmsCellPages.clear()
@@ -392,6 +394,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     }
 
     @VisibleForTesting
+    @Synchronized
     private fun processFrame(frame: ByteArray) {
         val eucData = when (frame.getOrNull(18)?.toInt()?.and(0xFF)) {
             0x00 -> parseTypeA(frame)
@@ -1120,6 +1123,7 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
      * Each entry represents one BMS unit (typically 1 or 2 for dual-battery wheels).
      * Data is accumulated from Type 1 BMS summary frames and Type 2/3 cell voltage pages.
      */
+    @Synchronized
     override fun getBMSData(): List<BMSData> {
         val allIndices = (
                 smartBmsCellPages.keys +
