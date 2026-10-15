@@ -57,6 +57,8 @@ class NosfetProtocolTest {
             assertEquals("Nosfet Aero", telemetry.model)
             assertEquals("043.0.01", telemetry.firmwareVersion)
             assertEquals(100, telemetry.batteryLevel)
+            assertEquals(54.321, telemetry.distance, 0.000001)
+            assertEquals(65.432, telemetry.totalDistance ?: -1.0, 0.000001)
             assertEquals(65.5, telemetry.pwm ?: -1.0, 0.01)
             assertTrue(telemetry.isCharging)
 
@@ -178,6 +180,19 @@ class NosfetProtocolTest {
     }
 
     @Test
+    fun incompleteCellPageDoesNotInterpretCrcAsCellVoltage() = runTest {
+        protocol = NosfetProtocol(scope = backgroundScope)
+        val len = 81
+        val frame = createFrame(len = len, versionRaw = 44250).apply {
+            this[46] = 1
+        }
+        appendCrc(frame)
+        protocol.decode(frame)
+        runCurrent()
+        assertTrue(protocol.getBMSData().isEmpty())
+    }
+
+    @Test
     fun createCommandMapsKnownActions() {
         protocol = NosfetProtocol()
 
@@ -267,6 +282,11 @@ class NosfetProtocolTest {
                 }
             }
         }
+        return appendCrc(frame)
+    }
+
+    private fun appendCrc(frame: ByteArray): ByteArray {
+        val len = frame[3].toInt() and 0xFF
         val crc = CRC32().apply { update(frame, 0, len) }.value
         repeat(4) { index ->
             frame[len + index] = (crc shr (24 - index * 8)).toByte()

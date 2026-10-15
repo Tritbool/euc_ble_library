@@ -336,6 +336,9 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
     private fun parseSmartBms(frame: ByteArray) {
         val packetNum = ByteUtils.tryGetUnsignedByte(frame, 46) ?: return
         if (packetNum !in 0..7) return
+        val payloadEnd = ByteUtils.getUnsignedByte(frame, 3)
+        val requiredEnd = if (packetNum == 0 || packetNum == 4) 73 else 83
+        if (payloadEnd < requiredEnd) return
         val bmsIndex = if (packetNum < 4) 1 else 2
         val cellCount = bmsCellCount(lastMajorVersion)
         val cells = bmsCellPages.getOrPut(bmsIndex) { DoubleArray(LEAPERKIM_MAX_BMS_CELLS) }
