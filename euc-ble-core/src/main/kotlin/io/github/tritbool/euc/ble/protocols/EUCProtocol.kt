@@ -78,6 +78,12 @@ interface EUCProtocol : Closeable {
     /** Rechecked by the BLE write queue immediately before submission. */
     fun canSendCommand(payload: ByteArray): Boolean = true
 
+    /** Called only after the BLE stack accepts a queued write, not when it is encoded. */
+    fun onCommandSubmitted(payload: ByteArray) {}
+
+    /** Whether a BLE-stack rejection may be retried. Accepted writes are never replayed. */
+    fun canRetryCommand(payload: ByteArray): Boolean = true
+
     /**
      * Decode raw BLE data into EUCData
      */
@@ -230,6 +236,12 @@ enum class CommandType {
     SET_PEDAL_PITCH_TRIM,
     /** KingSong: exactly four ASCII digits as a String, preserving leading zeros. */
     AUTHENTICATE,
+    /** KingSong: new password as exactly four ASCII digits (String). */
+    SET_PASSWORD,
+    /** KingSong: [PasswordChangeRequest] with old and new four-ASCII-digit passwords. */
+    CHANGE_PASSWORD,
+    /** KingSong: current password as exactly four ASCII digits (String). */
+    REMOVE_PASSWORD,
     /** KingSong: request notification-confirmed lock status (0x5E -> 0x5F). */
     REQUEST_LOCK_STATE,
     CUSTOM

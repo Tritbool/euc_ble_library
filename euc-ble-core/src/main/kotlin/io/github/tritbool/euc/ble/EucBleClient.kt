@@ -30,6 +30,7 @@ import io.github.tritbool.euc.ble.protocols.LeaperkimProtocol
 import io.github.tritbool.euc.ble.protocols.NinebotProtocol
 import io.github.tritbool.euc.ble.protocols.NinebotZProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetProtocol
+import io.github.tritbool.euc.ble.protocols.PasswordChangeRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -102,6 +103,32 @@ class EucBleClient(
             "PIN must contain exactly four ASCII digits"
         }
         sendCommand(CommandType.AUTHENTICATE, pin)
+    }
+
+    /** Explicit KingSong request; observe [securityEventFlow] for confirmation or timeout. */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun setPassword(newPassword: String) {
+        validatePassword(newPassword)
+        sendCommand(CommandType.SET_PASSWORD, newPassword)
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun changePassword(oldPassword: String, newPassword: String) {
+        validatePassword(oldPassword)
+        validatePassword(newPassword)
+        sendCommand(CommandType.CHANGE_PASSWORD, PasswordChangeRequest(oldPassword, newPassword))
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun removePassword(currentPassword: String) {
+        validatePassword(currentPassword)
+        sendCommand(CommandType.REMOVE_PASSWORD, currentPassword)
+    }
+
+    private fun validatePassword(password: String) {
+        require(password.length == 4 && password.all { it in '0'..'9' }) {
+            "Password must contain exactly four ASCII digits"
+        }
     }
 
     /** Explicit request only; confirmation arrives via [securityStateFlow]. */
