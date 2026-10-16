@@ -262,7 +262,7 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates("io.github.tritbool", "euc-ble-library", "0.1.2")
+    coordinates("io.github.tritbool", "euc-ble-library", "0.1.3")
 
     pom {
         name.set("EUC BLE Library")
