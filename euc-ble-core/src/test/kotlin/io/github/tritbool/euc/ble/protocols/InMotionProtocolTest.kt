@@ -227,7 +227,7 @@ class InMotionProtocolTest {
         }
         assertTrue(protocol.matchesQueryResponse(query, frame))
         protocol.decode(frame)
-        assertEquals("InMotion V11", protocol.lastDecodedModel())
+        assertEquals("InMotion", protocol.lastDecodedModel())
     }
 
     @Test

@@ -1428,15 +1428,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun parseLegacyIdentification(payload: ByteArray) {
         val text = payload.dropWhile { it.toInt() == 0x00 }.toByteArray().decodeToString().trim()
         if (text.isEmpty()) return
-        modelName = when {
-            text.contains("V11Y") -> V11Y
-            text.contains("V11") -> V11
-            text.contains("V12") -> "$V12 HS"
-            text.contains("V13") -> V13
-            text.contains("V10F") -> "InMotion V10F"
-            text.contains("V10") -> "InMotion V10"
-            else -> text
-        }
+        firmwareVersion = text.takeIf { it.isNotEmpty() } ?: firmwareVersion
     }
 
     /**
