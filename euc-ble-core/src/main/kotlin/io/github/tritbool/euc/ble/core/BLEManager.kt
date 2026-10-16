@@ -230,7 +230,11 @@ class BLEManager internal constructor(
     private var connectionTimeoutJob: Job? = null
 
     private data class PendingQueryState(
-        val protocolName: String, val query: ProtocolQuerySpec, val attempt: Int, val sentAtMs: Long
+        val protocolName: String,
+        val query: ProtocolQuerySpec,
+        val attempt: Int,
+        val sentAtMs: Long,
+        val responseReceived: CompletableDeferred<Unit> = CompletableDeferred()
     )
 
     // Device cache
@@ -1546,7 +1550,13 @@ class BLEManager internal constructor(
             if (!sent) return
 
             val timeoutMs = query.responseTimeoutMs.coerceAtLeast(MIN_QUERY_TIMEOUT_MS)
-            delay(timeoutMs.milliseconds)
+            val state = pendingQueries[query.id]
+            if (state != null) {
+                // Return as soon as the response is matched instead of always sleeping the
+                // full timeout: request/response wheels answer in tens of milliseconds, and
+                // the fixed delay capped the whole polling loop at the timeout duration.
+                withTimeoutOrNull(timeoutMs.milliseconds) { state.responseReceived.await() }
+            }
 
             if (!pendingQueries.containsKey(query.id)) {
                 return
@@ -1659,6 +1669,7 @@ class BLEManager internal constructor(
             if (state.protocolName != protocol.manufacturer) continue
             if (!protocol.matchesQueryResponse(state.query, data)) continue
             matchedIds.add(id)
+            state.responseReceived.complete(Unit)
             val rawLatency = now - state.sentAtMs
             if (rawLatency < 0L) {
                 logger.warn(

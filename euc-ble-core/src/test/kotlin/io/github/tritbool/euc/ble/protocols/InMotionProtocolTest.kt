@@ -217,6 +217,20 @@ class InMotionProtocolTest {
     }
 
     @Test
+    fun matchesQueryResponseAcceptsLegacyV11Identification() {
+        // Captured from a real V11: AA AA 11 15 80 ... "\u0000Form V11 HMIC(0x21)" ... 29 A1
+        val frame = ByteUtils.hexToBytes(
+            "AAAA11158000466F726D2056313120484D4943283078323129A1"
+        )
+        val query = protocol.getPollingPlan().startupQueries.first {
+            it.commandType == CommandType.REQUEST_FIRMWARE
+        }
+        assertTrue(protocol.matchesQueryResponse(query, frame))
+        protocol.decode(frame)
+        assertEquals("InMotion V11", protocol.lastDecodedModel())
+    }
+
+    @Test
     fun getPollingPlanDoesNotProbeV14BmsAddressesOnV9() {
         protocol.decode(buildCarTypeFrame(series = 12, type = 1)) // V9
 

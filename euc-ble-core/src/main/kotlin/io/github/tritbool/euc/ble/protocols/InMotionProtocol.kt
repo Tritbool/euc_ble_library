@@ -555,6 +555,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val payload = if (len > 1) frame.copyOfRange(5, 5 + (len - 1)) else ByteArray(0)
 
         return when (command) {
+            0x00 -> {
+                if (isLegacyIdentification(command, frame)) {
+                    parseLegacyIdentification(payload)
+                }
+                null
+            }
             COMMAND_MAIN_INFO -> {
                 lastDetectedDialect = Dialect.V2
                 parseMainInfo(payload)
@@ -894,6 +900,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             temperature = mosTemp.toDouble(),
             batteryLevel = batteryPercent,
             distance = tripKm,
+            wheelDistance = tripKm,
             power = voltage * current,
             pwm = pwm,
             torque = torque,
@@ -1019,6 +1026,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             temperature = telemetryTemp,
             batteryLevel = battery,
             distance = distanceKm,
+            wheelDistance = distanceKm,
             power = voltage * current,
             pwm = pwm,
             torque = torque,
@@ -1359,8 +1367,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 ProtocolQuerySpec(
                     id = "inmotion.realtime",
                     commandType = CommandType.REQUEST_BATTERY_INFO,
-                    intervalMs = 1_000L,
-                    responseTimeoutMs = 1_200L,
+                    intervalMs = 200L,
+                    responseTimeoutMs = 400L,
                     maxRetries = 1
                 ),
             ) + if (modelName == manufacturer) listOf(
@@ -1412,12 +1420,47 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         )
     }
 
+    /**
+     * Extracts the model name from a legacy identification payload such as
+     * "\u0000Form V11 HMIC(0x21)". E.g. maps to [V11] when known, otherwise keeps the
+     * trimmed ASCII name so consumers at least see what the wheel reported.
+     */
+    private fun parseLegacyIdentification(payload: ByteArray) {
+        val text = payload.dropWhile { it.toInt() == 0x00 }.toByteArray().decodeToString().trim()
+        if (text.isEmpty()) return
+        modelName = when {
+            text.contains("V11Y") -> V11Y
+            text.contains("V11") -> V11
+            text.contains("V12") -> "$V12 HS"
+            text.contains("V13") -> V13
+            text.contains("V10F") -> "InMotion V10F"
+            text.contains("V10") -> "InMotion V10"
+            else -> text
+        }
+    }
+
+    /**
+     * Legacy (V1-dialect) wheels answer the identification query with a frame whose
+     * command byte is 0x00 and whose payload is the ASCII model name, e.g.
+     * "\u0000Form V11 HMIC(0x21)". V2 wheels use COMMAND_MAIN_INFO instead. Without
+     * this match the identification query retried forever and the model never latched.
+     */
+    private fun isLegacyIdentification(command: Int, frame: ByteArray): Boolean {
+        if (command != 0x00) return false
+        if (frame.size < 8) return false
+        val len = frame[3].toInt() and 0xFF
+        val payload = if (len > 1) frame.copyOfRange(5, minOf(5 + (len - 1), frame.size)) else ByteArray(0)
+        val text = payload.dropWhile { it.toInt() == 0x00 }.toByteArray().decodeToString()
+        return text.startsWith("Form ") || text.contains("HMIC") || text.contains("InMotion")
+    }
+
     override fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean {
         return validatedV2Frames(data).any { frame ->
             val command = frame[4].toInt() and 0x7F
             when (query.commandType) {
             CommandType.REQUEST_SERIAL,
-            CommandType.REQUEST_FIRMWARE -> command == COMMAND_MAIN_INFO
+            CommandType.REQUEST_FIRMWARE ->
+                command == COMMAND_MAIN_INFO || isLegacyIdentification(command, frame)
 
             CommandType.REQUEST_BATTERY_INFO ->
                 command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
@@ -1673,6 +1716,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         while (_writeChannel.tryReceive().isSuccess) { /* discard previous-session writes */ }
         while (_channel.tryReceive().isSuccess) { /* discard previous-session telemetry */ }
     }
+
+    /** Currently latched model name (from V2 main-info or legacy identification frames). */
+    fun lastDecodedModel(): String = modelName
 
     override fun close() {
         // No resources to clean up
