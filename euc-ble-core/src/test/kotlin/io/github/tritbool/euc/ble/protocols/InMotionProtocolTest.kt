@@ -164,7 +164,7 @@ class InMotionProtocolTest {
 
         assertTrue(plan.enabled)
 
-        assertEquals(3, plan.startupQueries.size)
+        assertEquals(4, plan.startupQueries.size)
         assertEquals(5, plan.periodicQueries.size)
 
         assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
@@ -173,7 +173,7 @@ class InMotionProtocolTest {
         assertEquals("inmotion.v1-pin", plan.startupQueries[1].id)
         assertEquals(CommandType.CUSTOM, plan.startupQueries[1].commandType)
 
-        val probe = plan.startupQueries[2]
+        val probe = plan.startupQueries.first { it.id == "inmotion.dialect-probe" }
         assertEquals("inmotion.dialect-probe", probe.id)
         assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
 

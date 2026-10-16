@@ -116,6 +116,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val V1_CHANNEL_PHONE: Byte = 0x05
         private const val V1_FORMAT_STANDARD: Byte = 0x00
         private const val V1_TYPE_DATA: Byte = 0x00
+        private const val V1_TYPE_REMOTE: Byte = 0x01
+        private const val V1_CAN_SLOW_INFO = 0x0F550114
 
         // CAN IDs used by the protocol.
         private const val V1_CAN_FAST_INFO = 0x0F550113
@@ -197,6 +199,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private var lastV2Chunk: ByteArray? = null
     private var lastV2ChunkSnapshot: ByteArray? = null
     private var lastV2Frames: List<ByteArray> = emptyList()
+
     @Volatile
     private var p6Packs: Map<Int, BMSData> = emptyMap()
 
@@ -561,6 +564,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 }
                 null
             }
+
             COMMAND_MAIN_INFO -> {
                 lastDetectedDialect = Dialect.V2
                 parseMainInfo(payload)
@@ -1178,11 +1182,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                         isCharging = charge > 0.1
                     )
                 }
+
                 0x82 -> previous.copy(cellVoltages = List(56) {
                     ByteUtils.getUnsignedShortLE(payload, 2 + it * 2) / 1000.0
                 })
+
                 else -> previous.copy(
-                    firmwareVersion = "${payload[13].toInt() and 0xFF}.${payload[12].toInt() and 0xFF}.${ByteUtils.getUnsignedShortLE(payload, 10)}",
+                    firmwareVersion = "${payload[13].toInt() and 0xFF}.${payload[12].toInt() and 0xFF}.${
+                        ByteUtils.getUnsignedShortLE(
+                            payload,
+                            10
+                        )
+                    }",
                     // Captures contain a fixed 20-byte serial after the 20-byte message.
                     serialNumber = payload.copyOfRange(42, 62).decodeToString()
                         .trimEnd('\u0000').ifEmpty { null }
@@ -1361,7 +1372,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     initialDelayMs = 150L,
                     responseTimeoutMs = 800L,
                     maxRetries = 1
-                )
+                ),
+                ProtocolQuerySpec(
+                    id = "inmotion.v1-slow-info",
+                    commandType = CommandType.CUSTOM,
+                    value = buildV1SlowInfoFrame(),
+                    initialDelayMs = 250L,
+                    responseTimeoutMs = 1_200L,
+                    maxRetries = 2
+                ),
             ),
             periodicQueries = listOf(
                 ProtocolQuerySpec(
@@ -1441,7 +1460,8 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         if (command != 0x00) return false
         if (frame.size < 8) return false
         val len = frame[3].toInt() and 0xFF
-        val payload = if (len > 1) frame.copyOfRange(5, minOf(5 + (len - 1), frame.size)) else ByteArray(0)
+        val payload =
+            if (len > 1) frame.copyOfRange(5, minOf(5 + (len - 1), frame.size)) else ByteArray(0)
         val text = payload.dropWhile { it.toInt() == 0x00 }.toByteArray().decodeToString()
         return text.startsWith("Form ") || text.contains("HMIC") || text.contains("InMotion")
     }
@@ -1450,15 +1470,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         return validatedV2Frames(data).any { frame ->
             val command = frame[4].toInt() and 0x7F
             when (query.commandType) {
-            CommandType.REQUEST_SERIAL,
-            CommandType.REQUEST_FIRMWARE ->
-                command == COMMAND_MAIN_INFO || isLegacyIdentification(command, frame)
+                CommandType.REQUEST_SERIAL,
+                CommandType.REQUEST_FIRMWARE ->
+                    command == COMMAND_MAIN_INFO || isLegacyIdentification(command, frame)
 
-            CommandType.REQUEST_BATTERY_INFO ->
-                command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
+                CommandType.REQUEST_BATTERY_INFO ->
+                    command == COMMAND_REAL_TIME_INFO || command == COMMAND_TOTAL_STATS || command == COMMAND_BATTERY_INFO
 
-            CommandType.CUSTOM -> matchesCustomQueryResponse(query, command, frame)
-            else -> false
+                CommandType.CUSTOM -> matchesCustomQueryResponse(query, command, frame)
+                else -> false
             }
         }
     }
@@ -1469,6 +1489,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         data: ByteArray
     ): Boolean {
         val request = query.value as? ByteArray ?: return false
+// V1 slow-info request (a raw V1 CAN frame, not a V2 message): V1 frames are
+// wrapped AA AA ... 55 55 while V2 messages end with a checksum byte. The wheel
+// answers the slow-info request with MAIN_INFO pages (cmd 0x82: car type, serial,
+// versions).
+        if (request.size >= 4 && request[0] == V1_HEADER && request[1] == V1_HEADER &&
+            request[request.size - 2] == V1_TRAILER && request[request.size - 1] == V1_TRAILER
+        ) {
+            return command == COMMAND_MAIN_INFO
+        }
         if (request.size < 7 || request[4].toInt() and 0xFF != COMMAND_MAIN_INFO) return false
         val packAddress = request[5].toInt() and 0xFF
         val subCommand = request[6].toInt() and 0xFF
@@ -1476,11 +1505,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         val payload = data.copyOfRange(5, data.lastIndex)
         if (modelName == P6) {
             return data[2].toInt() and 0xFF == FLAG_EXTENDED &&
-                isP6PackPayload(command, payload) &&
-                payload[1].toInt() and 0xFF == (subCommand or 0x80)
+                    isP6PackPayload(command, payload) &&
+                    payload[1].toInt() and 0xFF == (subCommand or 0x80)
         }
         return packAddress in V14_BMS_PACK_ADDRESSES && subCommand == 0x02 &&
-            parseV14PackCells(payload) != null
+                parseV14PackCells(payload) != null
     }
 
     private fun p6PollingQueries(): List<ProtocolQuerySpec> =
@@ -1489,8 +1518,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 ProtocolQuerySpec(
                     id = "inmotion.p6-pack-${pack - 0x23}-$subtype",
                     commandType = CommandType.CUSTOM,
-                    value = buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO,
-                        byteArrayOf(pack.toByte(), subtype.toByte())),
+                    value = buildMessage(
+                        FLAG_EXTENDED, COMMAND_MAIN_INFO,
+                        byteArrayOf(pack.toByte(), subtype.toByte())
+                    ),
                     initialDelayMs = ((pack - 0x24) * 3 + subtype) * 250L,
                     intervalMs = if (subtype == 4) 0L else 4_000L,
                     responseTimeoutMs = 1_200L,
@@ -1504,13 +1535,16 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     // --- InMotion V1 frame builder -----------------------------------------
 
+    private fun buildV1Frame(canId: Int, data: ByteArray): ByteArray =
+        buildV1Frame(canId, data, V1_TYPE_DATA)
+
     /**
      * Build a V1 BLE frame from a 32-bit CAN ID and an 8-byte payload:
      * `AA AA <escaped 16-byte CAN prefix> <escaped checksum> 55 55`.
      *
      * Ported from eucplanet InMotionV1Protocol.buildFrame() / wrap().
      */
-    private fun buildV1Frame(canId: Int, data: ByteArray): ByteArray {
+    private fun buildV1Frame(canId: Int, data: ByteArray, frameType: Byte): ByteArray {
         require(data.size == 8) { "V1 CAN data must be 8 bytes" }
         val can = ByteArray(16)
         can[0] = (canId and 0xFF).toByte()
@@ -1521,7 +1555,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         can[12] = V1_LEN_NORMAL
         can[13] = V1_CHANNEL_PHONE
         can[14] = V1_FORMAT_STANDARD
-        can[15] = V1_TYPE_DATA
+        can[15] = frameType
 
         var checksum = 0
         for (b in can) checksum = (checksum + (b.toInt() and 0xFF)) and 0xFF
@@ -1562,6 +1596,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     /** Fast-info query: fills the payload with 0xFF per the V1 spec. */
     private fun buildV1FastInfoFrame(): ByteArray =
         buildV1Frame(V1_CAN_FAST_INFO, ByteArray(8) { 0xFF.toByte() })
+
+    /**
+     * Slow-info request for V1 wheels (WheelLog InMotionAdapter.CANMessage.getSlowData):
+     * CAN ID 0x0F550114 remote frame with an all-0xFF payload. The wheel answers with
+     * MAIN_INFO pages carrying the car type (authoritative model), serial number and
+     * firmware version. Verified against a V9 capture: series 12/type 1 -> V9.
+     */
+    private fun buildV1SlowInfoFrame(): ByteArray =
+        buildV1Frame(V1_CAN_SLOW_INFO, ByteArray(8) { 0xFF.toByte() }, V1_TYPE_REMOTE)
 
     /** Headlight on/off command for V1 wheels. */
     private fun buildV1LightFrame(on: Boolean): ByteArray =
@@ -1705,8 +1748,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         totalRideTimeSeconds = null
         totalPowerOnTimeSeconds = null
         lastP6StatsQueryAtMs = 0L
-        while (_writeChannel.tryReceive().isSuccess) { /* discard previous-session writes */ }
-        while (_channel.tryReceive().isSuccess) { /* discard previous-session telemetry */ }
+        while (_writeChannel.tryReceive().isSuccess) { /* discard previous-session writes */
+        }
+        while (_channel.tryReceive().isSuccess) { /* discard previous-session telemetry */
+        }
     }
 
     /** Currently latched model name (from V2 main-info or legacy identification frames). */

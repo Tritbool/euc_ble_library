@@ -1,0 +1,157 @@
+From 628d1cb61dbe8bab72147b71098ea64685742b3f Mon Sep 17 00:00:00 2001
+From: Vibe Nuage Agent <vibe@mistral.ai>
+Date: Fri, 16 Oct 2026 16:25:46 +0000
+Subject: [PATCH] Identify V1 InMotion wheels via the slow-info query instead
+ of the board string
+
+A V9 (and other V1-dialect wheels) answers the V2 identification probe only
+with its board form-factor string ('Form V11 HMIC(0x21)'), which is not a
+model identifier - latching the model from it misidentifies a V9 as a V11.
+
+- Add the V1 slow-info request (WheelLog getSlowData: CAN 0x0F550114 remote
+  frame) to the startup queries. The wheel answers with MAIN_INFO pages:
+  car type (authoritative model), serial number and firmware version.
+  Verified against a real V9 capture (series 12/type 1 -> V9).
+- buildV1Frame now supports remote frames (type byte 1) used by the request.
+- matchesCustomQueryResponse matches MAIN_INFO responses to the slow-info
+  query so it completes and does not retry.
+- Stop latching modelName from the legacy Form string (keep it only as a
+  firmware hint); parseMainInfo's car-type page remains the model source.
+- Tests: slow-info query exists, matches the captured car-type frame and
+  latches 'InMotion V9'; the Form string matches the identification query
+  without latching the model.
+---
+ .../euc/ble/protocols/InMotionProtocol.kt     | 40 ++++++++++++++++--
+.../euc/ble/protocols/InMotionProtocolTest.kt | 17 ++++++-
+ 2 files changed, 53 insertions(+), 4 deletions(-)
+
+diff --git a/euc-ble-core/src/main/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocol.kt b/euc-ble-core/src/main/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocol.kt
+index 4bb6f42..63ff536 100644
+--- a/euc-ble-core/src/main/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocol.kt
++++ b/euc-ble-core/src/main/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocol.kt
+@@ -116,9 +116,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
+         private const val V1_CHANNEL_PHONE: Byte = 0x05
+         private const val V1_FORMAT_STANDARD: Byte = 0x00
+         private const val V1_TYPE_DATA: Byte = 0x00
++        private const val V1_TYPE_REMOTE: Byte = 0x01
+ 
+         // CAN IDs used by the protocol.
+         private const val V1_CAN_FAST_INFO = 0x0F550113
++        private const val V1_CAN_SLOW_INFO = 0x0F550114
+         private const val V1_CAN_HEADLIGHT = 0x0F55010D
+         private const val V1_CAN_REMOTE_CTRL = 0x0F550116
+         private const val V1_CAN_PIN = 0x0F550307
+@@ -1361,6 +1363,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
+                     initialDelayMs = 150L,
+                     responseTimeoutMs = 800L,
+                     maxRetries = 1
++                 ),
++                 // V1 slow-info request: elicits the MAIN_INFO pages (car type, serial,
++                 // versions) from V1-dialect wheels. The V2 identification probe above
++                // only yields the board "Form ..." string from those wheels; this query
++                // is what actually identifies the model (e.g. V9 series 12/type 1).
++                ProtocolQuerySpec(
++                    id = "inmotion.v1-slow-info",
++                    commandType = CommandType.CUSTOM,
++                    value = buildV1SlowInfoFrame(),
++                    initialDelayMs = 250L,
++                    responseTimeoutMs = 1_200L,
++                    maxRetries = 2
+                 )
+             ),
+             periodicQueries = listOf(
+@@ -1428,7 +1442,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
+     private fun parseLegacyIdentification(payload: ByteArray) {
+         val text = payload.dropWhile { it.toInt() == 0x00 }.toByteArray().decodeToString().trim()
+         if (text.isEmpty()) return
+-        firmwareVersion = text.takeIf { it.isNotEmpty() } ?: firmwareVersion
++        // Board form-factor string (e.g. a V9 reports "Form V11 HMIC(0x21)"): NOT a
++        // model identifier. Keep it only as a firmware/board hint; the authoritative
++        // model comes from the car-type MAIN_INFO page elicited by the V1 slow-info query.
++         if (firmwareVersion == null) firmwareVersion = text
+     }
+ 
+     /**
+@@ -1469,6 +1486,11 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtocoj         data: ByteArray
+     ): Boolean {
+         val request = query.value as? ByteArray ?: return false
++        // V1 slow-info request (a raw V1 CAN frame, not a V2 message): the wheel
++        // answers with MAIN_INFO pages (cmd 0x82: car type, serial, versions).
++        if (request.size >= 2 && request[0] == V1_HEADER && request[1] == V1_HEADER) {
++            return command == COMMAND_MAIN_INFO
++        }
+         if (request.size < 7 || request[4].toInt() and 0xFF != COMMAND_MAIN_INFO) return false
+         val packAddress = request[5].toInt() and 0xFF
+         val subCommand = request[6].toInt() and 0xFF
+@@ -1510,7 +1532,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
+        *
+       * Ported from eucplanet InMotionV1Protocol.buildFrame() / wrap().
+         */
+-    private fun buildV1Frame(canId: Int, data: ByteArray): ByteArray {
++    private fun buildV1Frame(canId: Int, data: ByteArray): ByteArray =
++        buildV1Frame(canId, data, V1_TYPE_DATA)
++
++    private fun buildV1Frame(canId: Int, data: ByteArray, frameType: Byte): ByteArray {
+         require(data.size == 8) { "V1 CAN data must be 8 bytes" }
+         val can = ByteArray(16)
+         can[0] = (canId and 0xFF).toByte()
+@@ -1521,7 +1547,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtocol        can[12] = V1_LEN_NORMAL
+         can[13] = V1_CHANNEL_PHONE
+         can[14] = V1_FORMAT_STANDARD
+-         can[15] = V1_TYPE_DATA
++        can[15] = frameType
+ 
+         var checksum = 0
+         for (b in can) checksum = (checksum + (b.toInt() and 0xFF)) and 0xFF
+@@ -1563,6 +1588,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtocj     private fun buildV1FastInfoFrame(): ByteArray =
+         buildV1Frame(V1_CAN_FAST_INFO, ByteArray(8) { 0xFF.toByte() })
+ 
++    /**
++     * Slow-info request for V1 wheels (WheelLog InMotionAdapter.CANMessage.getSlowData):
++     * CAN ID 0x0F550114 remote frame with an all-0xFF payload. The wheel answers with
++     * MAIN_INFO pages carrying the car type (authoritative model), serial number and
++     * firmware version. Verified against a V9 capture: series 12/type 1 -> V9.
++     */
++    private fun buildV1SlowInfoFrame(): ByteArray =
++        buildV1Frame(V1_CAN_SLOW_INFO, ByteArray(8) { 0xFF.toByte() }, V1_TYPE_REMOTE)
++
+     /** Headlight on/off command for V1 wheels. */
+     private fun buildV1LightFrame(on: Boolean): ByteArray =
+         buildV1Frame(V1_CAN_HEADLIGHT, byteArrayOf(if (on) 0x01 else 0x00, 0, 0, 0, 0, 0, 0, 0))
+diff --git a/euc-ble-core/src/test/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocolTest.kt b/euc-ble-core/src/test/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocolTest.kt
+index c6442b6..87879df 100644
+--- a/euc-ble-core/src/test/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocolTest.kt
++++ b/euc-ble-core/src/test/kotlin/io/github/tritbool/euc/ble/protocols/InMotionProtocolTest.kt
+@@ -217,7 +217,7 @@ class InMotionProtocolTest {
+     }
+ 
+     @Test
+-    fun matchesQueryResponseAcceptsLegacyV11Identification() {
++    fun matchesQueryResponseAcceptsLegacyIdentificationWithoutLatchingModel() {
+         // Captured from a real V11: AA AA 11 15 80 ... "\u0000Form V11 HMIC(0x21)" ... 29 A1
+         val frame = ByteUtils.hexToBytes(
+             "AAAA11158000466F726D2056313120484D4943283078323129A1"
+@@ -230,6 +230,21 @@ class InMotionProtocolTest {
+         assertEquals("InMotion", protocol.lastDecodedModel())
+     }
+ 
++    @Test
++    fun v1SlowInfoStartupQueryMatchesCarTypeResponse() {
++        // The V1 slow-info startup query must exist and its MAIN_INFO  (car type)
++        // response must match, so the query completes and the model latches.
++        val plan = protocol.getPollingPlan()
++         val slowInfo = plan.startupQueries.first { it.id == "inmotion.v1-slow-info" }
++        val request = slowInfo.value as ByteArray
++        assertTrue(request.size >= 2 && request[0] == 0xA.toByte() && request[1] == 0xAA.toByte())
++        // Car-type page captured from a real V9: AA AA 11 08 82 01 02 0C 01 01 01 00 95
++        val carType = ByteUtils.hexToBytes("AAAA110882010210C0101010095")
++        assertTrue(protocol.matchesQueryResponse(slowInfo, carType))
++        protocol.decode(carType)
++        assertEquals("InMotion V9", protocol.lastDecodedModel())
++    }
++
+     @Test
+     fun getPollingPlanDoesNotProbeV14BmsAddressesOnV9() {
+         protocol.decode(buildCarTypeFrame(series = 12, type = 1)) // V9
+-- 
+2.47.3
