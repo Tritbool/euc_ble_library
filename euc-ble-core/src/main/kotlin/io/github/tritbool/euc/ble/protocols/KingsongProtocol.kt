@@ -394,14 +394,14 @@ class KingsongProtocol(internal val scope: CoroutineScope = CoroutineScope(Dispa
         internal fun seriesCellsForModel(model: String?): Int? {
             val n = model?.lowercase() ?: return null
             return when {
-                "s22" in n || "s20" in n -> 30
+                "s22" in n || "s20" in n || "f16" in n  -> 30
                 "s19" in n -> 24
                 "s18" in n || "s16" in n -> 20
                 "f22" in n -> 42
                 "f18" in n -> 36
                 "ks-18" in n || "ks18" in n -> 20
-                "ks-16x" in n || "ks16x" in n || "ks-16s" in n || "ks16s" in n -> 20
-                "ks-16" in n || "ks16" in n || "ks-14" in n || "ks14" in n -> 16
+                "ks-16x" in n || "ks16x" in n -> 20
+                "ks-16" in n || "ks16" in n || "ks-16s" in n || "ks16s" in n || "ks-14" in n || "ks14" in n -> 16
                 else -> null
             }
         }
