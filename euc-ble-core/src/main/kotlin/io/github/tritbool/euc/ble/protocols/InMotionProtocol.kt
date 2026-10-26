@@ -6,12 +6,17 @@ import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.WheelSecurityState
+import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -46,6 +51,19 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val EXTENDED_SUB_INFO = 0x06
         private const val EXTENDED_SUB_REALTIME = 0x07
         private const val EXTENDED_RESPONSE_MARKER = 0x80
+
+        // Control-endpoint auth handshake (the "password" dance). The wheel issues a
+        // 16-byte token when queried and accepts it right back — the token is fetched
+        // from the wheel at runtime; nothing is stored or hardcoded in this library.
+        // Verified against a real V9 capture: request `13 04 02 00 00 02`, response
+        // `12 13 02 80 02 <16B token>`, echo `13 14 02 00 00 82 <token>`, ack `12 04 02 80 82 01`.
+        private const val AUTH_FLAG = 0x13
+        // The wheel replies to auth requests with flag 0x12 (eucplanet Flags.QUERY13
+        // uses 0x13 for requests; the observed reply flag is 0x12).
+        private const val AUTH_RESPONSE_FLAG = 0x12
+        private const val AUTH_SUB_REQUEST = 0x02
+        private const val AUTH_SUB_VERIFY = 0x82
+        private const val AUTH_TOKEN_SIZE = 16
 
         private const val MIN_FRAME_SIZE = 5
         private const val MAX_LEN = 240
@@ -198,6 +216,13 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private val _writeChannel = Channel<ByteArray>(capacity = Channel.UNLIMITED)
     override val writeFlow: Flow<ByteArray> = _writeChannel.receiveAsFlow()
 
+    private val _securityStateFlow =
+        MutableStateFlow(WheelSecurityState(authentication = AuthenticationState.UNKNOWN))
+    override val securityStateFlow: StateFlow<WheelSecurityState> =
+        _securityStateFlow.asStateFlow()
+
+    override fun getSecurityState(): WheelSecurityState = _securityStateFlow.value
+
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
         extraBufferCapacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -258,6 +283,17 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     @Volatile
     private var lastP6StatsQueryAtMs: Long = 0L
+
+    /**
+     * Wheel-issued auth token for the control endpoint (lock/unlock/speed/horn).
+     * Fetched from the wheel at runtime over the auth handshake — never hardcoded.
+     */
+    @Volatile
+    private var controlAuthToken: ByteArray? = null
+
+    /** True once the wheel acked the echoed token (`80 82 01`). */
+    @Volatile
+    private var controlAuthVerified: Boolean = false
 
     private data class InMotionBmsSnapshot(
         val voltage: Double? = null,
@@ -358,7 +394,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 val flags = headerBytes[0].toInt() and 0xFF
                 val len = headerBytes[1].toInt() and 0xFF
 
-                if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED) {
+                if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED &&
+                    flags != AUTH_RESPONSE_FLAG
+                ) {
                     v2Buffer.removeAt(0)
                     continue
                 }
@@ -550,7 +588,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             if (chunk.size >= 4) {
                 val flags = chunk[2].toInt() and 0xFF
                 val len = chunk[3].toInt() and 0xFF
-                if ((flags == FLAG_INITIAL || flags == FLAG_DEFAULT || flags == FLAG_EXTENDED) && len in 1..MAX_LEN) {
+                if ((flags == FLAG_INITIAL || flags == FLAG_DEFAULT || flags == FLAG_EXTENDED ||
+                        flags == AUTH_RESPONSE_FLAG) && len in 1..MAX_LEN
+                ) {
                     return false
                 }
             }
@@ -561,7 +601,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun parseV2Frame(frame: ByteArray): EUCData? {
         val flags = frame[2].toInt() and 0xFF
-        if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED) return null
+        if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED &&
+            flags != AUTH_RESPONSE_FLAG
+        ) return null
 
         val len = frame[3].toInt() and 0xFF
         if (len <= 0) return null
@@ -762,6 +804,13 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun parseMainInfo(payload: ByteArray) {
         if (payload.isEmpty()) return
+        // Control-endpoint auth replies ride on MAIN_INFO with a 0x80 routing prefix:
+        // [80 02 <16B token>] = token issued, [80 82 01] = echo accepted.
+        // Distinct from the regular pages, which start with 01/02/06.
+        if (payload[0].toInt() and 0xFF == 0x80) {
+            handleControlAuth(payload)
+            return
+        }
         when (payload[0].toInt() and 0xFF) {
             0x01 -> { // car type
                 if (payload.size >= 4) {
@@ -783,6 +832,10 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                         else -> "$manufacturer $series.$type"
                     }
                     enqueueP6StatsQueryIfDue(force = true)
+                    // Extended-routing wheels gate control commands behind the auth
+                    // handshake; request the token as soon as the model latches so
+                    // lock/unlock/speed-limit work whenever the user sends them.
+                    if (supportsExtendedRoutingPacks()) enqueueControlAuthRequest()
                 }
             }
 
@@ -862,6 +915,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 if (mapped != null) {
                     modelName = mapped
                     enqueueP6StatsQueryIfDue(force = true)
+                    // See parseMainInfo: gate control commands behind the runtime
+                    // auth handshake for extended-routing wheels.
+                    if (supportsExtendedRoutingPacks()) enqueueControlAuthRequest()
                     break
                 }
             }
@@ -1940,6 +1996,66 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         )
 
     /**
+     * Handle a control-endpoint auth reply (payload `[80 <sub> <body>]` on
+     * MAIN_INFO):
+     *  - `[80 02 <16B token>]`: the wheel issued its control token. Echo it back
+     *    verbatim — nothing is derived, stored on disk or hardcoded; the token
+     *    lives only in this session's memory.
+     *  - `[80 82 01]`: the wheel accepted the echoed token; control commands are
+     *    unlocked for the session.
+     * Verified against a real V9 capture (session 2026-10-26).
+     */
+    private fun handleControlAuth(payload: ByteArray) {
+        when (payload.getOrNull(1)?.toInt()?.and(0xFF)) {
+            AUTH_SUB_REQUEST -> {
+                val token = payload.copyOfRange(2, minOf(2 + AUTH_TOKEN_SIZE, payload.size))
+                if (token.size != AUTH_TOKEN_SIZE) return
+                controlAuthToken = token
+                _securityStateFlow.value = _securityStateFlow.value.copy(
+                    authentication = AuthenticationState.REQUIRED
+                )
+                // Echo the wheel-issued token back (capture: `13 14 02 00 00 82 <token>`).
+                _writeChannel.trySend(
+                    buildMessage(
+                        AUTH_FLAG,
+                        COMMAND_MAIN_INFO,
+                        byteArrayOf(0x00, 0x00, AUTH_SUB_VERIFY.toByte()) + token
+                    )
+                )
+            }
+
+            AUTH_SUB_VERIFY -> {
+                // `80 82 01` = token accepted. Reported by the wheel, not inferred
+                // from a successful write.
+                if (payload.getOrNull(2)?.toInt() == 0x01) {
+                    controlAuthVerified = true
+                    _securityStateFlow.value = _securityStateFlow.value.copy(
+                        authentication = AuthenticationState.AUTHENTICATED
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Ask the wheel to issue its control token (capture: `13 04 02 00 00 02`).
+     * The reply is handled by [handleControlAuth], which echoes the token back.
+     * No secret is embedded anywhere — the token originates from the wheel.
+     */
+    private fun enqueueControlAuthRequest() {
+        // Only until the wheel issues its token: a periodically re-broadcast
+        // car-type frame must not re-trigger the handshake once it has run.
+        if (controlAuthToken != null) return
+        _writeChannel.trySend(
+            buildMessage(
+                AUTH_FLAG,
+                COMMAND_MAIN_INFO,
+                byteArrayOf(0x00, 0x00, AUTH_SUB_REQUEST.toByte())
+            )
+        )
+    }
+
+    /**
      * Extended-routing control command of the official InMotion app, used by the
      * P6/V9 dialect: `AA AA 16 <len> 02 21 60 <sub> <args> <checksum>`. Verified
      * against a real V9 capture:
@@ -2160,6 +2276,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         p6Packs = emptyMap()
         lastDetectedDialect = Dialect.UNKNOWN
         lastKnownIsCharging = null
+        controlAuthToken = null
+        controlAuthVerified = false
+        _securityStateFlow.value = WheelSecurityState(authentication = AuthenticationState.UNKNOWN)
         modelName = manufacturer
         serialNumber = null
         firmwareVersion = null

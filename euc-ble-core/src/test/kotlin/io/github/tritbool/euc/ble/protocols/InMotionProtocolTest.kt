@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
@@ -491,15 +492,11 @@ class InMotionProtocolTest {
 
     @Test
     fun nonP6ModelDoesNotEnqueueExtendedRealtimeQuery() = runTest {
+        // A V9 identification enqueues only the control-auth request (the
+        // extended realtime query is P6-only on this path).
         protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
-        var emitted = false
-        try {
-            withTimeout(200) { protocol.writeFlow.first() }
-            emitted = true
-        } catch (_: TimeoutCancellationException) {
-            // expected
-        }
-        assertFalse(emitted)
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa13040200000217"), emitted)
     }
 
     @Test
@@ -1049,6 +1046,124 @@ class InMotionProtocolTest {
         // Control acks carry no telemetry; they must not disturb latched state.
         assertNull(decoded)
         assertEquals("InMotion V9", protocol.lastDecodedModel())
+    }
+
+    /**
+     * Control-endpoint auth handshake, captured from the InMotion app against a
+     * real V9: request `13 04 02 00 00 02`, token reply `12 13 02 80 02 <16B>`,
+     * echo `13 14 02 00 00 82 <16B>`, verify ack `12 04 02 80 82 01`.
+     * The token is fetched from the wheel at runtime — nothing is hardcoded.
+     */
+    @Test
+    fun v9IdentificationRequestsControlAuthTokenFromWheel() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa13040200000217"), emitted)
+    }
+
+    @Test
+    fun v14IdentificationDoesNotRequestControlAuth() = runTest {
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2)) // V14 50S
+        var emitted = false
+        try {
+            withTimeout(200) { protocol.writeFlow.first() }
+            emitted = true
+        } catch (_: TimeoutCancellationException) {
+            // expected
+        }
+        assertFalse(emitted)
+    }
+
+    @Test
+    fun controlAuthTokenIsEchoedBackVerbatimAfterWheelIssuesIt() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        // Consume the auth request the identification enqueued.
+        withTimeout(500) { protocol.writeFlow.first() }
+
+        // Real token reply from the capture (flag 0x12, `80 02 <16B token>`).
+        val tokenReply = "aaaa1213028002ef8764a42b432de0f2e999991445637bde"
+        protocol.decode(ByteUtils.hexToBytes(tokenReply))
+
+        // The wheel-issued token must be echoed back verbatim — never any
+        // hardcoded value.
+        val echo = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa131402000082ef8764a42b432de0f2e999991445637bd8"),
+            echo
+        )
+    }
+
+    @Test
+    fun controlAuthVerifiedAckIsAccepted() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // auth request
+        protocol.decode(
+            ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+        )
+        withTimeout(500) { protocol.writeFlow.first() } // token echo
+
+        // Verify ack `80 82 01`: no further writes, no telemetry, state intact.
+        val decoded = protocol.decode(ByteUtils.hexToBytes("aaaa12040280820117"))
+        assertNull(decoded)
+        var extraWrite = false
+        try {
+            withTimeout(200) { protocol.writeFlow.first() }
+            extraWrite = true
+        } catch (_: TimeoutCancellationException) {
+            // expected
+        }
+        assertFalse(extraWrite)
+    }
+
+    @Test
+    fun controlAuthProgressIsReportedThroughSecurityState() = runTest {
+        assertEquals(
+            AuthenticationState.UNKNOWN,
+            protocol.getSecurityState()!!.authentication
+        )
+
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // auth request
+
+        // Token issued -> REQUIRED (the handshake is in flight).
+        protocol.decode(
+            ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+        )
+        assertEquals(
+            AuthenticationState.REQUIRED,
+            protocol.getSecurityState()!!.authentication
+        )
+        withTimeout(500) { protocol.writeFlow.first() } // token echo
+
+        // Verify ack `80 82 01` -> AUTHENTICATED, as reported by the wheel.
+        protocol.decode(ByteUtils.hexToBytes("aaaa12040280820117"))
+        assertEquals(
+            AuthenticationState.AUTHENTICATED,
+            protocol.getSecurityState()!!.authentication
+        )
+
+        protocol.resetSession()
+        assertEquals(
+            AuthenticationState.UNKNOWN,
+            protocol.getSecurityState()!!.authentication
+        )
+    }
+
+    @Test
+    fun sessionResetClearsControlAuthState() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // auth request
+        protocol.decode(
+            ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+        )
+        withTimeout(500) { protocol.writeFlow.first() } // token echo
+
+        protocol.resetSession()
+        // After reset the wheel must be re-authenticated: re-identifying issues
+        // a fresh auth request rather than reusing any prior token.
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa13040200000217"), emitted)
     }
 
 }
