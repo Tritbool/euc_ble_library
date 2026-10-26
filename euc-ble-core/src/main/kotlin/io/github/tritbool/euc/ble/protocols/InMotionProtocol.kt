@@ -150,6 +150,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         CommandType.LOCK,
         CommandType.UNLOCK,
         CommandType.POWER_OFF,
+        CommandType.SET_SPEED_LIMIT,
         CommandType.REQUEST_SERIAL,
         CommandType.REQUEST_FIRMWARE,
         CommandType.REQUEST_BATTERY_INFO,
@@ -1588,13 +1589,44 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x2b, brightness.toByte()))
             }
 
-            CommandType.BEEP -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x18, 0x00))
-            CommandType.LOCK -> buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x01))
-            CommandType.UNLOCK -> buildMessage(
-                FLAG_DEFAULT,
-                COMMAND_CONTROL,
-                byteArrayOf(0x31, 0x00)
-            )
+            CommandType.BEEP -> if (supportsExtendedRoutingPacks()) {
+                // Extended-routing horn: `02 21 60 51 18 01` — PLAY_SOUND 0x51,
+                // sound id 0x18, volume 0x01 (eucplanet hornP6/playSoundHorn,
+                // taken verbatim from an InMotion app capture).
+                buildExtendedRoutingCommand(0x51, byteArrayOf(0x18, 0x01))
+            } else {
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x18, 0x00))
+            }
+            CommandType.LOCK -> if (supportsExtendedRoutingPacks()) {
+                // Verified against a real V9: `AA AA 16 05 02 21 60 31 01`.
+                buildExtendedRoutingCommand(0x31, byteArrayOf(0x01))
+            } else {
+                buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x01))
+            }
+            CommandType.UNLOCK -> if (supportsExtendedRoutingPacks()) {
+                buildExtendedRoutingCommand(0x31, byteArrayOf(0x00))
+            } else {
+                buildMessage(
+                    FLAG_DEFAULT,
+                    COMMAND_CONTROL,
+                    byteArrayOf(0x31, 0x00)
+                )
+            }
+
+            CommandType.SET_SPEED_LIMIT -> if (supportsExtendedRoutingPacks()) {
+                // Extended-routing wheels take a 2-byte u16 LE value in 0.01 km/h
+                // units (the P6 form, per eucplanet; NOT the V14 4-byte packet).
+                // Verified against a real V9: 25 km/h -> `02 21 60 21 c4 09`,
+                // 35 km/h -> `02 21 60 21 ac 0d`.
+                val maxSpeedKmh = (value as? Int)?.coerceIn(0, 999) ?: return byteArrayOf()
+                val raw = (maxSpeedKmh * 100).coerceAtMost(0xFFFF)
+                buildExtendedRoutingCommand(
+                    0x21,
+                    byteArrayOf((raw and 0xFF).toByte(), (raw shr 8).toByte())
+                )
+            } else {
+                byteArrayOf()
+            }
 
             CommandType.POWER_OFF -> buildMessage(
                 FLAG_DEFAULT,
@@ -1905,6 +1937,24 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 EXTENDED_ROUTING_MCU_ADDRESS.toByte(),
                 sub.toByte()
             )
+        )
+
+    /**
+     * Extended-routing control command of the official InMotion app, used by the
+     * P6/V9 dialect: `AA AA 16 <len> 02 21 60 <sub> <args> <checksum>`. Verified
+     * against a real V9 capture:
+     *  - lock/unlock: sub 0x31, args 01/00
+     *  - max speed:   sub 0x21, args = u16 LE in 0.01 km/h (25 km/h -> c4 09)
+     * The wheel acks with `AA AA 16 <len> 21 02 e0 <sub> 00 <checksum>`.
+     */
+    private fun buildExtendedRoutingCommand(sub: Int, args: ByteArray): ByteArray =
+        buildMessage(
+            FLAG_EXTENDED,
+            COMMAND_MAIN_INFO,
+            byteArrayOf(EXTENDED_ROUTING_MCU_ADDRESS.toByte()) +
+                    byteArrayOf(COMMAND_CONTROL.toByte()) +
+                    byteArrayOf(sub.toByte()) +
+                    args
         )
 
     // --- InMotion V1 frame builder -----------------------------------------

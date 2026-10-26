@@ -998,4 +998,57 @@ class InMotionProtocolTest {
         assertEquals(before, protocol.lastDecodedFirmware())
     }
 
+    /**
+     * Real V9 lock/unlock/max-speed writes captured from the InMotion app
+     * (session 2026-10-26, lock/unlock twice then speed limit 25 → 35 km/h).
+     */
+    @Test
+    fun v9LockUnlockAndSpeedLimitCommandsMatchCapturedWrites() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame)) // identify V9
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160310160"),
+            protocol.createCommand(CommandType.LOCK, Unit)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160310061"),
+            protocol.createCommand(CommandType.UNLOCK, Unit)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216021c409bf"),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, 25)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216021ac0dd3"),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, 35)
+        )
+    }
+
+    @Test
+    fun nonExtendedRoutingModelsKeepLegacyControlForms() {
+        // V2 dialect but unidentified model: the legacy V2 control form applies.
+        protocol.setDialect(2)
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa140360310147"),
+            protocol.createCommand(CommandType.LOCK, Unit)
+        )
+        // A V14-family model: legacy form too.
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2))
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa140360310147"),
+            protocol.createCommand(CommandType.LOCK, Unit)
+        )
+    }
+
+    @Test
+    fun v9ControlAcksAreAccepted() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        // Lock ack captured after the lock write: `21 02 e0 31 00`.
+        val ack = ByteUtils.hexToBytes("aaaa16052102e03100e1")
+        val decoded = protocol.decode(ack)
+        // Control acks carry no telemetry; they must not disturb latched state.
+        assertNull(decoded)
+        assertEquals("InMotion V9", protocol.lastDecodedModel())
+    }
+
 }
