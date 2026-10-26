@@ -311,10 +311,14 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private var gotwayFirmwareVariant: String? = null
     private var useHwPwm = false
     // Guarded by this instance's monitor via processFrame, getBMSData and close.
+    // Cell pages are keyed by BMS stream (Type 2 = 0, Type 3 = 1); each stream carries
+    // the cells of two consecutive groups (G1+G2, G3+G4). All other maps are keyed by
+    // group index 0..3, matching the Type 1 subpage byte.
     private val smartBmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
+    private val smartBmsStreamPageCounts: MutableMap<Int, Int> = mutableMapOf()
     private val smartBmsTemperatures: MutableMap<Int, Array<Double?>> = mutableMapOf()
     private val smartBmsCurrents: MutableMap<Int, Double> = mutableMapOf()
-    private val smartBmsHalfVoltages: MutableMap<Int, Array<Double?>> = mutableMapOf()
+    private val smartBmsGroupVoltages: MutableMap<Int, Double> = mutableMapOf()
 
     /** True when the wheel has reported imperial-units mode via bit 0 of the Type-B
      *  settings word. Latched on every Type-B frame and applied to speed and distance
@@ -359,9 +363,10 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     override fun close() {
         scope.cancel()
         smartBmsCellPages.clear()
+        smartBmsStreamPageCounts.clear()
         smartBmsTemperatures.clear()
         smartBmsCurrents.clear()
-        smartBmsHalfVoltages.clear()
+        smartBmsGroupVoltages.clear()
         lastKnownVoltage = null
         lastKnownCurrent = null
         hasType1Voltage = false
@@ -404,12 +409,12 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
             }
 
             0x02 -> {
-                parseType2or3(frame, bmsIndex = 0)
+                parseType2or3(frame, streamIndex = 0)
                 null
             }
 
             0x03 -> {
-                parseType2or3(frame, bmsIndex = 1)
+                parseType2or3(frame, streamIndex = 1)
                 null
             }
 
@@ -590,26 +595,23 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
         if (bmsSubpage !in 0..3) return
         val firstTemperature = ByteUtils.tryGetSignedShortBE(data, 10) ?: return
         val secondTemperature = ByteUtils.tryGetSignedShortBE(data, 12) ?: return
-        val halfPackVoltage = ByteUtils.tryGetSignedShortBE(data, 14) ?: return
+        val groupVoltage = ByteUtils.tryGetSignedShortBE(data, 14) ?: return
         val current = ByteUtils.tryGetSignedShortBE(data, 8) ?: return
-        val bmsIndex = bmsSubpage / 2
-        val halfPackIndex = bmsSubpage % 2
-        val temperatureOffset = halfPackIndex * 2
-        val temperatures = smartBmsTemperatures.getOrPut(bmsIndex) { arrayOfNulls(4) }
-        temperatures[temperatureOffset] = firstTemperature.toDouble()
-        temperatures[temperatureOffset + 1] = secondTemperature.toDouble()
-        if (halfPackIndex == 0 || bmsIndex !in smartBmsCurrents) {
-            // Prefer the first subpage while retaining a value if frames arrive out of order.
-            smartBmsCurrents[bmsIndex] = current / 10.0
-        }
-        smartBmsHalfVoltages.getOrPut(bmsIndex) { arrayOfNulls(2) }[halfPackIndex] =
-            halfPackVoltage / 10.0
+        // Type 1 subpages address the four smart-BMS groups directly (Begode app G1..G4):
+        // each subpage carries its own group voltage, current and its two temperature probes.
+        val groupIndex = bmsSubpage
+        val temperatures = smartBmsTemperatures.getOrPut(groupIndex) { arrayOfNulls(2) }
+        temperatures[0] = firstTemperature.toDouble()
+        temperatures[1] = secondTemperature.toDouble()
+        smartBmsCurrents[groupIndex] = current / 10.0
+        smartBmsGroupVoltages[groupIndex] = groupVoltage / 10.0
     }
 
     @VisibleForTesting
-    private fun parseType2or3(data: ByteArray, bmsIndex: Int) {
+    private fun parseType2or3(data: ByteArray, streamIndex: Int) {
         val page = ByteUtils.tryGetUnsignedByte(data, 19) ?: return
-        val cells = smartBmsCellPages.getOrPut(bmsIndex) { DoubleArray(MAX_BMS_CELL_SLOTS) }
+        val cells = smartBmsCellPages.getOrPut(streamIndex) { DoubleArray(MAX_BMS_CELL_SLOTS) }
+        smartBmsStreamPageCounts.merge(streamIndex, page + 1) { observed, new -> maxOf(observed, new) }
         for (i in 0 until 8) {
             val cellRaw = ByteUtils.tryGetUnsignedShortBE(data, (i + 1) * 2) ?: continue
             val cellIndex = page * 8 + i
@@ -1119,37 +1121,41 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     }
 
     /**
-     * Returns the current BMS data snapshots for all detected battery packs.
-     * Each entry represents one BMS unit (typically 1 or 2 for dual-battery wheels).
-     * Data is accumulated from Type 1 BMS summary frames and Type 2/3 cell voltage pages.
+     * Returns the current BMS data snapshots for all detected smart-BMS groups.
+     * Each entry represents one cell group (up to 4, matching the Begode app's
+     * G1..G4 tabs). Group summaries come from Type 1 frames (subpage = group) and
+     * cell voltages from the Type 2/3 streams (Type 2 carries groups 1 and 2,
+     * Type 3 carries groups 3 and 4).
      */
     @Synchronized
     override fun getBMSData(): List<BMSData> {
-        val allIndices = (
-                smartBmsCellPages.keys +
-                        smartBmsTemperatures.keys +
-                        smartBmsCurrents.keys +
-                        smartBmsHalfVoltages.keys
-                ).distinct().sorted()
-        return allIndices.map { index ->
-            val cells = smartBmsCellPages[index]?.asList()?.filter { it > 0.0 }?.ifEmpty { null }
-            val temperatures = smartBmsTemperatures[index]
+        val groupCount = maxOf(
+            maxOf(smartBmsTemperatures.size, smartBmsCurrents.size, smartBmsGroupVoltages.size),
+            smartBmsCellPages.size * 2
+        )
+        return (0 until groupCount).map { groupIndex ->
+            val streamIndex = groupIndex / 2
+            val streamCells = smartBmsCellPages[streamIndex]?.asList().orEmpty()
+            val pages = smartBmsStreamPageCounts[streamIndex] ?: 0
+            val halfSize = if (pages > 0) pages * 4 else (streamCells.size + 1) / 2
+            val cells = streamCells
+                .chunked(halfSize.coerceAtLeast(1))
+                .getOrNull(groupIndex % 2)
+                ?.filter { it > 0.0 }
+                ?.ifEmpty { null }
+            val temperatures = smartBmsTemperatures[groupIndex]
                 ?.takeIf { it.all { temperature -> temperature != null } }
                 ?.filterNotNull()
-            val voltage = smartBmsHalfVoltages[index]
-                ?.takeIf { it.all { halfVoltage -> halfVoltage != null } }
-                ?.filterNotNull()
-                ?.sum()
             BMSData(
-                bmsIndex = index,
-                voltage = voltage,
-                current = smartBmsCurrents[index],
+                bmsIndex = groupIndex,
+                voltage = smartBmsGroupVoltages[groupIndex],
+                current = smartBmsCurrents[groupIndex],
                 remainingCapacity = null, // Capacity not available in smart BMS pages
                 factoryCapacity = null, // Factory capacity not available in smart BMS pages
                 cycles = null, // Cycle count not available in smart BMS pages
                 temperatures = temperatures,
                 cellVoltages = cells,
-                isCharging = resolveBmsChargingState(smartBmsCurrents[index], null)
+                isCharging = resolveBmsChargingState(smartBmsCurrents[groupIndex], null)
             )
         }
     }

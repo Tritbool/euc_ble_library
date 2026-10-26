@@ -273,6 +273,16 @@ Each `BMSData` entry carries pack voltage/current, remaining and factory capacit
 temperature probes, cell voltages and the pack charging status (`isCharging`).
 `null` is returned when the connected wheel does not expose BMS data.
 
+### Begode / Gotway smart BMS
+
+- Begode smart BMS wheels (e.g. ROCKET) expose **four cell groups** (the Begode app's G1..G4
+  tabs), each reported through Type 1 frames: subpage byte 0..3 selects the group, carrying
+  its own group voltage, current and two temperature probes.
+- Cell voltages arrive on two streams: Type 2 frames carry groups 1 and 2, Type 3 frames
+  carry groups 3 and 4. Pages of 8 cells cycle repeatedly (5 pages = 20 cells per group on
+  the ROCKET, 4 pages = 16 on the EXTREME); a group's cells are the first/second half of its
+  stream. `getBMSData()` returns one `BMSData` per group (`bmsIndex` 0..3).
+
 ### InMotion P6 BMS
 
 - The two packs are addressed independently (`0x24` and `0x25`) and exposed as

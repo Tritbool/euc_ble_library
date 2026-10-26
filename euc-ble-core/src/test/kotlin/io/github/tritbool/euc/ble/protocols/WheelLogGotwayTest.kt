@@ -60,7 +60,7 @@ class WheelLogGotwayTest {
     }
 
     @Test
-    fun begodeExtremeCaptureReportsTwoBmsPacks() = runTest {
+    fun begodeExtremeCaptureReportsFourBmsGroups() = runTest {
         val frames =
             loadGotwayFrames("${resourceDir}EXTREME_2026_07_14_21_23_02.csv", maxFrames = 1000)
         assertTrue("CSV resource is empty or missing", frames.isNotEmpty())
@@ -74,11 +74,12 @@ class WheelLogGotwayTest {
         val bmsData: List<BMSData>? = withTimeout(5_000.milliseconds) {
             while (true) {
                 val data = protocol.getBMSData()
-                if (data.size == 2 && data.all { bms ->
+                if (data.size == 4 && data.all { bms ->
                         bms.current != null &&
                             bms.voltage != null &&
-                            bms.temperatures?.size == 4 &&
-                            bms.temperatures.all { it in -40.0..125.0 }
+                            bms.temperatures?.size == 2 &&
+                            bms.temperatures.all { it in -40.0..125.0 } &&
+                            bms.cellVoltages?.size == 16
                     }
                 ) {
                     return@withTimeout data
@@ -87,11 +88,11 @@ class WheelLogGotwayTest {
             }
             null
         }
-        assertEquals(setOf(0, 1), bmsData?.map { it.bmsIndex }?.toSet())
+        assertEquals(setOf(0, 1, 2, 3), bmsData?.map { it.bmsIndex }?.toSet())
     }
 
     @Test
-    fun extremeBullRocketCaptureReportsTwoBmsPacks() = runTest {
+    fun extremeBullRocketCaptureReportsFourBmsGroups() = runTest {
         protocol.close()
         protocol = ExtremeBullProtocol()
         val resourcePath =
@@ -105,10 +106,12 @@ class WheelLogGotwayTest {
         delay(3000.milliseconds)
 
         val bmsData = protocol.getBMSData()
-        assertEquals(2, bmsData.size)
+        assertEquals(4, bmsData.size)
         assertTrue(bmsData.all { it.current != null && it.voltage != null })
-        assertEquals(listOf(22.0, 19.0, 22.0, 19.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
-        assertEquals(listOf(22.0, 19.0, 22.0, 19.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
+        assertEquals(listOf(22.0, 19.0), bmsData.first { it.bmsIndex == 0 }.temperatures)
+        assertEquals(listOf(22.0, 19.0), bmsData.first { it.bmsIndex == 1 }.temperatures)
+        assertEquals(listOf(22.0, 19.0), bmsData.first { it.bmsIndex == 2 }.temperatures)
+        assertEquals(listOf(22.0, 19.0), bmsData.first { it.bmsIndex == 3 }.temperatures)
     }
 
     @Test
