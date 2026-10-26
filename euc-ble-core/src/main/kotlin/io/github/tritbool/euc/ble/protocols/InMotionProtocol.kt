@@ -1018,6 +1018,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             wheelDistance = 0.0,
             power = voltage * current,
             pwm = pwm,
+            torque = torque,
             timestamp = now,
             rawData = body,
             manufacturer = manufacturer,
@@ -2231,7 +2232,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     override fun getBMSData(): List<BMSData>? {
-        if (supportsExtendedRoutingPacks()) return p6Packs.toSortedMap().values.toList().ifEmpty { null }
+        // Extended-routing packs are richer than the wheel-level snapshot. The P6
+        // keeps the strict behavior (wheel realtime must not fill pack fields —
+        // see InMotionP6BmsTest); the V9 preserves its historical wheel-level
+        // fallback until the first pack page arrives.
+        if (supportsExtendedRoutingPacks()) {
+            val packs = p6Packs.toSortedMap().values.toList()
+            if (packs.isNotEmpty()) return packs
+            if (modelName == P6) return null
+        }
         val snapshot = lastKnownBmsSnapshot
         val voltage = snapshot.voltage
         val current = snapshot.current

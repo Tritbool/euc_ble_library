@@ -165,20 +165,12 @@ class InMotionProtocolTest {
 
         assertTrue(plan.enabled)
 
-        // V1 handshake (3) + extended identification + V1 slow-info.
-        assertEquals(5, plan.startupQueries.size)
+        // The car-type decode above resolved the dialect to V2, so the V1
+        // handshake chain is skipped: startup is the extended identification.
+        assertEquals(1, plan.startupQueries.size)
+        assertEquals("inmotion.extended-identification", plan.startupQueries[0].id)
         // realtime + extended realtime + 4 V14 pack-cell queries.
         assertEquals(6, plan.periodicQueries.size)
-
-        assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
-        assertEquals(CommandType.CUSTOM, plan.startupQueries[0].commandType)
-
-        assertEquals("inmotion.v1-pin", plan.startupQueries[1].id)
-        assertEquals(CommandType.CUSTOM, plan.startupQueries[1].commandType)
-
-        val probe = plan.startupQueries.first { it.id == "inmotion.dialect-probe" }
-        assertEquals("inmotion.dialect-probe", probe.id)
-        assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
 
         // 4 V14 pack-cell queries + the extended realtime poll.
         assertEquals(5, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
@@ -855,9 +847,9 @@ class InMotionProtocolTest {
         "aaaa162b240282070f070f090f070f090f0a0f090f0a0f090f090fff0efd0e" +
                 "000f000f010f020f000f000f040f010f93"
     private val v9Pack1Identity =
-        "aaaa163f240284010024130000046e0e00000001000101010100004257323638" +
-                "59303030373230533130334136323400ffffffffffffffffffffffffffffff" +
-                "ff0072"
+        "aaaa163f240284010024130000046e0e0000000100" +
+                "010101010000425732363859303037323053313033" +
+                "4136323400ffffffffffffffffffffffffffffffffffffff0072"
 
     @Test
     fun extendedIdentificationLatchesModelSerialAndVersions() {
@@ -968,9 +960,9 @@ class InMotionProtocolTest {
         // March WheelLog versions page (drv-first ordering).
         protocol.decode(
             ByteUtils.hexToBytes(
-                "aaaa113882062228000407190008022126000801010009" +
-                        "02230a0004010a00020124010001020100010125" +
-                        "0100010201000101012f0500050101000000b8"
+                "aaaa11388206222800040719000802212600080101" +
+                    "000902230a0004010a000201240100010201000101" +
+                    "2501000102010001012f0500050101000000b8"
             )
         )
         assertEquals("Main:1.8.38 Drv:7.4.40 BLE:1.4.10", protocol.lastDecodedFirmware())
