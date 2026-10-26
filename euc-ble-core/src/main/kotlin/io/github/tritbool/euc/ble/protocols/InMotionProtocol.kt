@@ -36,6 +36,17 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         private const val COMMAND_TOTAL_STATS = 0x11
         private const val COMMAND_CONTROL = 0x60
 
+        // Extended-routing dialect (official InMotion app; P6 and V9 verified against
+        // real captures): requests `AA AA 16 03 02 21 <sub> <checksum>` — i.e. MAIN_INFO
+        // with subdevice address 0x21 (main MCU), the same builder the pack queries
+        // use with addresses 0x24/0x25. Responses echo the address as the command:
+        // `AA AA 16 <len> 21 02 <sub|0x80> <body>`.
+        // Matches eucplanet InMotionV2Commands.getP6Info/getP6RealTimeData.
+        private const val EXTENDED_ROUTING_MCU_ADDRESS = 0x21
+        private const val EXTENDED_SUB_INFO = 0x06
+        private const val EXTENDED_SUB_REALTIME = 0x07
+        private const val EXTENDED_RESPONSE_MARKER = 0x80
+
         private const val MIN_FRAME_SIZE = 5
         private const val MAX_LEN = 240
 
@@ -565,6 +576,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 null
             }
 
+            // Extended-routing responses echo the main-MCU address 0x21 as the
+            // command: `21 02 <sub|0x80> <body>` (official-app dialect, verified
+            // against a real V9 capture).
+            EXTENDED_ROUTING_MCU_ADDRESS -> {
+                if (flags == FLAG_EXTENDED) {
+                    lastDetectedDialect = Dialect.V2
+                    parseExtendedRoutingResponse(payload)
+                } else {
+                    null
+                }
+            }
+
             COMMAND_MAIN_INFO -> {
                 lastDetectedDialect = Dialect.V2
                 parseMainInfo(payload)
@@ -591,7 +614,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
             in V14_BMS_PACK_ADDRESSES -> {
                 lastDetectedDialect = Dialect.V2
-                if (modelName == P6) {
+                if (supportsExtendedRoutingPacks()) {
                     if (flags == FLAG_EXTENDED) parseP6Pack(command, payload)
                 } else {
                     parseV14PackCellsResponse(command, payload)
@@ -770,21 +793,239 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             }
 
             0x06 -> { // versions
-                if (payload.size >= 24) {
-                    val drv3 = ByteUtils.getUnsignedShortLE(payload, 2)
-                    val drv2 = ByteUtils.getUnsignedByte(payload, 4)
-                    val drv1 = ByteUtils.getUnsignedByte(payload, 5)
-                    val main3 = ByteUtils.getUnsignedShortLE(payload, 11)
-                    val main2 = ByteUtils.getUnsignedByte(payload, 13)
-                    val main1 = ByteUtils.getUnsignedByte(payload, 14)
-                    val ble3 = ByteUtils.getUnsignedShortLE(payload, 20)
-                    val ble2 = ByteUtils.getUnsignedByte(payload, 22)
-                    val ble1 = ByteUtils.getUnsignedByte(payload, 23)
-                    firmwareVersion =
-                        "Main:$main1.$main2.$main3 Drv:$drv1.$drv2.$drv3 BLE:$ble1.$ble2.$ble3"
-                }
+                parseVersionEntries(payload.copyOfRange(1, payload.size))
+                    ?.let { firmwareVersion = it }
             }
         }
+    }
+
+    /**
+     * Dispatch an extended-routing response body `02 <sub|0x80> <data>` (the
+     * official-app dialect; the routing marker 0x02 and the echoed sub-command
+     * with 0x80 already validated by the caller).
+     *
+     * Sub-commands verified against a real V9 capture (screenshots + btsnoop):
+     *  - 0x86: identification bundle — `01 00 01 <16-byte ASCII serial>`, then
+     *    the car-type page `02 <series> <type>` and a component-versions list.
+     *  - 0x87: realtime telemetry in the P6 layout (eucplanet
+     *    InMotionV2Parser.parseP6Telemetry) with the V9's temperature block at
+     *    body[30] MOS / body[31] motor / body[32] board.
+     */
+    private fun parseExtendedRoutingResponse(payload: ByteArray): EUCData? {
+        if (payload.size < 2) return null
+        if (payload[0].toInt() != EXTENDED_ROUTING_QUERY) return null
+        val sub = payload[1].toInt() and 0x7F
+        val body = payload.copyOfRange(2, payload.size)
+        return when (sub) {
+            EXTENDED_SUB_INFO -> {
+                parseExtendedIdentity(body)
+                null
+            }
+            EXTENDED_SUB_REALTIME -> {
+                // Realtime bodies carry an extra `01 00` record prefix before the
+                // data block (eucplanet: "skip the 02 87 01 00 prefix").
+                val data = if (body.size >= 2 &&
+                    body[0].toInt() and 0xFF == 0x01 &&
+                    body[1].toInt() and 0xFF == 0x00
+                ) body.copyOfRange(2, body.size) else body
+                parseExtendedRealtime(data)?.also { hasSeenV2Realtime = true }
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Identification bundle body: `01 00 01 <16-byte ASCII serial> ... car-type
+     * page `02 <series> <type>` ... version entries `[id][u16le patch][minor][major]`.
+     * Verified against a real V9 capture: serial `A1421911600183A4`, car type
+     * series 12/type 1 (InMotion V9), BMS-pack version entries with
+     * minor=14 (screenshot `V0.0.14`).
+     */
+    private fun parseExtendedIdentity(body: ByteArray) {
+        if (body.size < 20) return
+        // Body starts `01 00 01 <16-byte ASCII serial>` — the 0x01 record marker
+        // precedes the serial (eucplanet parseP6Serial uses the same layout).
+        if (body[0].toInt() and 0xFF == 0x01) {
+            val serialEnd = minOf(19, body.size)
+            val serial = body.copyOfRange(3, serialEnd)
+                .decodeToString().trim { it == '\u0000' || it == ' ' }.ifEmpty { null }
+            if (serial != null) serialNumber = serial
+        }
+        // Car-type page: find the `02 <series> <type>` marker with a known series.
+        var i = 18
+        while (i + 2 < body.size) {
+            if (body[i].toInt() and 0xFF == EXTENDED_ROUTING_QUERY) {
+                val series = body[i + 1].toInt() and 0xFF
+                val type = body[i + 2].toInt() and 0xFF
+                val mapped = mapCarType(series, type)
+                if (mapped != null) {
+                    modelName = mapped
+                    enqueueP6StatsQueryIfDue(force = true)
+                    break
+                }
+            }
+            i++
+        }
+        // Component-version entries follow the car-type page (see
+        // parseVersionEntries). A real V9 identity bundle carries them in the
+        // same frame (October capture: Main:1.8.50 Drv:7.4.38 BLE:1.4.16).
+        val versionListStart = findVersionEntriesStart(body)
+        if (versionListStart != null) {
+            parseVersionEntries(body.copyOfRange(versionListStart, body.size))
+                ?.let { firmwareVersion = it }
+        }
+        hasSeenV2MainInfo = true
+    }
+
+    /**
+     * Locate the version-entry list inside the identity bundle. Entries start
+     * with a component id (0x21 main / 0x22 driver / 0x23 BLE) followed by a
+     * u16le patch whose high byte is zero, a minor and a major in 1..99.
+     * Returns the offset of the first matching entry id byte, or null.
+     */
+    private fun findVersionEntriesStart(body: ByteArray): Int? {
+        for (i in 0 until body.size - 5) {
+            val id = body[i].toInt() and 0xFF
+            if (id in 0x21..0x23 &&
+                body[i + 2].toInt() and 0xFF == 0x00 &&
+                body[i + 4].toInt() and 0xFF in 0x01..0x63
+            ) {
+                return i
+            }
+        }
+        return null
+    }
+
+    /** Map an InMotion car-type pair to a model name, or null when unknown. */
+    private fun mapCarType(series: Int, type: Int): String? = when {
+        series == 6 && type == 1 -> V11
+        series == 6 && type == 2 -> V11Y
+        series == 7 && type == 1 -> "$V12 HS"
+        series == 7 && type == 2 -> "$V12 HT"
+        series == 7 && type == 3 -> "$V12 PRO"
+        series == 8 && type == 1 -> V13
+        series == 8 && type == 2 -> "$V13 PRO"
+        series == 9 && type == 1 -> "$V14 50GB"
+        series == 9 && type == 2 -> "$V14 50S"
+        series == 11 && type == 1 -> V12S
+        series == 12 && type == 1 -> V9
+        series == 13 && type == 1 -> P6
+        else -> null
+    }
+
+    /**
+     * V9/P6 extended realtime body (after `02 87`), offsets cross-checked against
+     * eucplanet's parseP6Telemetry and a labelled V9 capture (InMotion app
+     * screenshots matching to the frame):
+     *   [0]  voltage u16 LE / 100        [2]  current i16 LE / 100
+     *   [8]  speed i16 LE / 100           [12] torque i16 LE / 100 (N·m)
+     *   [14] pwm i16 LE / 100 (%)         [20] battery1 u16 LE / 100
+     *   [22] battery2 u16 LE / 100
+     *   [30] MOS temp (offset-80)         [31] motor temp (offset-80)
+     *   [32] board temp (offset-80)
+     * Speed@8, PWM@14, torque@12, battery@20/22 confirmed by eucplanet against
+     * labelled P6 captures; temperatures verified on the V9 against the
+     * InMotion app's own screen (MOS 27°C / Motor 35°C / Board 24°C).
+     */
+    private fun parseExtendedRealtime(body: ByteArray): EUCData? {
+        if (body.size < 33) return null
+        val voltage = ByteUtils.getUnsignedShortLE(body, 0) / 100.0
+        val current = ByteUtils.getSignedShortLE(body, 2) / 100.0
+        val speed = ByteUtils.getSignedShortLE(body, 8) / 100.0
+        val torque = ByteUtils.getSignedShortLE(body, 12) / 100.0
+        val pwm = ByteUtils.getSignedShortLE(body, 14) / 100.0
+        val battery1 = ByteUtils.getUnsignedShortLE(body, 20) / 100.0
+        val battery2 = ByteUtils.getUnsignedShortLE(body, 22) / 100.0
+        val battery = ((battery1 + battery2) / 2.0).roundToInt().coerceIn(0, 100)
+
+        val mosTemp = decodeTemperature(body[30])
+        val motorTemp = decodeTemperature(body[31])
+        val boardTemp = decodeTemperature(body[32])
+        val imuTemp = ByteUtils.tryGetUnsignedByte(body, 28)
+            ?.let { decodeTemperature(it.toByte()) }
+
+        val now = System.currentTimeMillis()
+        lastKnownIsCharging = current < 0
+        hasSeenV2Realtime = true
+
+        return EUCData(
+            speed = speed,
+            voltage = voltage,
+            current = current,
+            temperature = mosTemp.toDouble(),
+            batteryLevel = battery,
+            distance = 0.0,
+            wheelDistance = 0.0,
+            power = voltage * current,
+            pwm = pwm,
+            timestamp = now,
+            rawData = body,
+            manufacturer = manufacturer,
+            model = modelName,
+            serialNumber = serialNumber,
+            firmwareVersion = firmwareVersion,
+            isCharging = current < 0,
+            rideTime = deriveV2RideTimeSeconds(now),
+            motorTemperature = motorTemp.toDouble(),
+            mosfetTemperature = mosTemp.toDouble(),
+            boardTemperature = boardTemp.toDouble(),
+            imuTemperature = imuTemp?.toDouble(),
+            totalDistance = totalDistanceKm,
+            totalRideTimeSeconds = totalRideTimeSeconds,
+            totalPowerOnTimeSeconds = totalPowerOnTimeSeconds,
+            angle = null,
+            roll = null,
+            speedLimit = null,
+            mode = if (current < 0) "charging" else if (speed != 0.0) "active" else "idle",
+        ).also { decoded ->
+            updateBmsSnapshot(
+                voltage = decoded.voltage,
+                current = decoded.current,
+                temperatures = listOfNotNull(
+                    decoded.temperature,
+                    decoded.motorTemperature,
+                    decoded.mosfetTemperature,
+                    decoded.boardTemperature,
+                    decoded.imuTemperature
+                )
+            )
+        }
+    }
+
+    /**
+     * Parse the component-version entries shared by the MAIN_INFO versions page
+     * (sub 0x06) and the extended-routing identity bundle. Entries are 9-byte
+     * `[id][u16le patch][minor][major][4 unknown bytes]` records:
+     *   0x21 main board, 0x22 driver board, 0x23 BLE, 0x24/0x25 BMS packs.
+     * Verified against two captures of the same V9 taken seven months apart
+     * (March WheelLog versions page: Drv 7.4.40 / Main 1.8.38 / BLE 1.4.10;
+     * October InMotion-app identity bundle: Main 1.8.50 / Drv 7.4.38 /
+     * BLE 1.4.16 / BMS packs 0.0.14, matching the app screenshot `V0.0.14`).
+     * Components are located by id, not by fixed offset, so the different
+     * entry order between the two frames (drv-first vs main-first) is handled.
+     */
+    private fun parseVersionEntries(payload: ByteArray): String? {
+        if (payload.size < 5) return null
+        var main: Triple<Int, Int, Int>? = null
+        var drv: Triple<Int, Int, Int>? = null
+        var ble: Triple<Int, Int, Int>? = null
+        var i = 0
+        while (i + 5 <= payload.size) {
+            val id = payload[i].toInt() and 0xFF
+            val patch = ByteUtils.getUnsignedShortLE(payload, i + 1)
+            val minor = payload[i + 3].toInt() and 0xFF
+            val major = payload[i + 4].toInt() and 0xFF
+            when (id) {
+                0x21 -> main = Triple(major, minor, patch)
+                0x22 -> drv = Triple(major, minor, patch)
+                0x23 -> ble = Triple(major, minor, patch)
+            }
+            i += 9
+        }
+        val mainStr = main?.let { "Main:${it.first}.${it.second}.${it.third}" }
+        val drvStr = drv?.let { "Drv:${it.first}.${it.second}.${it.third}" }
+        val bleStr = ble?.let { "BLE:${it.first}.${it.second}.${it.third}" }
+        return listOfNotNull(mainStr, drvStr, bleStr).joinToString(" ").ifEmpty { null }
     }
 
     private fun parseTotalStats(payload: ByteArray) {
@@ -820,6 +1061,15 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun supportsV14PackCellQueries(): Boolean =
         modelName == "$V14 50GB" ||
                 modelName == "$V14 50S"
+
+    /**
+     * Wheels that answer the P6-style extended-routing pack queries
+     * (`02 24/25 <sub>` → `24/25 02 <sub|0x80> <body>`): the P6 (56 cells/pack,
+     * 2 packs) and the V9 (20 cells/pack, 2 packs). Verified against real
+     * captures of both; the page layouts are identical except cell count.
+     */
+    private fun supportsExtendedRoutingPacks(): Boolean =
+        modelName == P6 || modelName == V9
 
     private fun parseRealTime(payload: ByteArray, rawFrame: ByteArray): EUCData? {
         return if (isV12Model()) {
@@ -1153,11 +1403,42 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun isP6PackPayload(command: Int, payload: ByteArray): Boolean {
         if (command !in 0x24..0x25 || payload.size < 2 || payload[0] != 0x02.toByte()) return false
         return when (payload[1].toInt() and 0xFF) {
-            0x81 -> payload.size == 60
-            0x82 -> payload.size == 114
+            // Summary page: 60 bytes on the P6, 56 on the V9 (real captures).
+            0x81 -> payload.size == 60 || payload.size == 56
+            // Cell page: 56 cells on the P6 (114 bytes), 20 cells on the V9
+            // (42 bytes). Only the two observed pack sizes are accepted — a
+            // 32-cell V14 page (66 bytes) must NOT match.
+            0x82 -> payload.size == 114 || payload.size == 42
+            // Identity page is 62 bytes on both (real captures).
             0x84 -> payload.size == 62
             else -> false
         }
+    }
+
+    /**
+     * Extract the pack serial from a 62-byte identity page. Two layouts exist
+     * (both verified against real captures):
+     *  - P6: 20-byte default message at [22..42] ("this is default mess"),
+     *    serial at [42..62] (`Z100E5A00319`).
+     *  - V9: serial directly at [22..42] (`BW268Y00720S103A624`), 0xFF padding
+     *    after.
+     * The classic [42..62] position wins when it holds a printable serial;
+     * otherwise the [22..42] run is used. Printable-ASCII gate rejects the
+     * message text only when the P6 position is empty, so no model gate is
+     * needed.
+     */
+    private fun decodePackSerial(payload: ByteArray): String? {
+        if (payload.size < 42) return null
+        fun run(from: Int, to: Int): String? {
+            if (payload.size < to) return null
+            val text = payload.copyOfRange(from, to)
+                .decodeToString()
+                .trim { it == '\u0000' || it == ' ' }
+            // Reject runs containing non-printable bytes (e.g. the V9's 0xFF
+            // padding) and board-message filler that is shorter than a serial.
+            return text.takeIf { it.length >= 8 && it.all { c -> c.code in 0x20..0x7E } }
+        }
+        return run(42, 62) ?: run(22, 42)
     }
 
     private fun parseP6Pack(command: Int, payload: ByteArray) {
@@ -1183,21 +1464,24 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     )
                 }
 
-                0x82 -> previous.copy(cellVoltages = List(56) {
+                // Cell page size varies per pack: 56 cells (P6, 114-byte payload)
+                // or 20 cells (V9, 42-byte payload). Verified against real captures.
+                0x82 -> previous.copy(cellVoltages = List((payload.size - 2) / 2) {
                     ByteUtils.getUnsignedShortLE(payload, 2 + it * 2) / 1000.0
                 })
 
-                else -> previous.copy(
-                    firmwareVersion = "${payload[13].toInt() and 0xFF}.${payload[12].toInt() and 0xFF}.${
-                        ByteUtils.getUnsignedShortLE(
-                            payload,
-                            10
-                        )
-                    }",
-                    // Captures contain a fixed 20-byte serial after the 20-byte message.
-                    serialNumber = payload.copyOfRange(42, 62).decodeToString()
-                        .trimEnd('\u0000').ifEmpty { null }
-                )
+                else -> {
+                    val serial = decodePackSerial(payload)
+                    previous.copy(
+                        firmwareVersion = "${payload[13].toInt() and 0xFF}.${payload[12].toInt() and 0xFF}.${
+                            ByteUtils.getUnsignedShortLE(
+                                payload,
+                                10
+                            )
+                        }",
+                        serialNumber = serial
+                    )
+                }
             }
             p6Packs = p6Packs + (index to updated)
         }
@@ -1343,51 +1627,85 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         if (!allowsActivePolling()) {
             return ProtocolPollingPlan.disabled()
         }
+        // When the GATT fingerprint already resolved the dialect to V2 (the BLEManager
+        // calls setDialect(2) before polling starts), the V1 handshake chain is pure
+        // dead time: a V2-fingerprint wheel never answers the V1 password/PIN/slow-info
+        // CAN frames, and the serialized retries cost ~6 s before the first telemetry
+        // poll (measured on a real V9). Skip straight to identification + realtime.
+        val dialectAlreadyV2 = lastDetectedDialect == Dialect.V2
+        val v1HandshakeQueries = if (dialectAlreadyV2) emptyList() else listOf(
+            // V1 PIN handshake: sent before any V2 probe so locked V1 wheels unlock
+            // and begin streaming. V2 wheels ignore these frames (different framing).
+            // eucplanet InMotionV1Adapter.initSequence() sends exactly these three
+            // frames before polling begins.
+            ProtocolQuerySpec(
+                id = "inmotion.v1-factory-password",
+                commandType = CommandType.CUSTOM,
+                value = buildV1FactoryPasswordFrame(),
+                initialDelayMs = 0L,
+                responseTimeoutMs = 400L,
+                maxRetries = 2
+            ),
+            ProtocolQuerySpec(
+                id = "inmotion.v1-pin",
+                commandType = CommandType.CUSTOM,
+                value = buildV1PinFrame(),
+                initialDelayMs = 50L,
+                responseTimeoutMs = 400L,
+                maxRetries = 2
+            ),
+            ProtocolQuerySpec(
+                id = "inmotion.dialect-probe",
+                commandType = CommandType.REQUEST_FIRMWARE,
+                initialDelayMs = 150L,
+                responseTimeoutMs = 800L,
+                maxRetries = 1
+            )
+        )
+        val v1SlowInfoQuery = if (dialectAlreadyV2) emptyList() else listOf(
+            ProtocolQuerySpec(
+                id = "inmotion.v1-slow-info",
+                commandType = CommandType.CUSTOM,
+                value = buildV1SlowInfoFrame(),
+                initialDelayMs = 250L,
+                responseTimeoutMs = 1_200L,
+                maxRetries = 2
+            )
+        )
         return ProtocolPollingPlan(
             enabled = true,
-            startupQueries = listOf(
-                // V1 PIN handshake: sent before any V2 probe so locked V1 wheels unlock
-                // and begin streaming. V2 wheels ignore these frames (different framing).
-                // eucplanet InMotionV1Adapter.initSequence() sends exactly these three
-                // frames before polling begins.
+            startupQueries = v1HandshakeQueries + listOf(
+                // Extended-routing identification (official-app dialect): the
+                // same MAIN_INFO builder addressed to the main MCU (0x21), sub 0x06.
+                // A real V9 answers with its serial, car type and component versions
+                // in a single ~100 ms round-trip — unlike the V2 probe and the V1
+                // slow-info frame, which this wheel never answers.
                 ProtocolQuerySpec(
-                    id = "inmotion.v1-factory-password",
+                    id = "inmotion.extended-identification",
                     commandType = CommandType.CUSTOM,
-                    value = buildV1FactoryPasswordFrame(),
-                    initialDelayMs = 0L,
-                    responseTimeoutMs = 400L,
-                    maxRetries = 2
-                ),
-                ProtocolQuerySpec(
-                    id = "inmotion.v1-pin",
-                    commandType = CommandType.CUSTOM,
-                    value = buildV1PinFrame(),
-                    initialDelayMs = 50L,
-                    responseTimeoutMs = 400L,
-                    maxRetries = 2
-                ),
-                ProtocolQuerySpec(
-                    id = "inmotion.dialect-probe",
-                    commandType = CommandType.REQUEST_FIRMWARE,
-                    initialDelayMs = 150L,
+                    value = buildExtendedRoutingQuery(EXTENDED_SUB_INFO),
+                    initialDelayMs = if (dialectAlreadyV2) 0L else 200L,
                     responseTimeoutMs = 800L,
-                    maxRetries = 1
-                ),
-                ProtocolQuerySpec(
-                    id = "inmotion.v1-slow-info",
-                    commandType = CommandType.CUSTOM,
-                    value = buildV1SlowInfoFrame(),
-                    initialDelayMs = 250L,
-                    responseTimeoutMs = 1_200L,
                     maxRetries = 2
-                ),
-            ),
+                )
+            ) + v1SlowInfoQuery,
             periodicQueries = listOf(
                 ProtocolQuerySpec(
                     id = "inmotion.realtime",
                     commandType = CommandType.REQUEST_BATTERY_INFO,
                     intervalMs = 200L,
                     responseTimeoutMs = 400L,
+                    maxRetries = 1
+                ),
+                // Extended-routing realtime (sub 0x07): carries the motor
+                // temperature (body[31]) and per-pack battery percentages, which
+                // the plain 0x04 realtime frame does not expose on the V9.
+                ProtocolQuerySpec(
+                    id = "inmotion.extended-realtime",
+                    commandType = CommandType.CUSTOM,
+                    value = buildExtendedRoutingQuery(EXTENDED_SUB_REALTIME),
+                    intervalMs = 1_000L,
+                    responseTimeoutMs = 800L,
                     maxRetries = 1
                 ),
             ) + if (modelName == manufacturer) listOf(
@@ -1397,8 +1715,18 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     intervalMs = 4_000L,
                     responseTimeoutMs = 800L,
                     maxRetries = 1
+                ),
+                // Identification retries also refresh through the extended query —
+                // the V2-style probe is only answered with the board string.
+                ProtocolQuerySpec(
+                    id = "inmotion.extended-identification",
+                    commandType = CommandType.CUSTOM,
+                    value = buildExtendedRoutingQuery(EXTENDED_SUB_INFO),
+                    intervalMs = 4_000L,
+                    responseTimeoutMs = 800L,
+                    maxRetries = 1
                 )
-            ) else if (modelName == P6) p6PollingQueries() else if (supportsV14PackCellQueries()) listOf(
+            ) else if (supportsExtendedRoutingPacks()) p6PollingQueries() else if (supportsV14PackCellQueries()) listOf(
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-1-cells",
                     commandType = CommandType.CUSTOM,
@@ -1447,7 +1775,12 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     private fun parseLegacyIdentification(payload: ByteArray) {
         val text = payload.dropWhile { it.toInt() == 0x00 }.toByteArray().decodeToString().trim()
         if (text.isEmpty()) return
-        firmwareVersion = text.takeIf { it.isNotEmpty() } ?: firmwareVersion
+        // The board form-factor string (e.g. a V9 reports "Form V11 HMIC(0x21)")
+        // is NOT firmware. It used to overwrite the real version latched from
+        // MAIN_INFO, replacing it in the stats screen every time the 4-second
+        // identification poll was answered. Keep it only as a last-resort
+        // board hint when nothing better has arrived.
+        if (firmwareVersion == null) firmwareVersion = text
     }
 
     /**
@@ -1498,12 +1831,32 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         ) {
             return command == COMMAND_MAIN_INFO
         }
+        // Extended-routing query to the main MCU (address 0x21): the response
+        // echoes 0x21 as the command with `02 <sub|0x80> <body>` as payload.
+        // Verified against a real V9 capture (sub 0x06 identification, sub 0x07
+        // realtime, each answered in ~35 ms).
+        if (request.size >= 7 &&
+            request[2].toInt() and 0xFF == FLAG_EXTENDED &&
+            request[4].toInt() and 0xFF == COMMAND_MAIN_INFO &&
+            request[5].toInt() and 0xFF == EXTENDED_ROUTING_MCU_ADDRESS
+        ) {
+            if (command != EXTENDED_ROUTING_MCU_ADDRESS) return false
+            if (data.size < 8 || data[2].toInt() and 0xFF != FLAG_EXTENDED) return false
+            // Unescaped frame = AA AA + flag + len + (cmd + data: len bytes)
+            // + checksum = len + 5 bytes total.
+            val len = data[3].toInt() and 0xFF
+            if (data.size < len + 5) return false
+            if (data[5].toInt() and 0xFF != EXTENDED_ROUTING_QUERY) return false
+            val subCommand = request[6].toInt() and 0xFF
+            val echoed = data[6].toInt() and 0xFF
+            return (echoed and 0x7F) == subCommand && (echoed and EXTENDED_RESPONSE_MARKER) != 0
+        }
         if (request.size < 7 || request[4].toInt() and 0xFF != COMMAND_MAIN_INFO) return false
         val packAddress = request[5].toInt() and 0xFF
         val subCommand = request[6].toInt() and 0xFF
         if (command != packAddress) return false
         val payload = data.copyOfRange(5, data.lastIndex)
-        if (modelName == P6) {
+        if (supportsExtendedRoutingPacks()) {
             return data[2].toInt() and 0xFF == FLAG_EXTENDED &&
                     isP6PackPayload(command, payload) &&
                     payload[1].toInt() and 0xFF == (subCommand or 0x80)
@@ -1512,6 +1865,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                 parseV14PackCells(payload) != null
     }
 
+    /** Pack queries shared by the P6 (56 cells/pack) and the V9 (20 cells/pack). */
     private fun p6PollingQueries(): List<ProtocolQuerySpec> =
         (0x24..0x25).flatMap { pack ->
             listOf(1, 2, 4).map { subtype ->
@@ -1532,6 +1886,26 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
         buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO, byteArrayOf(packAddress.toByte(), 0x02))
+
+    /**
+     * Extended-routing query of the official InMotion app (eucplanet
+     * InMotionV2Commands.getP6Info/getP6RealTimeData). Wire form:
+     * `AA AA 16 03 02 21 <sub> <checksum>` — MAIN_INFO addressed to subdevice
+     * 0x21 (main MCU), the exact same builder and shape as the pack queries
+     * (which use addresses 0x24/0x25 with a subtype byte). The wheel answers
+     * with `21 02 <sub|0x80> <body>` — verified against a real V9 capture where
+     * the identification (sub 0x06) and realtime (sub 0x07) queries were each
+     * answered in ~35 ms.
+     */
+    private fun buildExtendedRoutingQuery(sub: Int): ByteArray =
+        buildMessage(
+            FLAG_EXTENDED,
+            COMMAND_MAIN_INFO,
+            byteArrayOf(
+                EXTENDED_ROUTING_MCU_ADDRESS.toByte(),
+                sub.toByte()
+            )
+        )
 
     // --- InMotion V1 frame builder -----------------------------------------
 
@@ -1647,7 +2021,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     override fun getBMSData(): List<BMSData>? {
-        if (modelName == P6) return p6Packs.toSortedMap().values.toList().ifEmpty { null }
+        if (supportsExtendedRoutingPacks()) return p6Packs.toSortedMap().values.toList().ifEmpty { null }
         val snapshot = lastKnownBmsSnapshot
         val voltage = snapshot.voltage
         val current = snapshot.current
@@ -1756,6 +2130,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
 
     /** Currently latched model name (from V2 main-info or legacy identification frames). */
     fun lastDecodedModel(): String = modelName
+
+    /** Currently latched firmware version, from MAIN_INFO pages or identity bundles. */
+    fun lastDecodedFirmware(): String? = firmwareVersion
 
     override fun close() {
         // No resources to clean up

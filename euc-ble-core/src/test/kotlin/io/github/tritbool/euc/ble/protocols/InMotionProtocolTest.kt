@@ -164,8 +164,10 @@ class InMotionProtocolTest {
 
         assertTrue(plan.enabled)
 
-        assertEquals(4, plan.startupQueries.size)
-        assertEquals(5, plan.periodicQueries.size)
+        // V1 handshake (3) + extended identification + V1 slow-info.
+        assertEquals(5, plan.startupQueries.size)
+        // realtime + extended realtime + 4 V14 pack-cell queries.
+        assertEquals(6, plan.periodicQueries.size)
 
         assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
         assertEquals(CommandType.CUSTOM, plan.startupQueries[0].commandType)
@@ -177,7 +179,8 @@ class InMotionProtocolTest {
         assertEquals("inmotion.dialect-probe", probe.id)
         assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
 
-        assertEquals(4, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
+        // 4 V14 pack-cell queries + the extended realtime poll.
+        assertEquals(5, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
     }
 
     @Test
@@ -236,8 +239,13 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        assertEquals(1, plan.periodicQueries.size)
-        assertEquals("inmotion.realtime", plan.periodicQueries.single().id)
+        // No V14 pack probing: the V9 uses the P6-style pack queries instead.
+        assertTrue(plan.periodicQueries.none { it.id.startsWith("inmotion.v14-pack-") })
+        assertEquals(
+            listOf("inmotion.realtime", "inmotion.extended-realtime"),
+            plan.periodicQueries.map { it.id }.filter { !it.startsWith("inmotion.p6-pack-") }
+        )
+        assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
     }
 
     @Test
@@ -246,7 +254,8 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        assertEquals(7, plan.periodicQueries.size)
+        // realtime + extended realtime + 6 pack queries.
+        assertEquals(8, plan.periodicQueries.size)
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
         assertFalse(plan.periodicQueries.any { it.id.startsWith("inmotion.v14-pack-") })
     }
@@ -813,6 +822,180 @@ class InMotionProtocolTest {
             malformedRows <= maxMalformedRows
         )
         return frames
+    }
+
+    // --- Extended-routing dialect (official InMotion app; verified against a real V9) ---
+
+    /**
+     * Real V9 identity bundle (sub 0x06), captured from the InMotion app
+     * session 2026-10-26: serial `A1421911600183A4`, car type series 12/type 1,
+     * component versions Main 1.8.50 / Drv 7.4.38 / BLE 1.4.16 (the wheel was
+     * firmware-updated since the March WheelLog capture: Main 1.8.38 / Drv 7.4.40).
+     */
+    private val v9ExtendedIdentityFrame =
+        "aaaa1662210286010001413134323139313136303031383341340000000000" +
+                "020c010121320008010100090222260004071900080223100004010a00" +
+                "0201240e00000001000101250e000000010001012f06000601010000" +
+                "0045bd57a9210100220000230000ea"
+
+    /**
+     * Real V9 extended realtime frame (sub 0x07) from the same capture,
+     * correlated with the InMotion app screenshot at 09:25:11:
+     * V 76.25, I 5.47 A, |torque| 33.32 N·m, PWM 14.12 %,
+     * MOS 28 °C / motor 35 °C / board 24 °C.
+     */
+    private val v9ExtendedRealtimeFrame =
+        "aaaa165f2102870100c91d23020000000018000000fcf28405000000" +
+                "00de189c177017ac0dc210ccd3c800c0022803b90006007604000006" +
+                "00000015000000b700000078d90100b1338e00506f0800b8bc020065ba1e00" +
+                "490030000000000000000000a5a5"
+
+    /** Real V9 BMS pack-1 responses (address 0x24) from the same capture. */
+    private val v9Pack1Summary =
+        "aaaa1639240281010000000000081e00000d005f127b0b32000a0ffd0e3c00" +
+                "c4c2c5cec2c2c2c2cececece1e3effff000041080000000000000000000033"
+    private val v9Pack1Cells =
+        "aaaa162b240282070f070f090f070f090f0a0f090f0a0f090f090fff0efd0e" +
+                "000f000f010f020f000f000f040f010f93"
+    private val v9Pack1Identity =
+        "aaaa163f240284010024130000046e0e00000001000101010100004257323638" +
+                "59303030373230533130334136323400ffffffffffffffffffffffffffffff" +
+                "ff0072"
+
+    @Test
+    fun extendedIdentificationLatchesModelSerialAndVersions() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertEquals("InMotion V9", protocol.lastDecodedModel())
+        // Decode a realtime frame so the latched fields surface in EUCData.
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+        assertNotNull(data)
+        assertEquals("A1421911600183A4", data!!.serialNumber)
+        assertEquals(
+            "Main:1.8.50 Drv:7.4.38 BLE:1.4.16",
+            data.firmwareVersion
+        )
+    }
+
+    @Test
+    fun extendedRealtimeDecodesTorquePwmAndMotorTemperature() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+
+        assertNotNull(data)
+        assertEquals(76.25, data!!.voltage, 0.01)
+        assertEquals(5.47, data.current, 0.01)
+        assertEquals(-33.32, data.torque ?: 0.0, 0.01)
+        assertEquals(14.12, data.pwm ?: 0.0, 0.01)
+        assertEquals(28.0, data.mosfetTemperature ?: -1.0, 0.01)
+        assertEquals(35.0, data.motorTemperature ?: -1.0, 0.01)
+        assertEquals(24.0, data.boardTemperature ?: -1.0, 0.01)
+        assertEquals(62.0, data.batteryLevel.toDouble(), 1.0) // (63.66+60.44)/2
+    }
+
+    @Test
+    fun extendedRealtimeAndIdentificationQueriesMatchCapturedResponses() {
+        val plan = protocol.getPollingPlan()
+        val identification = plan.startupQueries.single {
+            it.id == "inmotion.extended-identification"
+        }
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160302210630"),
+            protocol.createCommand(identification.commandType, identification.value)
+        )
+        val realtime = plan.periodicQueries.single {
+            it.id == "inmotion.extended-realtime"
+        }
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160302210731"),
+            protocol.createCommand(realtime.commandType, realtime.value)
+        )
+
+        assertTrue(
+            protocol.matchesQueryResponse(
+                identification, ByteUtils.hexToBytes(v9ExtendedIdentityFrame)
+            )
+        )
+        assertTrue(
+            protocol.matchesQueryResponse(
+                realtime, ByteUtils.hexToBytes(v9ExtendedRealtimeFrame)
+            )
+        )
+    }
+
+    @Test
+    fun v2DialectSkipsV1HandshakeForFastStartup() {
+        // With the dialect pre-resolved to V2 (GATT fingerprint), the V1
+        // password/PIN/slow-info chain must not run: a V2-fingerprint wheel
+        // never answers those frames, and the serialized retries cost ~6 s.
+        protocol.setDialect(2)
+        val plan = protocol.getPollingPlan()
+        assertTrue(plan.startupQueries.none { it.id.startsWith("inmotion.v1-") })
+        assertTrue(plan.startupQueries.none { it.id == "inmotion.dialect-probe" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.extended-identification" })
+    }
+
+    @Test
+    fun unknownDialectStillRunsV1HandshakeForLegacyWheels() {
+        val plan = protocol.getPollingPlan()
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.v1-factory-password" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.v1-pin" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.dialect-probe" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.v1-slow-info" })
+    }
+
+    @Test
+    fun v9ExposesTwoTwentyCellBmsPacks() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        // Pack queries must be scheduled for the V9 just like the P6.
+        val plan = protocol.getPollingPlan()
+        assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
+
+        protocol.decode(ByteUtils.hexToBytes(v9Pack1Summary))
+        protocol.decode(ByteUtils.hexToBytes(v9Pack1Cells))
+        protocol.decode(ByteUtils.hexToBytes(v9Pack1Identity))
+
+        val packs = protocol.getBMSData()!!
+        assertEquals(1, packs.size)
+        val pack = packs.single()
+        assertEquals(20, pack.cellVoltages!!.size)
+        assertEquals(3.847, pack.cellVoltages.first(), 0.001)
+        assertEquals(3.841, pack.cellVoltages.last(), 0.001)
+        assertEquals(76.88, pack.voltage!!, 0.01)
+        assertEquals("BW268Y00720S103A624", pack.serialNumber)
+        assertEquals("0.0.14", pack.firmwareVersion)
+    }
+
+    @Test
+    fun versionEntriesParseByComponentIdAcrossDifferentEntryOrders() {
+        // March WheelLog versions page (drv-first ordering).
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa113882062228000407190008022126000801010009" +
+                        "02230a0004010a00020124010001020100010125" +
+                        "0100010201000101012f0500050101000000b8"
+            )
+        )
+        assertEquals("Main:1.8.38 Drv:7.4.40 BLE:1.4.10", protocol.lastDecodedFirmware())
+
+        protocol.resetSession()
+        // October identity bundle (main-first ordering).
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        assertEquals("Main:1.8.50 Drv:7.4.38 BLE:1.4.16", protocol.lastDecodedFirmware())
+    }
+
+    @Test
+    fun legacyFormStringNeverOverwritesRealFirmwareVersion() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val before = protocol.lastDecodedFirmware()
+        assertTrue(before!!.contains("Main:1.8.50"))
+
+        // The board form-factor string answers the V2 identification probe;
+        // it must not replace the latched component versions.
+        protocol.decode(
+            ByteUtils.hexToBytes("AAAA11158000466F726D2056313120484D4943283078323129A1")
+        )
+        assertEquals(before, protocol.lastDecodedFirmware())
     }
 
 }

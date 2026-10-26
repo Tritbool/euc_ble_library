@@ -350,7 +350,9 @@ class InMotionP6BmsTest {
     }
 
     private fun packQueries(protocol: InMotionProtocol) =
-        protocol.getPollingPlan().periodicQueries.filter { it.commandType == CommandType.CUSTOM }
+        protocol.getPollingPlan().periodicQueries.filter {
+            it.commandType == CommandType.CUSTOM && !it.id.startsWith("inmotion.extended-")
+        }
 
     private fun subtype(response: Response) = response.payload[1].toInt() and 0x7F
 
