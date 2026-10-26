@@ -243,7 +243,7 @@ class InMotionProtocolTest {
         // No V14 pack probing: the V9 uses the P6-style pack queries instead.
         assertTrue(plan.periodicQueries.none { it.id.startsWith("inmotion.v14-pack-") })
         assertEquals(
-            listOf("inmotion.realtime", "inmotion.extended-realtime"),
+            listOf("inmotion.realtime", "inmotion.extended-realtime", "inmotion.control-auth"),
             plan.periodicQueries.map { it.id }.filter { !it.startsWith("inmotion.p6-pack-") }
         )
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
@@ -255,8 +255,8 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        // realtime + extended realtime + 6 pack queries.
-        assertEquals(8, plan.periodicQueries.size)
+        // realtime + extended realtime + control-auth + 6 pack queries.
+        assertEquals(9, plan.periodicQueries.size)
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
         assertFalse(plan.periodicQueries.any { it.id.startsWith("inmotion.v14-pack-") })
     }
@@ -1146,6 +1146,28 @@ class InMotionProtocolTest {
         assertEquals(
             AuthenticationState.UNKNOWN,
             protocol.getSecurityState()!!.authentication
+        )
+    }
+
+    @Test
+    fun v9PlanIncludesPeriodicControlAuthRefresh() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // initial auth request
+
+        val authQuery = protocol.getPollingPlan().periodicQueries
+            .single { it.id == "inmotion.control-auth" }
+        assertEquals(6_000L, authQuery.intervalMs)
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa13040200000217"),
+            protocol.createCommand(authQuery.commandType, authQuery.value)
+        )
+        // The wheel's token reply must match the periodic query so the round
+        // completes (echo + ack follow through handleControlAuth).
+        assertTrue(
+            protocol.matchesQueryResponse(
+                authQuery,
+                ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+            )
         )
     }
 

@@ -48,6 +48,9 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
         // `AA AA 16 <len> 21 02 <sub|0x80> <body>`.
         // Matches eucplanet InMotionV2Commands.getP6Info/getP6RealTimeData.
         private const val EXTENDED_ROUTING_MCU_ADDRESS = 0x21
+
+        /** Routing marker that prefixes extended response payloads: `02 <sub|0x80> ...`. */
+        private const val EXTENDED_ROUTING_QUERY = 0x02
         private const val EXTENDED_SUB_INFO = 0x06
         private const val EXTENDED_SUB_REALTIME = 0x07
         private const val EXTENDED_RESPONSE_MARKER = 0x80
@@ -1796,7 +1799,25 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
                     responseTimeoutMs = 800L,
                     maxRetries = 1
                 ),
-            ) + if (modelName == manufacturer) listOf(
+            ) + (
+                if (supportsExtendedRoutingPacks()) listOf(
+                    // Periodic control-auth refresh. The capture shows the official
+                    // app runs the handshake before every control command, and the V6
+                    // needs it repeated roughly every 6 s to keep a session at all
+                    // (eucplanet requiresConnectAuth). Re-requesting the token keeps
+                    // the control endpoint unlocked without any stored secret — the
+                    // wheel re-issues the token each round and the echo follows.
+                    ProtocolQuerySpec(
+                        id = "inmotion.control-auth",
+                        commandType = CommandType.CUSTOM,
+                        value = buildControlAuthRequest(),
+                        initialDelayMs = 6_000L,
+                        intervalMs = 6_000L,
+                        responseTimeoutMs = 1_200L,
+                        maxRetries = 1
+                    )
+                ) else emptyList()
+                ) + if (modelName == manufacturer) listOf(
                 ProtocolQuerySpec(
                     id = "inmotion.identification",
                     commandType = CommandType.REQUEST_FIRMWARE,
@@ -1918,6 +1939,23 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
             request[request.size - 2] == V1_TRAILER && request[request.size - 1] == V1_TRAILER
         ) {
             return command == COMMAND_MAIN_INFO
+        }
+        // Control-auth request: the wheel answers with its 16-byte token
+        // (`12 13 02 80 02 <16B>`, capture-verified). The echo + ack follow
+        // automatically via handleControlAuth.
+        if (request.size >= 7 &&
+            request[2].toInt() and 0xFF == AUTH_FLAG &&
+            request[4].toInt() and 0xFF == COMMAND_MAIN_INFO &&
+            request[7].toInt() and 0xFF == AUTH_SUB_REQUEST
+        ) {
+            if (data.size < 8 || data[2].toInt() and 0xFF != AUTH_RESPONSE_FLAG) return false
+            val len = data[3].toInt() and 0xFF
+            if (data.size < len + 5) return false
+            if (command != COMMAND_MAIN_INFO) return false
+            // Response payload: `80 02 <16B token>`.
+            if (data[5].toInt() and 0xFF != EXTENDED_RESPONSE_MARKER) return false
+            if (data[6].toInt() and 0xFF != AUTH_SUB_REQUEST) return false
+            return data.size >= 5 + 2 + AUTH_TOKEN_SIZE
         }
         // Extended-routing query to the main MCU (address 0x21): the response
         // echoes 0x21 as the command with `02 <sub|0x80> <body>` as payload.
@@ -2042,17 +2080,23 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
      * The reply is handled by [handleControlAuth], which echoes the token back.
      * No secret is embedded anywhere — the token originates from the wheel.
      */
+    /**
+     * Auth-key request frame (capture: `AA AA 13 04 02 00 00 02 17`). The wheel
+     * answers with its 16-byte control token, which [handleControlAuth] echoes
+     * back. No secret is embedded anywhere — the token originates from the wheel.
+     */
+    private fun buildControlAuthRequest(): ByteArray =
+        buildMessage(
+            AUTH_FLAG,
+            COMMAND_MAIN_INFO,
+            byteArrayOf(0x00, 0x00, AUTH_SUB_REQUEST.toByte())
+        )
+
     private fun enqueueControlAuthRequest() {
         // Only until the wheel issues its token: a periodically re-broadcast
         // car-type frame must not re-trigger the handshake once it has run.
         if (controlAuthToken != null) return
-        _writeChannel.trySend(
-            buildMessage(
-                AUTH_FLAG,
-                COMMAND_MAIN_INFO,
-                byteArrayOf(0x00, 0x00, AUTH_SUB_REQUEST.toByte())
-            )
-        )
+        _writeChannel.trySend(buildControlAuthRequest())
     }
 
     /**
