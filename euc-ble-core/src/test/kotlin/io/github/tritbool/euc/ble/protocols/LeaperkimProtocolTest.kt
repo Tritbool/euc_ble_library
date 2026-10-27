@@ -57,7 +57,7 @@ class LeaperkimProtocolTest {
 
         val frame = createLeaperkimFrame(
             voltageRaw = 12525,
-            speedRaw = 1234,
+            speedRaw = 123,
             distanceRaw = 54321,
             totalDistanceRaw = 65432,
             currentRaw = -250,
@@ -74,7 +74,7 @@ class LeaperkimProtocolTest {
             assertEquals("Leaperkim", telemetry.manufacturer)
             assertEquals("Patton S", telemetry.model)
             assertEquals(125.25, telemetry.voltage, 0.01)
-            assertEquals(12.34, telemetry.speed, 0.01)
+            assertEquals(12.3, telemetry.speed, 0.01)
             assertEquals(-2.50, telemetry.current, 0.01)
             assertEquals(35.00, telemetry.temperature, 0.01)
             assertEquals(78.50, telemetry.pwm ?: -1.0, 0.01)
