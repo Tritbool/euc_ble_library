@@ -5,7 +5,7 @@ package io.github.tritbool.euc.ble.models
  * Provides detailed battery health information beyond what EUCData carries.
  */
 data class BMSData(
-    /** BMS number (1 or 2 for dual-battery wheels) */
+    /** BMS entry index (1 or 2 for dual-battery wheels, up to 4 for four-group smart BMS) */
     val bmsIndex: Int,
     /** BMS pack voltage in volts */
     val voltage: Double?,

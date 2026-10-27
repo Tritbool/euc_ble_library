@@ -1226,7 +1226,10 @@ class GotwayProtocolTest {
                 future.get(5, TimeUnit.SECONDS)
             }
             assertTrue(protocol.getBMSData().isEmpty())
-            assertEquals(List(8) { 4.1 }, snapshot.single().cellVoltages)
+            // A single Type 2 page fills both halves of stream 0 (groups G1 and G2).
+            assertEquals(2, snapshot.size)
+            assertEquals(List(4) { 4.1 }, snapshot.first { it.bmsIndex == 0 }.cellVoltages)
+            assertEquals(List(4) { 4.1 }, snapshot.first { it.bmsIndex == 1 }.cellVoltages)
         } finally {
             executor.shutdownNow()
             assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
@@ -1266,36 +1269,51 @@ class GotwayProtocolTest {
     }
 
     @Test
-    fun testBmsDualPackParsedByGetBMSData() = runTest {
+    fun testBmsFourGroupsParsedByGetBMSData() = runTest {
         tearDown()
         protocol = GotwayProtocol(scope = backgroundScope)
 
-        val pack0 = createGotwayBmsFrame(
-            frameType = 0x02, page = 0,
-            cellMillivolts = intArrayOf(4100, 4101, 4102, 4103, 4104, 4105, 4106, 4107)
-        )
-        val pack1 = createGotwayBmsFrame(
-            frameType = 0x03, page = 0,
-            cellMillivolts = intArrayOf(4200, 4201, 4202, 4203, 4204, 4205, 4206, 4207)
-        )
+        // Type 2 stream carries groups 1 and 2 (5 pages of 8 cells -> 20 cells per group),
+        // Type 3 stream carries groups 3 and 4, matching the Begode app's G1..G4 tabs.
+        val type2Pages = (0 until 5).map { page ->
+            createGotwayBmsFrame(
+                frameType = 0x02, page = page,
+                cellMillivolts = IntArray(8) { 4100 + page * 8 + it }
+            )
+        }
+        val type3Pages = (0 until 5).map { page ->
+            createGotwayBmsFrame(
+                frameType = 0x03, page = page,
+                cellMillivolts = IntArray(8) { 4200 + page * 8 + it }
+            )
+        }
 
         protocol.dataFlow.test {
-            protocol.decode(pack0)
-            protocol.decode(pack1)
+            (type2Pages + type3Pages).forEach { protocol.decode(it) }
             // Déclenche un EUCData pour pouvoir ensuite appeler getBMSData()
             protocol.decode(createGotwayFrame(voltageRaw = 6720, speedRaw = 0, distanceRaw = 0))
             awaitItem()
 
             val bmsDataList = protocol.getBMSData()
-            assertEquals(2, bmsDataList.size)
+            assertEquals(4, bmsDataList.size)
 
-            val bms0 = bmsDataList.first { it.bmsIndex == 0 }
-            val bms1 = bmsDataList.first { it.bmsIndex == 1 }
+            val group1 = bmsDataList.first { it.bmsIndex == 0 }
+            val group2 = bmsDataList.first { it.bmsIndex == 1 }
+            val group3 = bmsDataList.first { it.bmsIndex == 2 }
+            val group4 = bmsDataList.first { it.bmsIndex == 3 }
 
-            assertNotNull(bms0.cellVoltages)
-            assertNotNull(bms1.cellVoltages)
-            assertEquals(4.100, bms0.cellVoltages!![0], 0.001)
-            assertEquals(4.200, bms1.cellVoltages!![0], 0.001)
+            assertEquals(20, group1.cellVoltages!!.size)
+            assertEquals(20, group2.cellVoltages!!.size)
+            assertEquals(20, group3.cellVoltages!!.size)
+            assertEquals(20, group4.cellVoltages!!.size)
+            assertEquals(4.100, group1.cellVoltages!![0], 0.001)
+            assertEquals(4.119, group1.cellVoltages!![19], 0.001)
+            assertEquals(4.120, group2.cellVoltages!![0], 0.001)
+            assertEquals(4.139, group2.cellVoltages!![19], 0.001)
+            assertEquals(4.200, group3.cellVoltages!![0], 0.001)
+            assertEquals(4.219, group3.cellVoltages!![19], 0.001)
+            assertEquals(4.220, group4.cellVoltages!![0], 0.001)
+            assertEquals(4.239, group4.cellVoltages!![19], 0.001)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -1351,13 +1369,19 @@ class GotwayProtocolTest {
             awaitItem()
 
             val bmsData = protocol.getBMSData()
-            assertEquals(2, bmsData.size)
-            assertEquals(listOf(37.0, 30.0, 38.0, 31.0), bmsData[0].temperatures)
-            assertEquals(listOf(27.0, 28.0, 29.0, 26.0), bmsData[1].temperatures)
+            assertEquals(4, bmsData.size)
+            assertEquals(listOf(37.0, 30.0), bmsData[0].temperatures)
+            assertEquals(listOf(38.0, 31.0), bmsData[1].temperatures)
+            assertEquals(listOf(27.0, 28.0), bmsData[2].temperatures)
+            assertEquals(listOf(29.0, 26.0), bmsData[3].temperatures)
             assertEquals(-0.1, bmsData[0].current ?: 0.0, 0.001)
-            assertEquals(167.4, bmsData[0].voltage ?: 0.0, 0.001)
-            assertEquals(-0.2, bmsData[1].current ?: 0.0, 0.001)
-            assertEquals(166.9, bmsData[1].voltage ?: 0.0, 0.001)
+            assertEquals(83.8, bmsData[0].voltage ?: 0.0, 0.001)
+            assertEquals(-0.1, bmsData[1].current ?: 0.0, 0.001)
+            assertEquals(83.6, bmsData[1].voltage ?: 0.0, 0.001)
+            assertEquals(-0.2, bmsData[2].current ?: 0.0, 0.001)
+            assertEquals(83.5, bmsData[2].voltage ?: 0.0, 0.001)
+            assertEquals(-0.2, bmsData[3].current ?: 0.0, 0.001)
+            assertEquals(83.4, bmsData[3].voltage ?: 0.0, 0.001)
 
             cancelAndIgnoreRemainingEvents()
         }
