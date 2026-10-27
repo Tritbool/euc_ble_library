@@ -420,7 +420,7 @@ open class LeaperkimProtocol(internal val scope: CoroutineScope = CoroutineScope
 
     protected open fun bmsCellCount(majorVersion: Int?): Int = LEAPERKIM_MAX_BMS_CELLS
 
-    protected open fun decodeSpeed(speedRaw: Short): Double = speedRaw / 100.0
+    protected open fun decodeSpeed(speedRaw: Short): Double = speedRaw / 10.0
 
     private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
         if (frame.size < len + 4) return false
