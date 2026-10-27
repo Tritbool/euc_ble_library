@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertArrayEquals
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
@@ -164,20 +165,15 @@ class InMotionProtocolTest {
 
         assertTrue(plan.enabled)
 
-        assertEquals(4, plan.startupQueries.size)
-        assertEquals(5, plan.periodicQueries.size)
+        // The car-type decode above resolved the dialect to V2, so the V1
+        // handshake chain is skipped: startup is the extended identification.
+        assertEquals(1, plan.startupQueries.size)
+        assertEquals("inmotion.extended-identification", plan.startupQueries[0].id)
+        // realtime + extended realtime + 4 V14 pack-cell queries.
+        assertEquals(6, plan.periodicQueries.size)
 
-        assertEquals("inmotion.v1-factory-password", plan.startupQueries[0].id)
-        assertEquals(CommandType.CUSTOM, plan.startupQueries[0].commandType)
-
-        assertEquals("inmotion.v1-pin", plan.startupQueries[1].id)
-        assertEquals(CommandType.CUSTOM, plan.startupQueries[1].commandType)
-
-        val probe = plan.startupQueries.first { it.id == "inmotion.dialect-probe" }
-        assertEquals("inmotion.dialect-probe", probe.id)
-        assertEquals(CommandType.REQUEST_FIRMWARE, probe.commandType)
-
-        assertEquals(4, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
+        // 4 V14 pack-cell queries + the extended realtime poll.
+        assertEquals(5, plan.periodicQueries.count { it.commandType == CommandType.CUSTOM })
     }
 
     @Test
@@ -236,8 +232,13 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        assertEquals(1, plan.periodicQueries.size)
-        assertEquals("inmotion.realtime", plan.periodicQueries.single().id)
+        // No V14 pack probing: the V9 uses the P6-style pack queries instead.
+        assertTrue(plan.periodicQueries.none { it.id.startsWith("inmotion.v14-pack-") })
+        assertEquals(
+            listOf("inmotion.realtime", "inmotion.extended-realtime", "inmotion.control-auth"),
+            plan.periodicQueries.map { it.id }.filter { !it.startsWith("inmotion.p6-pack-") }
+        )
+        assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
     }
 
     @Test
@@ -246,7 +247,8 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        assertEquals(7, plan.periodicQueries.size)
+        // realtime + extended realtime + control-auth + 6 pack queries.
+        assertEquals(9, plan.periodicQueries.size)
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
         assertFalse(plan.periodicQueries.any { it.id.startsWith("inmotion.v14-pack-") })
     }
@@ -482,15 +484,11 @@ class InMotionProtocolTest {
 
     @Test
     fun nonP6ModelDoesNotEnqueueExtendedRealtimeQuery() = runTest {
+        // A V9 identification enqueues only the control-auth request (the
+        // extended realtime query is P6-only on this path).
         protocol.decode(ByteUtils.hexToBytes("aaaa11088201020c0101010095"))
-        var emitted = false
-        try {
-            withTimeout(200) { protocol.writeFlow.first() }
-            emitted = true
-        } catch (_: TimeoutCancellationException) {
-            // expected
-        }
-        assertFalse(emitted)
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa13040200000217"), emitted)
     }
 
     @Test
@@ -813,6 +811,373 @@ class InMotionProtocolTest {
             malformedRows <= maxMalformedRows
         )
         return frames
+    }
+
+    // --- Extended-routing dialect (official InMotion app; verified against a real V9) ---
+
+    /**
+     * Real V9 identity bundle (sub 0x06), captured from the InMotion app
+     * session 2026-10-26: serial `A1421911600183A4`, car type series 12/type 1,
+     * component versions Main 1.8.50 / Drv 7.4.38 / BLE 1.4.16 (the wheel was
+     * firmware-updated since the March WheelLog capture: Main 1.8.38 / Drv 7.4.40).
+     */
+    private val v9ExtendedIdentityFrame =
+        "aaaa1662210286010001413134323139313136303031383341340000000000" +
+                "020c010121320008010100090222260004071900080223100004010a00" +
+                "0201240e00000001000101250e000000010001012f06000601010000" +
+                "0045bd57a9210100220000230000ea"
+
+    /**
+     * Real V9 extended realtime frame (sub 0x07) from the same capture,
+     * correlated with the InMotion app screenshot at 09:25:11:
+     * V 76.25, I 5.47 A, |torque| 33.32 N·m, PWM 14.12 %,
+     * MOS 28 °C / motor 35 °C / board 24 °C.
+     */
+    private val v9ExtendedRealtimeFrame =
+        "aaaa165f2102870100c91d23020000000018000000fcf28405000000" +
+                "00de189c177017ac0dc210ccd3c800c0022803b90006007604000006" +
+                "00000015000000b700000078d90100b1338e00506f0800b8bc020065ba1e00" +
+                "490030000000000000000000a5a5"
+
+    /** Real V9 BMS pack-1 responses (address 0x24) from the same capture. */
+    private val v9Pack1Summary =
+        "aaaa1639240281010000000000081e00000d005f127b0b32000a0ffd0e3c00" +
+                "c4c2c5cec2c2c2c2cececece1e3effff000041080000000000000000000033"
+    private val v9Pack1Cells =
+        "aaaa162b240282070f070f090f070f090f0a0f090f0a0f090f090fff0efd0e" +
+                "000f000f010f020f000f000f040f010f93"
+    private val v9Pack1Identity =
+        "aaaa163f240284010024130000046e0e0000000100" +
+                "010101010000425732363859303037323053313033" +
+                "4136323400ffffffffffffffffffffffffffffffffffffff0072"
+
+    @Test
+    fun extendedIdentificationLatchesModelSerialAndVersions() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertEquals("InMotion V9", protocol.lastDecodedModel())
+        // Decode a realtime frame so the latched fields surface in EUCData.
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+        assertNotNull(data)
+        assertEquals("A1421911600183A4", data!!.serialNumber)
+        assertEquals(
+            "Main:1.8.50 Drv:7.4.38 BLE:1.4.16",
+            data.firmwareVersion
+        )
+    }
+
+    @Test
+    fun extendedRealtimeDecodesTorquePwmAndMotorTemperature() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+
+        assertNotNull(data)
+        assertEquals(76.25, data!!.voltage, 0.01)
+        assertEquals(5.47, data.current, 0.01)
+        assertEquals(-33.32, data.torque ?: 0.0, 0.01)
+        assertEquals(14.12, data.pwm ?: 0.0, 0.01)
+        assertEquals(28.0, data.mosfetTemperature ?: -1.0, 0.01)
+        assertEquals(35.0, data.motorTemperature ?: -1.0, 0.01)
+        assertEquals(24.0, data.boardTemperature ?: -1.0, 0.01)
+        assertEquals(62.0, data.batteryLevel.toDouble(), 1.0) // (63.66+60.44)/2
+    }
+
+    @Test
+    fun extendedRealtimeAndIdentificationQueriesMatchCapturedResponses() {
+        val plan = protocol.getPollingPlan()
+        val identification = plan.startupQueries.single {
+            it.id == "inmotion.extended-identification"
+        }
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160302210630"),
+            protocol.createCommand(identification.commandType, identification.value)
+        )
+        val realtime = plan.periodicQueries.single {
+            it.id == "inmotion.extended-realtime"
+        }
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160302210731"),
+            protocol.createCommand(realtime.commandType, realtime.value)
+        )
+
+        assertTrue(
+            protocol.matchesQueryResponse(
+                identification, ByteUtils.hexToBytes(v9ExtendedIdentityFrame)
+            )
+        )
+        assertTrue(
+            protocol.matchesQueryResponse(
+                realtime, ByteUtils.hexToBytes(v9ExtendedRealtimeFrame)
+            )
+        )
+    }
+
+    @Test
+    fun v2DialectSkipsV1HandshakeForFastStartup() {
+        // With the dialect pre-resolved to V2 (GATT fingerprint), the V1
+        // password/PIN/slow-info chain must not run: a V2-fingerprint wheel
+        // never answers those frames, and the serialized retries cost ~6 s.
+        protocol.setDialect(2)
+        val plan = protocol.getPollingPlan()
+        assertTrue(plan.startupQueries.none { it.id.startsWith("inmotion.v1-") })
+        assertTrue(plan.startupQueries.none { it.id == "inmotion.dialect-probe" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.extended-identification" })
+    }
+
+    @Test
+    fun unknownDialectStillRunsV1HandshakeForLegacyWheels() {
+        val plan = protocol.getPollingPlan()
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.v1-factory-password" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.v1-pin" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.dialect-probe" })
+        assertTrue(plan.startupQueries.any { it.id == "inmotion.v1-slow-info" })
+    }
+
+    @Test
+    fun v9ExposesTwoTwentyCellBmsPacks() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        // Pack queries must be scheduled for the V9 just like the P6.
+        val plan = protocol.getPollingPlan()
+        assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
+
+        protocol.decode(ByteUtils.hexToBytes(v9Pack1Summary))
+        protocol.decode(ByteUtils.hexToBytes(v9Pack1Cells))
+        protocol.decode(ByteUtils.hexToBytes(v9Pack1Identity))
+
+        val packs = protocol.getBMSData()!!
+        assertEquals(1, packs.size)
+        val pack = packs.single()
+        assertEquals(20, pack.cellVoltages!!.size)
+        assertEquals(3.847, pack.cellVoltages.first(), 0.001)
+        assertEquals(3.841, pack.cellVoltages.last(), 0.001)
+        assertEquals(76.88, pack.voltage!!, 0.01)
+        assertEquals("BW268Y00720S103A624", pack.serialNumber)
+        assertEquals("0.0.14", pack.firmwareVersion)
+    }
+
+    @Test
+    fun versionEntriesParseByComponentIdAcrossDifferentEntryOrders() {
+        // March WheelLog versions page (drv-first ordering).
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa11388206222800040719000802212600080101" +
+                    "000902230a0004010a000201240100010201000101" +
+                    "2501000102010001012f0500050101000000b8"
+            )
+        )
+        assertEquals("Main:1.8.38 Drv:7.4.40 BLE:1.4.10", protocol.lastDecodedFirmware())
+
+        protocol.resetSession()
+        // October identity bundle (main-first ordering).
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        assertEquals("Main:1.8.50 Drv:7.4.38 BLE:1.4.16", protocol.lastDecodedFirmware())
+    }
+
+    @Test
+    fun legacyFormStringNeverOverwritesRealFirmwareVersion() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val before = protocol.lastDecodedFirmware()
+        assertTrue(before!!.contains("Main:1.8.50"))
+
+        // The board form-factor string answers the V2 identification probe;
+        // it must not replace the latched component versions.
+        protocol.decode(
+            ByteUtils.hexToBytes("AAAA11158000466F726D2056313120484D4943283078323129A1")
+        )
+        assertEquals(before, protocol.lastDecodedFirmware())
+    }
+
+    /**
+     * Real V9 lock/unlock/max-speed writes captured from the InMotion app
+     * (session 2026-10-26, lock/unlock twice then speed limit 25 → 35 km/h).
+     */
+    @Test
+    fun v9LockUnlockAndSpeedLimitCommandsMatchCapturedWrites() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame)) // identify V9
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160310160"),
+            protocol.createCommand(CommandType.LOCK, Unit)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160310061"),
+            protocol.createCommand(CommandType.UNLOCK, Unit)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216021c409bf"),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, 25)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216021ac0dd3"),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, 35)
+        )
+    }
+
+    @Test
+    fun nonExtendedRoutingModelsKeepLegacyControlForms() {
+        // V2 dialect but unidentified model: the legacy V2 control form applies.
+        protocol.setDialect(2)
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa140360310147"),
+            protocol.createCommand(CommandType.LOCK, Unit)
+        )
+        // A V14-family model: legacy form too.
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2))
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa140360310147"),
+            protocol.createCommand(CommandType.LOCK, Unit)
+        )
+    }
+
+    @Test
+    fun v9ControlAcksAreAccepted() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        // Lock ack captured after the lock write: `21 02 e0 31 00`.
+        val ack = ByteUtils.hexToBytes("aaaa16052102e03100e1")
+        val decoded = protocol.decode(ack)
+        // Control acks carry no telemetry; they must not disturb latched state.
+        assertNull(decoded)
+        assertEquals("InMotion V9", protocol.lastDecodedModel())
+    }
+
+    /**
+     * Control-endpoint auth handshake, captured from the InMotion app against a
+     * real V9: request `13 04 02 00 00 02`, token reply `12 13 02 80 02 <16B>`,
+     * echo `13 14 02 00 00 82 <16B>`, verify ack `12 04 02 80 82 01`.
+     * The token is fetched from the wheel at runtime — nothing is hardcoded.
+     */
+    @Test
+    fun v9IdentificationRequestsControlAuthTokenFromWheel() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa13040200000217"), emitted)
+    }
+
+    @Test
+    fun v14IdentificationDoesNotRequestControlAuth() = runTest {
+        protocol.decode(buildCarTypeFrame(series = 9, type = 2)) // V14 50S
+        var emitted = false
+        try {
+            withTimeout(200) { protocol.writeFlow.first() }
+            emitted = true
+        } catch (_: TimeoutCancellationException) {
+            // expected
+        }
+        assertFalse(emitted)
+    }
+
+    @Test
+    fun controlAuthTokenIsEchoedBackVerbatimAfterWheelIssuesIt() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        // Consume the auth request the identification enqueued.
+        withTimeout(500) { protocol.writeFlow.first() }
+
+        // Real token reply from the capture (flag 0x12, `80 02 <16B token>`).
+        val tokenReply = "aaaa1213028002ef8764a42b432de0f2e999991445637bde"
+        protocol.decode(ByteUtils.hexToBytes(tokenReply))
+
+        // The wheel-issued token must be echoed back verbatim — never any
+        // hardcoded value.
+        val echo = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa131402000082ef8764a42b432de0f2e999991445637bd8"),
+            echo
+        )
+    }
+
+    @Test
+    fun controlAuthVerifiedAckIsAccepted() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // auth request
+        protocol.decode(
+            ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+        )
+        withTimeout(500) { protocol.writeFlow.first() } // token echo
+
+        // Verify ack `80 82 01`: no further writes, no telemetry, state intact.
+        val decoded = protocol.decode(ByteUtils.hexToBytes("aaaa12040280820117"))
+        assertNull(decoded)
+        var extraWrite = false
+        try {
+            withTimeout(200) { protocol.writeFlow.first() }
+            extraWrite = true
+        } catch (_: TimeoutCancellationException) {
+            // expected
+        }
+        assertFalse(extraWrite)
+    }
+
+    @Test
+    fun controlAuthProgressIsReportedThroughSecurityState() = runTest {
+        assertEquals(
+            AuthenticationState.UNKNOWN,
+            protocol.getSecurityState()!!.authentication
+        )
+
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // auth request
+
+        // Token issued -> REQUIRED (the handshake is in flight).
+        protocol.decode(
+            ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+        )
+        assertEquals(
+            AuthenticationState.REQUIRED,
+            protocol.getSecurityState()!!.authentication
+        )
+        withTimeout(500) { protocol.writeFlow.first() } // token echo
+
+        // Verify ack `80 82 01` -> AUTHENTICATED, as reported by the wheel.
+        protocol.decode(ByteUtils.hexToBytes("aaaa12040280820117"))
+        assertEquals(
+            AuthenticationState.AUTHENTICATED,
+            protocol.getSecurityState()!!.authentication
+        )
+
+        protocol.resetSession()
+        assertEquals(
+            AuthenticationState.UNKNOWN,
+            protocol.getSecurityState()!!.authentication
+        )
+    }
+
+    @Test
+    fun v9PlanIncludesPeriodicControlAuthRefresh() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // initial auth request
+
+        val authQuery = protocol.getPollingPlan().periodicQueries
+            .single { it.id == "inmotion.control-auth" }
+        assertEquals(6_000L, authQuery.intervalMs)
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa13040200000217"),
+            protocol.createCommand(authQuery.commandType, authQuery.value)
+        )
+        // The wheel's token reply must match the periodic query so the round
+        // completes (echo + ack follow through handleControlAuth).
+        assertTrue(
+            protocol.matchesQueryResponse(
+                authQuery,
+                ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+            )
+        )
+    }
+
+    @Test
+    fun sessionResetClearsControlAuthState() = runTest {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        withTimeout(500) { protocol.writeFlow.first() } // auth request
+        protocol.decode(
+            ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde")
+        )
+        withTimeout(500) { protocol.writeFlow.first() } // token echo
+
+        protocol.resetSession()
+        // After reset the wheel must be re-authenticated: re-identifying issues
+        // a fresh auth request rather than reusing any prior token.
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val emitted = withTimeout(500) { protocol.writeFlow.first() }
+        assertArrayEquals(ByteUtils.hexToBytes("aaaa13040200000217"), emitted)
     }
 
 }
