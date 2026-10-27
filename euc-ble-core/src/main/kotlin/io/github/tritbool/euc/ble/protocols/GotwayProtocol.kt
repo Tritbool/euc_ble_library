@@ -611,7 +611,10 @@ open class GotwayProtocol(internal val scope: CoroutineScope = CoroutineScope(Di
     private fun parseType2or3(data: ByteArray, streamIndex: Int) {
         val page = ByteUtils.tryGetUnsignedByte(data, 19) ?: return
         val cells = smartBmsCellPages.getOrPut(streamIndex) { DoubleArray(MAX_BMS_CELL_SLOTS) }
-        smartBmsStreamPageCounts.merge(streamIndex, page + 1) { observed, new -> maxOf(observed, new) }
+        val pageCount = page + 1
+        if (pageCount > (smartBmsStreamPageCounts[streamIndex] ?: 0)) {
+            smartBmsStreamPageCounts[streamIndex] = pageCount
+        }
         for (i in 0 until 8) {
             val cellRaw = ByteUtils.tryGetUnsignedShortBE(data, (i + 1) * 2) ?: continue
             val cellIndex = page * 8 + i
