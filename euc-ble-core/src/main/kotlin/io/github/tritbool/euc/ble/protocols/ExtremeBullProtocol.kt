@@ -1,10 +1,14 @@
 package io.github.tritbool.euc.ble.protocols
 
+import io.github.tritbool.euc.ble.core.Logger
+import io.github.tritbool.euc.ble.core.NoOpLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
-class ExtremeBullProtocol(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) :
-    GotwayProtocol(scope) {
+class ExtremeBullProtocol(
+    scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+    logger: Logger = NoOpLogger(),
+) : GotwayProtocol(scope, logger) {
 
     override val manufacturer: String = "ExtremeBull"
 

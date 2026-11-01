@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class EucBleClient(
     context: Context,
-    logger: Logger = AndroidLogger(),
+    val logger: Logger = AndroidLogger(),
     coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
     internal val bleManager = BLEManager(context, logger, coroutineScope)
@@ -208,9 +208,9 @@ class EucBleClient(
 
     private fun registerBuiltInProtocols(scope: CoroutineScope) {
         bleManager.registerProtocol(KingsongProtocol(scope = scope))
-        bleManager.registerProtocol(GotwayProtocol(scope = scope))
-        bleManager.registerProtocol(ExtremeBullProtocol(scope = scope))
-        bleManager.registerProtocol(InMotionProtocol())
+        bleManager.registerProtocol(GotwayProtocol(scope = scope, logger = logger))
+        bleManager.registerProtocol(ExtremeBullProtocol(scope = scope, logger = logger))
+        bleManager.registerProtocol(InMotionProtocol(logger = logger))
         bleManager.registerProtocol(NinebotZProtocol())
         bleManager.registerProtocol(NinebotProtocol())
         bleManager.registerProtocol(NosfetProtocol(scope = scope))

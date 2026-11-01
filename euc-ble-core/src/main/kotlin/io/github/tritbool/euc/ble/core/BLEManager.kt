@@ -81,6 +81,38 @@ import android.bluetooth.le.ScanCallback as AndroidScanCallback
  * - Keeping callback dispatching explicit avoids hiding threading behavior from the
  *   library consumer and keeps the manager usable from non-UI contexts as well.
  */
+/**
+ * Android-backed implementation of the [Logger] abstraction.
+ *
+ * This lives inside the Android BLE boundary: framework-facing code (EucBleClient / BLEManager)
+ * depends on it, while pure logic (protocols, frames, models) only sees the [Logger] interface.
+ */
+class AndroidLogger : Logger {
+    override fun verbose(tag: String, message: String) {
+        android.util.Log.v(tag, message)
+    }
+
+    override fun debug(tag: String, message: String) {
+        android.util.Log.d(tag, message)
+    }
+
+    override fun info(tag: String, message: String) {
+        android.util.Log.i(tag, message)
+    }
+
+    override fun warn(tag: String, message: String) {
+        android.util.Log.w(tag, message)
+    }
+
+    override fun error(tag: String, message: String) {
+        android.util.Log.e(tag, message)
+    }
+
+    override fun error(tag: String, message: String, throwable: Throwable) {
+        android.util.Log.e(tag, message, throwable)
+    }
+}
+
 class BLEManager internal constructor(
     private val context: Context, private val logger: Logger = AndroidLogger(),
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -239,6 +271,7 @@ class BLEManager internal constructor(
 
     // Device cache
     private val discoveredDevices = ConcurrentHashMap<String, EUCDevice>()
+    private val bluetoothDevicesByAddress = ConcurrentHashMap<String, BluetoothDevice>()
 
     /**
      * Initialize the BLE Manager
@@ -392,9 +425,15 @@ class BLEManager internal constructor(
         connectionState = BLEConstants.ConnectionState.CONNECTING
         connectionCallback?.onConnecting()
 
+        val androidDevice = bluetoothDevicesByAddress[device.address]
+        if (androidDevice == null) {
+            errorCallback?.onError(BLEException("No Android BluetoothDevice available for address ${device.address}"))
+            return
+        }
+
         // Main connection job
         connectionJob = coroutineScope.launch {
-            connectToDevice(device.bluetoothDevice!!)
+            connectToDevice(androidDevice)
         }
 
         connectionTimeoutJob = coroutineScope.launch {
@@ -717,7 +756,6 @@ class BLEManager internal constructor(
         val name = device.name ?: result.scanRecord?.deviceName ?: "Unknown"
 
         val eucDevice = EUCDevice(
-            bluetoothDevice = device,
             name = name,
             address = device.address,
             manufacturerId = 0,       // inconnu jusqu'à la connexion GATT
@@ -726,6 +764,7 @@ class BLEManager internal constructor(
         )
 
         discoveredDevices[eucDevice.address] = eucDevice
+        bluetoothDevicesByAddress[eucDevice.address] = device
         connectionCallback?.onDeviceDiscovered(eucDevice)
     }
 
@@ -826,9 +865,10 @@ class BLEManager internal constructor(
             connectionState = BLEConstants.ConnectionState.CONNECTING
             connectionCallback?.onConnecting()
             try {
-                currentDevice?.bluetoothDevice?.let { device ->
-                    connectToDevice(device)
-                } ?: run {
+                val androidDevice = currentDevice?.let { bluetoothDevicesByAddress[it.address] }
+                if (androidDevice != null) {
+                    connectToDevice(androidDevice)
+                } else {
                     connectionCallback?.onConnectionFailed(BLEException("No device to reconnect"))
                     reconnectJob = null
                 }

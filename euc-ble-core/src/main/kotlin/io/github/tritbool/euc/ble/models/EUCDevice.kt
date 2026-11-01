@@ -1,14 +1,11 @@
 package io.github.tritbool.euc.ble.models
 
-import android.bluetooth.BluetoothDevice
-
 /**
  * Represents an Electric Unicycle device discovered during BLE scanning.
  *
  * Contains device identification and connection information used for
  * establishing BLE connections and selecting appropriate protocols.
  *
- * @param bluetoothDevice The Android BluetoothDevice object, null if created from scan metadata
  * @param name The device name (advertised BLE name)
  * @param address The MAC address of the device
  * @param manufacturerId The manufacturer identifier from BLE advertising data
@@ -17,7 +14,6 @@ import android.bluetooth.BluetoothDevice
  * @param timestamp The timestamp when the device was discovered (milliseconds)
  */
 data class EUCDevice(
-    val bluetoothDevice: BluetoothDevice?=null,
     val name: String,
     val address: String,
     val manufacturerId: Int,

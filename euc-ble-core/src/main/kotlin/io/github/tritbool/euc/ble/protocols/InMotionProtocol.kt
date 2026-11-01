@@ -1,9 +1,9 @@
 package io.github.tritbool.euc.ble.protocols
 
-import io.github.tritbool.euc.ble.core.AndroidLogger
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.Logger
+import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
@@ -24,7 +24,7 @@ import kotlin.math.roundToInt
 /**
  * Single InMotion protocol entrypoint with auto-detected internal dialects (legacy V1 and V2).
  */
-class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtocol {
+class InMotionProtocol(private val logger: Logger = NoOpLogger()) : EUCProtocol {
 
     companion object {
 
@@ -337,7 +337,7 @@ class InMotionProtocol(private val logger: Logger = AndroidLogger()) : EUCProtoc
     }
 
     fun setDialect(version: Int) {
-        android.util.Log.e("InMotionProtocol", "setDialect called version=$version")
+        logger.error(TAG, "setDialect called version=$version")
         when (version) {
             0, 1, 2 -> {
                 logger.info(TAG, "DIALECT SET TO ${Dialect.entries[version]} ")
