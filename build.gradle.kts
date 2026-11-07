@@ -1,7 +1,28 @@
 // Plugins shared by several modules are declared once here so that every module
 // uses the same plugin classloader (avoids "Kotlin Gradle plugin loaded multiple times").
-// The Android Gradle Plugin is declared in :euc-ble-android only, so the pure core can
-// be built without access to Google's Maven repository.
+// KGP, Dokka, vanniktech and Sonar integrate with AGP, so AGP must live in this root
+// classloader too. It is only added when Android is included, so the pure core can be
+// built without access to Google's Maven repository (-Peuc.includeAndroid=false).
+buildscript {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("androidx.*")
+                includeGroupByRegex("com\\.google\\.android.*")
+                includeGroupByRegex("com\\.google\\.testing.*")
+            }
+        }
+    }
+    dependencies {
+        if ((findProperty("euc.includeAndroid") as String?)?.toBoolean() != false) {
+            classpath("com.android.tools.build:gradle:9.1.0")
+        }
+    }
+}
+
 plugins {
     kotlin("jvm") version "2.2.10" apply false
     id("org.jetbrains.dokka") version "2.2.0"

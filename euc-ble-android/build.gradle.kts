@@ -4,7 +4,7 @@ import com.vanniktech.maven.publish.SourcesJar
 import org.gradle.process.CommandLineArgumentProvider
 
 plugins {
-    id("com.android.library") version "9.1.0"
+    id("com.android.library")
     id("jacoco")
     id("org.jetbrains.dokka")
     id("com.vanniktech.maven.publish")
