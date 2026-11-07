@@ -175,11 +175,11 @@ java -jar plantuml.jar class_diagram.puml
 
 ```gradle
 // settings.gradle
-include ':euc-ble-core'
+include ':euc-ble-core', ':euc-ble-android'
 
-// app/build.gradle
+// app/build.gradle (Android) — euc-ble-android exposes euc-ble-core as `api`
 dependencies {
-    implementation project(':euc-ble-core')
+    implementation project(':euc-ble-android')
 }
 ```
 

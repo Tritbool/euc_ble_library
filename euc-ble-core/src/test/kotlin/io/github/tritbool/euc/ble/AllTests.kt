@@ -1,12 +1,6 @@
 package io.github.tritbool.euc.ble
 
 import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
-import io.github.tritbool.euc.ble.core.BLEManagerCallbackContractTest
-import io.github.tritbool.euc.ble.core.BLEManagerDeviceNameSelectionTest
-import io.github.tritbool.euc.ble.core.BLEManagerGattFingerprintTest
-import io.github.tritbool.euc.ble.core.BLEManagerProtocolSelectionTest
-import io.github.tritbool.euc.ble.core.BLEManagerTrafficTest
-import io.github.tritbool.euc.ble.core.BLEManagerWriteTypeTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.core.LoggerTest
@@ -56,15 +50,8 @@ import org.junit.platform.suite.api.Suite
     KingsongProtocolAsyncTest::class,
     KingsongProtocolTest::class,
     KingsongSecurityTest::class,
-    EucBleClientSecurityTest::class,
     ProtocolParityContractTest::class,
     BleFrequencyAnalysisTest::class,
-    BLEManagerGattFingerprintTest::class,
-    BLEManagerDeviceNameSelectionTest::class,
-    BLEManagerProtocolSelectionTest::class,
-    BLEManagerWriteTypeTest::class,
-    BLEManagerTrafficTest::class,
-    BLEManagerCallbackContractTest::class,
     WheelLogGotwayTest::class,
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,
@@ -82,7 +69,6 @@ import org.junit.platform.suite.api.Suite
     LeaperkimNoDropTest::class,
     NosfetNoDropTest::class,
     NinebotNoDropTest::class,
-    EucBleClientEntryPointWheelLogTest::class,
     LoggerTest::class,
     EUCProtocolContractTest::class,
 )

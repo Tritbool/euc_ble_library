@@ -1,7 +1,6 @@
 package io.github.tritbool.euc.ble
 
 import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
-import io.github.tritbool.euc.ble.core.BLEManagerWriteTypeTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
@@ -51,7 +50,6 @@ import org.junit.platform.suite.api.Suite
     NinebotProtocolTest::class,
     NinebotZProtocolTest::class,
     ExtremeBullProtocolTest::class,
-    BLEManagerWriteTypeTest::class,
 )
 
 class RegularTestsSuite {

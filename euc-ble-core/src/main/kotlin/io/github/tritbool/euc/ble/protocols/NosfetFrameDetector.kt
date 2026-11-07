@@ -1,9 +1,11 @@
 package io.github.tritbool.euc.ble.protocols
 
+import io.github.tritbool.euc.ble.core.InternalEucBleApi
 import io.github.tritbool.euc.ble.core.ByteUtils
 import java.util.zip.CRC32
 
-internal class NosfetFrameDetector {
+@InternalEucBleApi
+class NosfetFrameDetector {
     private val buffer = ArrayList<Byte>()
 
     @Synchronized

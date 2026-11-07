@@ -45,11 +45,15 @@ jobs:
         id: tests
         if: ${{ !cancelled() }}
         run: >
-          ./gradlew :euc-ble-core:testDebugUnitTest
+          ./gradlew :euc-ble-core:test
           --tests
           io.github.tritbool.euc.ble.AllTests
           :euc-ble-core:jacocoTestReport
           :euc-ble-core:jacocoFocusedReport
+          :euc-ble-android:testDebugUnitTest
+          --tests
+          io.github.tritbool.euc.ble.AndroidTests
+          :euc-ble-android:jacocoTestReport
           -PmaxParallelForks=1
           --no-daemon
           --stacktrace
@@ -61,7 +65,7 @@ jobs:
       - name: Android Lint
         id: lint
         if: ${{ !cancelled() }}
-        run: ./gradlew :euc-ble-core:lintDebug --no-daemon --stacktrace
+        run: ./gradlew :euc-ble-android:lintDebug --no-daemon --stacktrace
         env:
           CI: "true"
 
@@ -76,7 +80,7 @@ jobs:
             echo "::error::SonarCloud requires SONAR_TOKEN; fork changes need a reviewed trusted-branch PR."
             exit 1
           fi
-          ./gradlew :euc-ble-core:sonar --no-daemon \
+          ./gradlew sonar --no-daemon \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.scm.revision="$GITHUB_SHA"
 
@@ -177,7 +181,7 @@ jobs:
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
-          reports_dir = Path("euc-ble-core/build/test-results/testDebugUnitTest")
+          reports_dir = Path("euc-ble-core/build/test-results/test")
           out_file = Path(".wheellog-summary.md")
           files = sorted(reports_dir.glob("TEST-io.github.tritbool.euc.ble.protocols.WheelLog*.xml"))
 
@@ -228,6 +232,8 @@ jobs:
           path: |
             euc-ble-core/build/reports/tests/
             euc-ble-core/build/reports/jacoco/
+            euc-ble-android/build/reports/tests/
+            euc-ble-android/build/reports/jacoco/
           retention-days: 7
 
       - name: Generate website quality snapshot
@@ -243,12 +249,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           mkdir -p quality/reports
-          if [ -d euc-ble-core/build/reports/tests/testDebugUnitTest ]; then
-            cp -r euc-ble-core/build/reports/tests/testDebugUnitTest quality/reports/tests
+          if [ -d euc-ble-core/build/reports/tests/test ]; then
+            cp -r euc-ble-core/build/reports/tests/test quality/reports/tests
           fi
-          if [ -f euc-ble-core/build/reports/lint-results-debug.html ]; then
+          if [ -d euc-ble-android/build/reports/tests/testDebugUnitTest ]; then
+            cp -r euc-ble-android/build/reports/tests/testDebugUnitTest quality/reports/tests/android
+          fi
+          if [ -f euc-ble-android/build/reports/lint-results-debug.html ]; then
             mkdir -p quality/reports/lint
-            cp euc-ble-core/build/reports/lint-results-debug.html quality/reports/lint/index.html
+            cp euc-ble-android/build/reports/lint-results-debug.html quality/reports/lint/index.html
           fi
           for scope in full focused; do
             if [ -d "euc-ble-core/build/reports/jacoco/$scope/html" ]; then

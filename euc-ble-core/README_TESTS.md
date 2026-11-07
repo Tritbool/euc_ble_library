@@ -99,19 +99,22 @@ Exercise decoded-data delivery from each protocol under concurrent load.
 ## Running tests
 
 ```bash
-# Full suite (used in CI)
-./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.AllTests
+# Core suite (used in CI; no Android SDK required with -Peuc.includeAndroid=false)
+./gradlew :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
 
-# Full suite + JaCoCo coverage reports
-./gradlew :euc-ble-core:testDebugUnitTest \
+# Core suite + JaCoCo coverage reports
+./gradlew :euc-ble-core:test \
   :euc-ble-core:jacocoTestReport \
   :euc-ble-core:jacocoFocusedReport
 
+# Android connector suite (BLEManager, EucBleClient)
+./gradlew :euc-ble-android:testDebugUnitTest --tests io.github.tritbool.euc.ble.AndroidTests
+
 # Single test class
-./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.protocols.KingsongProtocolTest
+./gradlew :euc-ble-core:test --tests io.github.tritbool.euc.ble.protocols.KingsongProtocolTest
 
 # Single test method
-./gradlew :euc-ble-core:testDebugUnitTest \
+./gradlew :euc-ble-core:test \
   --tests "io.github.tritbool.euc.ble.protocols.KingsongProtocolTest.decodeA4ThenA9IncludesAlarmSpeeds"
 ```
 

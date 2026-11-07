@@ -38,6 +38,23 @@ Repository administrators must configure:
 > and public APIs and behavior may evolve. Validate it with the specific wheel and firmware you
 > intend to use; do not assume that passing unit tests guarantees safe or complete behavior.
 
+## Modules
+
+| Module | Artifact | Content |
+|---|---|---|
+| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | Pure Kotlin/JVM protocol core: protocols, frame parsers, models. No Android dependency. |
+| `euc-ble-android` | `io.github.tritbool:euc-ble-library` | Android BLE connector (`BLEManager`) and the `EucBleClient` entry point. Depends on `euc-ble-core` (`api`). |
+
+Android applications keep depending on `euc-ble-library`; package names are unchanged.
+The core can be built and tested without an Android SDK:
+
+```bash
+./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
+```
+
+See [`euc-ble-core/ARCHITECTURE.md`](euc-ble-core/ARCHITECTURE.md) for the sync-core / session split
+and the portability roadmap (KMP, Rust for ESP32 / SailfishOS).
+
 ## Client application
 
 [TuxWheel](https://github.com/Tritbool/TuxWheel) is the first client app built with this library.
@@ -349,7 +366,7 @@ Protocol tests combine offline unit tests with **raw BLE captures recorded from 
 replayed via JUnit 5 without an Android device or emulator. Capture coverage is partial and does
 not mean every supported model, firmware, command, or edge case has been verified on a physical wheel.
 
-Captures are stored in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
+Captures are stored in `euc-ble-core/src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android), a well-established EUC logging app.
 Each CSV row contains the exact byte sequence received from the wheel over BLE.
 

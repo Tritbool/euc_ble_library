@@ -1,5 +1,6 @@
 package io.github.tritbool.euc.ble.protocols
 
+import io.github.tritbool.euc.ble.core.InternalEucBleApi
 import java.util.UUID
 
 /**
@@ -16,7 +17,8 @@ import java.util.UUID
  * Otherwise, callers can use [io.github.tritbool.euc.ble.EucBleClient.selectProtocol]
  * or [io.github.tritbool.euc.ble.EucBleClient.forceProtocol].
  */
-internal object EucFingerprintDatabase {
+@InternalEucBleApi
+object EucFingerprintDatabase {
 
     data class ProtocolFingerprint(
         val protocolId: String,

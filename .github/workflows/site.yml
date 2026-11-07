@@ -94,7 +94,7 @@ jobs:
       - name: Generate Dokka HTML
         id: dokka
         continue-on-error: true
-        run: ./gradlew :euc-ble-core:dokkaGeneratePublicationHtml --no-daemon
+        run: ./gradlew :dokkaGeneratePublicationHtml --no-daemon
         env:
           CI: true
 
@@ -108,9 +108,9 @@ jobs:
         run: |
           sudo mkdir -p _site/quality
           sudo cp -r quality/. _site/quality/
-          if [ -d euc-ble-core/build/dokka/html ]; then
+          if [ -d build/dokka/html ]; then
             sudo mkdir -p _site/api
-            sudo cp -r euc-ble-core/build/dokka/html/. _site/api/
+            sudo cp -r build/dokka/html/. _site/api/
           else
             echo "::warning::Dokka unavailable for this commit; API reference not published."
           fi

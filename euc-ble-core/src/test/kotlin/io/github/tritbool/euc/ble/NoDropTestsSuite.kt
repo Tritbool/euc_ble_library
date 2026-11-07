@@ -17,7 +17,6 @@ import org.junit.platform.suite.api.Suite
     LeaperkimNoDropTest::class,
     NosfetNoDropTest::class,
     NinebotNoDropTest::class,
-    EucBleClientEntryPointWheelLogTest::class,
 )
 
 class NoDropTestsSuite {

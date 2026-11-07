@@ -1,8 +1,10 @@
 # EUC BLE Core
 
-This Android library provides the BLE and protocol implementation used by
-[`EucBleClient`](../README.md). The client registers built-in protocols; most applications should
-use that entry point instead of registering protocol classes themselves.
+This pure Kotlin/JVM module provides the protocol implementation (decoders, command builders,
+frame parsers and models) used by [`EucBleClient`](../README.md). It has no Android dependency;
+the Android BLE connector lives in [`euc-ble-android`](../euc-ble-android). The client registers
+built-in protocols; most applications should use that entry point instead of registering protocol
+classes themselves.
 
 > **Work in progress — version 0.1.0.** Protocol support and command coverage are incomplete.
 > Behavior may be broken or vary by wheel and firmware, and APIs may evolve. Validate on the
@@ -29,8 +31,11 @@ The captures and synthetic edge cases cover only part of the supported device/fi
 Run the tests and coverage reports from the repository root:
 
 ```bash
-./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.AllTests
-./gradlew :euc-ble-core:jacocoTestReport :euc-ble-core:jacocoFocusedReport
+# Pure core (no Android SDK required)
+./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
+./gradlew -Peuc.includeAndroid=false :euc-ble-core:jacocoTestReport :euc-ble-core:jacocoFocusedReport
+# Android connector (requires the Android SDK)
+./gradlew :euc-ble-android:testDebugUnitTest --tests io.github.tritbool.euc.ble.AndroidTests
 ```
 
 See [`README_TESTS.md`](README_TESTS.md) for the test inventory and
