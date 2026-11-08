@@ -124,4 +124,21 @@ class PollingEngineTest {
         engine.tick(full, 1062)
         assertNull(engine.pollOutput())
     }
+
+    @Test
+    fun `transient transport failure does not permanently stop periodic polling`() {
+        val engine = PollingEngine("Test")
+        val periodic = ProtocolPollingPlan(true, periodicQueries = listOf(spec.copy(intervalMs = 1000)))
+        engine.start(periodic, 0)
+        engine.tick(periodic, 0)
+        val first = engine.pollOutput() as PollingEngine.Output.Query
+        engine.onFailed(first.token, 50)
+        assertEquals(QueryTracePhase.FAILED, (engine.pollOutput() as PollingEngine.Output.Trace).event.phase)
+        engine.tick(periodic, 1049)
+        assertNull(engine.pollOutput())
+        engine.tick(periodic, 1050)
+        val second = engine.pollOutput() as PollingEngine.Output.Query
+        assertNotEquals(first.token, second.token)
+        assertEquals(1, second.attempt)
+    }
 }

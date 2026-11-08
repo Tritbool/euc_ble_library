@@ -105,7 +105,7 @@ class PollingEngine(private val manufacturer: String) {
         trace(entry, if (unsupported) QueryTracePhase.UNSUPPORTED else QueryTracePhase.FAILED, now,
             if (unsupported) "Command unsupported or empty" else "Transport rejected query")
         // Unsupported periodic requests stay dormant until the plan removes/reintroduces them.
-        entry.phase = Phase.FINISHED
+        if (unsupported) entry.phase = Phase.FINISHED else finish(entry, now)
     }
 
     fun onResponse(now: Long, matches: (ProtocolQuerySpec) -> Boolean) {
