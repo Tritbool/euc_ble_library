@@ -22,11 +22,17 @@ import io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest
 import io.github.tritbool.euc.ble.protocols.WheelLogLeaperkimTest
 import io.github.tritbool.euc.ble.protocols.WheelLogNinebotTest
 import io.github.tritbool.euc.ble.protocols.WheelLogNosfetTest
+import io.github.tritbool.euc.ble.frames.SyncFrameParsingTest
+import io.github.tritbool.euc.ble.protocols.ProtocolOutboxTest
+import io.github.tritbool.euc.ble.session.FlowProtocolAdapterTest
 import org.junit.platform.suite.api.SelectClasses
 import org.junit.platform.suite.api.Suite
 
 @Suite
 @SelectClasses(
+    FlowProtocolAdapterTest::class,
+    ProtocolOutboxTest::class,
+    SyncFrameParsingTest::class,
     FrameReassemblerStaticFlowTest::class,
     ByteUtilsTest::class,
     ByteUtilsSafeAccessTest::class,

@@ -25,6 +25,13 @@ class FrameReassembler(
         synchronized(lock) { parser.reset() }
     }
 
+    /**
+     * Synchronous form: appends [data] and returns the complete frames it produced, in order.
+     * Frames returned here are not emitted on [frames]. Prefer this from sync protocols.
+     */
+    fun feed(data: ByteArray): List<ByteArray> = synchronized(lock) { parser.appendAndExtract(data) }
+
+    /** Flow form: appends [data] and emits the resulting complete frames on [frames]. */
     fun processIncomingBytes(data: ByteArray) {
         val ready: List<ByteArray>
         synchronized(lock) {

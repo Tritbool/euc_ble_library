@@ -38,38 +38,16 @@ data class GattServiceSpec(
 typealias GattSignature = List<GattServiceSpec>
 
 /**
- * Base interface for EUC manufacturer protocols.
- *
- * Protocol selection is performed by GATT fingerprint matching using [EucFingerprintDatabase].
- * If no fingerprint match is found, the caller is responsible for selecting a protocol manually.
+ * Platform-independent, I/O-free part of a protocol contract: identification, GATT layout,
+ * command encoding, polling plan and pure state queries. Shared by the legacy flow-based
+ * [EUCProtocol] and the synchronous [SyncEucProtocol].
  */
-interface EUCProtocol : Closeable {
+interface EucProtocolSpec {
     /**
      * Manufacturer name (used for display and logging).
      */
     val manufacturer: String
 
-    val dataFlow: Flow<EUCData>
-
-    /**
-     * Flow that emits every raw BLE characteristic notification received by this protocol,
-     * as a defensive copy of the original byte array. Collectors can use this to write raw
-     * logs or perform any custom processing on the unmodified BLE data.
-     *
-     * The default implementation emits nothing; concrete protocols override this to provide
-     * a live stream of incoming bytes.
-     */
-    val rawFrameFlow: Flow<ByteArray> get() = emptyFlow()
-
-    /**
-     * Flow of commands or raw bytes that the protocol needs to write to the device automatically.
-     */
-    val writeFlow: Flow<ByteArray> get() = emptyFlow()
-
-    /** Notification-confirmed security state, if supported by this protocol. */
-    val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
-    /** Individual valid security notifications, including unchanged status reports. */
-    val securityEventFlow: Flow<WheelSecurityEvent> get() = emptyFlow()
     fun getSecurityState(): WheelSecurityState? = null
 
     /** Clears connection-specific state without closing this reusable protocol. */
@@ -83,11 +61,6 @@ interface EUCProtocol : Closeable {
 
     /** Whether a BLE-stack rejection may be retried. Accepted writes are never replayed. */
     fun canRetryCommand(payload: ByteArray): Boolean = true
-
-    /**
-     * Decode raw BLE data into EUCData
-     */
-    fun decode(data: ByteArray): EUCData?
 
     /**
      * Returns the candidate data characteristic UUIDs for this protocol.
@@ -178,6 +151,44 @@ interface EUCProtocol : Closeable {
      * a list of BMSData objects representing the current state of all battery packs.
      */
     fun getBMSData(): List<BMSData>? = null
+}
+
+/**
+ * Base interface for EUC manufacturer protocols, exposing decoded output as coroutine flows.
+ *
+ * Protocol selection is performed by GATT fingerprint matching using [EucFingerprintDatabase].
+ * If no fingerprint match is found, the caller is responsible for selecting a protocol manually.
+ *
+ * New protocol logic should implement [SyncEucProtocol] and be exposed through
+ * [io.github.tritbool.euc.ble.session.FlowProtocolAdapter].
+ */
+interface EUCProtocol : EucProtocolSpec, Closeable {
+    val dataFlow: Flow<EUCData>
+
+    /**
+     * Flow that emits every raw BLE characteristic notification received by this protocol,
+     * as a defensive copy of the original byte array. Collectors can use this to write raw
+     * logs or perform any custom processing on the unmodified BLE data.
+     *
+     * The default implementation emits nothing; concrete protocols override this to provide
+     * a live stream of incoming bytes.
+     */
+    val rawFrameFlow: Flow<ByteArray> get() = emptyFlow()
+
+    /**
+     * Flow of commands or raw bytes that the protocol needs to write to the device automatically.
+     */
+    val writeFlow: Flow<ByteArray> get() = emptyFlow()
+
+    /** Notification-confirmed security state, if supported by this protocol. */
+    val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
+    /** Individual valid security notifications, including unchanged status reports. */
+    val securityEventFlow: Flow<WheelSecurityEvent> get() = emptyFlow()
+
+    /**
+     * Decode raw BLE data into EUCData
+     */
+    fun decode(data: ByteArray): EUCData?
 }
 
 /**

@@ -49,7 +49,8 @@ class FixedSizeFrameParser(
     }
 
     private fun findHeaderIndex(from: Int): Int {
-        if (header.isEmpty()) return 0.takeIf { buffer.isEmpty() } ?: -1
+        // Without a header every buffered byte may start a frame.
+        if (header.isEmpty()) return if (buffer.size > from) from else -1
         if (buffer.size < header.size) return -1
         var i = from
         val maxStart = buffer.size - header.size

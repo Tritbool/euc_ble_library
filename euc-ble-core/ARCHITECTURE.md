@@ -129,6 +129,23 @@ java -jar plantuml.jar class_diagram.puml
 └─────────────────────────────────────────────────┘
 ```
 
+### Sync protocol core and session layer (migration in progress)
+
+Protocols are being migrated to synchronous, I/O-free ("sans-IO") state machines so that the
+core stays portable (Kotlin Multiplatform, and a later Rust port for ESP32 / SailfishOS):
+
+| Layer | Package | Responsibility |
+|---|---|---|
+| Contract | `protocols.EucProtocolSpec` | Pure metadata, command encoding, polling plan, state queries |
+| Sync protocol | `protocols.SyncEucProtocol` | `onNotification` / `onTimer` / `onCommandSubmitted` inputs; outputs via `pollOutput()` |
+| Outputs | `protocols.ProtocolOutput` | `Telemetry`, `SecurityStateChanged`, `SecurityEvent`, `Write`, `StartTimer`, `CancelTimer` |
+| Platform inputs | `core.EucClock`, `core.EucRandom` | Injected time and randomness (JVM defaults in `core/JvmPlatform.kt`) |
+| Session bridge | `session.FlowProtocolAdapter` | Serializes calls, drains outputs into the `EUCProtocol` flows, runs timers |
+
+Sync protocols must not use coroutines, threads, locks, timers or direct clock reads, and need not be
+thread-safe. Frame reassembly uses `FrameReassembler.feed()`, which returns frames synchronously.
+Protocols not yet migrated still implement `EUCProtocol` directly.
+
 ### Key Design Principles
 
 1. **Separation of Concerns**: Core BLE functionality separated from manufacturer-specific protocols
