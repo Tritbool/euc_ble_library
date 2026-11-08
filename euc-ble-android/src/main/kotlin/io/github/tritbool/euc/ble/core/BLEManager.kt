@@ -37,6 +37,7 @@ import io.github.tritbool.euc.ble.protocols.NosfetFrameDetector
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import io.github.tritbool.euc.ble.session.PollingSession
 import io.github.tritbool.euc.ble.session.ProtocolSelector
+import io.github.tritbool.euc.ble.session.ReconnectPolicy
 import io.github.tritbool.euc.ble.session.WriteSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -68,8 +69,8 @@ import android.bluetooth.le.ScanCallback as AndroidScanCallback
  * protocol selection, command transmission, and decoded data delivery.
  *
  * Threading model:
- * - Internal asynchronous work is executed on a background coroutine scope based on
- *   `Dispatchers.IO + SupervisorJob()`.
+ * - Internal asynchronous work runs in a manager-owned child scope of the supplied parent
+ *   scope, or `Dispatchers.IO` when no parent is supplied.
  * - Public callbacks exposed by this manager (`ConnectionCallback`, `DataCallback`,
  *   and `ErrorCallback`) are not guaranteed to be invoked on the Android main thread.
  * - Callers must explicitly switch to `Dispatchers.Main`, `runOnUiThread`, or an
@@ -115,9 +116,17 @@ class AndroidLogger : Logger {
 
 class BLEManager internal constructor(
     private val context: Context, private val logger: Logger = AndroidLogger(),
-    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-    private val monotonicMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+    parentScope: CoroutineScope? = null,
+    private val monotonicMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    reconnectRandom: EucRandom = SecureEucRandom()
 ) : BluetoothGattCallback() {
+    private val sessionJob = SupervisorJob(parentScope?.coroutineContext?.get(Job))
+    private val sessionScope = CoroutineScope(
+        parentScope?.coroutineContext?.plus(sessionJob) ?: Dispatchers.IO + sessionJob
+    )
+    private val reconnectPolicy = ReconnectPolicy()
+    private val reconnectRandom = reconnectRandom
+
     companion object {
         private const val TAG = "BLEManager"
 
@@ -143,8 +152,6 @@ class BLEManager internal constructor(
     private var reconnectRetryCount: Int = 0
     private var reconnectJob: Job? = null
     private var manualDisconnect: Boolean = false
-    private val reconnectBaseDelayMs: Long = BLEConstants.RECONNECT_BASE_DELAY_MS
-    private val maxReconnectDelayMs: Long = BLEConstants.MAX_RECONNECT_DELAY_MS
 
     // Protocol management
     @VisibleForTesting(otherwise = PRIVATE)
@@ -173,7 +180,7 @@ class BLEManager internal constructor(
     val securityEventFlow: SharedFlow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
 
     // Serialized GATT write queue (see sendCommand)
-    private val writeSession = WriteSession(coroutineScope) {
+    private val writeSession = WriteSession(sessionScope) {
         errorCallback?.onError(BLEException("Write session failed: ${it.message}"))
     }
     @Volatile
@@ -252,6 +259,7 @@ class BLEManager internal constructor(
     private var connectionJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var connectionTimeoutJob: Job? = null
+    private var cleanedUp = false
 
     // Device cache
     private val discoveredDevices = ConcurrentHashMap<String, EUCDevice>()
@@ -364,11 +372,11 @@ class BLEManager internal constructor(
         discoveredDevices.clear()
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
 
-        scanJob = coroutineScope.launch {
+        scanJob = sessionScope.launch {
             startBleScan()
         }
 
-        scanTimeoutJob = coroutineScope.launch {
+        scanTimeoutJob = sessionScope.launch {
             delay(scanTimeout.milliseconds)
             if (connectionState == BLEConstants.ConnectionState.DISCONNECTED
                 && platformScanCallback != null
@@ -402,31 +410,26 @@ class BLEManager internal constructor(
             return
         }
 
+        val androidDevice = bluetoothDevicesByAddress[device.address]
+        if (androidDevice == null) {
+            val error = BLEException("No Android BluetoothDevice available for address ${device.address}")
+            errorCallback?.onError(error)
+            connectionCallback?.onConnectionFailed(error)
+            return
+        }
+
         manualDisconnect = false
         reconnectRetryCount = 0
-
         currentDevice = device
         connectionState = BLEConstants.ConnectionState.CONNECTING
         connectionCallback?.onConnecting()
 
-        val androidDevice = bluetoothDevicesByAddress[device.address]
-        if (androidDevice == null) {
-            errorCallback?.onError(BLEException("No Android BluetoothDevice available for address ${device.address}"))
-            return
-        }
-
         // Main connection job
-        connectionJob = coroutineScope.launch {
+        connectionJob = sessionScope.launch {
             connectToDevice(androidDevice)
         }
 
-        connectionTimeoutJob = coroutineScope.launch {
-            delay(connectionTimeout.milliseconds)
-            if (connectionState == BLEConstants.ConnectionState.CONNECTING) {
-                disconnect()
-                errorCallback?.onError(BLEException("Connection timeout"))
-            }
-        }
+        startConnectionTimeout(isReconnectAttempt = false)
     }
 
     /**
@@ -453,6 +456,52 @@ class BLEManager internal constructor(
         awaitingManualProtocolSelection = false
         connectionState = BLEConstants.ConnectionState.DISCONNECTED
         connectionCallback?.onDisconnected()
+    }
+
+    private fun failConnection(error: BLEException) {
+        manualDisconnect = true
+        reconnectJob?.cancel()
+        reconnectJob = null
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
+        reconnectRetryCount = 0
+        cancelPollingOrchestration()
+        cancelDataFlowCollection()
+        resetProtocolSession()
+        connectionJob?.cancel()
+        connectionJob = null
+        bluetoothGatt?.let {
+            it.disconnect()
+            it.close()
+        }
+        bluetoothGatt = null
+        currentDevice = null
+        currentProtocol = null
+        awaitingManualProtocolSelection = false
+        connectionState = BLEConstants.ConnectionState.DISCONNECTED
+        errorCallback?.onError(error)
+        connectionCallback?.onConnectionFailed(error)
+    }
+
+    private fun startConnectionTimeout(isReconnectAttempt: Boolean) {
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = sessionScope.launch {
+            delay(connectionTimeout.milliseconds)
+            if (connectionState != BLEConstants.ConnectionState.CONNECTING) return@launch
+            val error = BLEException("Connection timeout")
+            if (!isReconnectAttempt) {
+                failConnection(error)
+                return@launch
+            }
+            connectionTimeoutJob = null
+            connectionJob?.cancel()
+            connectionJob = null
+            bluetoothGatt?.close()
+            bluetoothGatt = null
+            connectionState = BLEConstants.ConnectionState.DISCONNECTED
+            errorCallback?.onError(error)
+            scheduleReconnect()
+        }
     }
 
     /**
@@ -748,9 +797,9 @@ class BLEManager internal constructor(
     private fun connectToDevice(device: BluetoothDevice) {
         try {
             bluetoothGatt = device.connectGatt(context, false, this)
+                ?: throw IllegalStateException("Android returned no GATT connection")
         } catch (e: Exception) {
-            errorCallback?.onError(BLEException("Failed to connect to device: ${e.message}"))
-            disconnect()
+            failConnection(BLEException("Failed to connect to device: ${e.message}"))
         }
     }
 
@@ -765,7 +814,7 @@ class BLEManager internal constructor(
     // BluetoothGattCallback implementations
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
+        if (gatt !== bluetoothGatt) return
 
         when (newState) {
             BluetoothProfile.STATE_CONNECTED -> {
@@ -778,20 +827,29 @@ class BLEManager internal constructor(
                 connectionTimeoutJob = null
                 connectionCallback?.onConnected()
                 // Discover services
-                gatt.discoverServices()
+                if (bluetoothGatt === gatt && connectionState == BLEConstants.ConnectionState.CONNECTED) {
+                    gatt.discoverServices()
+                }
             }
 
             BluetoothProfile.STATE_DISCONNECTED -> {
+                val disconnectedDevice = currentDevice
                 cancelPollingOrchestration()
                 cancelDataFlowCollection()
                 resetProtocolSession()
                 currentProtocol = null
                 connectionState = BLEConstants.ConnectionState.DISCONNECTED
+                connectionTimeoutJob?.cancel()
+                connectionTimeoutJob = null
+                bluetoothGatt = null
+                gatt.close()
                 connectionCallback?.onDisconnected()
 
-                if (!manualDisconnect && autoReconnect && currentDevice != null) {
+                if (!manualDisconnect && autoReconnect && currentDevice === disconnectedDevice &&
+                    connectionState == BLEConstants.ConnectionState.DISCONNECTED
+                ) {
                     scheduleReconnect()
-                } else {
+                } else if (currentDevice === disconnectedDevice) {
                     // if we don't want to reconnect, reset the counter
                     reconnectRetryCount = 0
                 }
@@ -812,19 +870,17 @@ class BLEManager internal constructor(
     private fun scheduleReconnect() {
         // If already in progress or max retries reached, do not reschedule
         if (reconnectJob != null) return
-        if (reconnectRetryCount >= maxRetries) {
-            connectionCallback?.onConnectionFailed(BLEException("Reconnection failed after $reconnectRetryCount attempts"))
+        // calculate delay with backoff and jitter
+        val delayMs = reconnectPolicy.delayForRetry(reconnectRetryCount, maxRetries, reconnectRandom)
+        if (delayMs == null) {
+            connectionCallback?.onConnectionFailed(
+                BLEException("Reconnection failed after $reconnectRetryCount attempts")
+            )
             reconnectRetryCount = 0
             return
         }
 
-        // calculate delay with backoff and jitter
-        val multiplier = 1L shl reconnectRetryCount.coerceAtMost(30) // prevent overflow
-        val baseDelay = (reconnectBaseDelayMs * multiplier).coerceAtMost(maxReconnectDelayMs)
-        val jitter = kotlin.random.Random.nextLong(0, BLEConstants.RECONNECT_JITTER_MAX_MS)
-        val delayMs = (baseDelay + jitter).coerceAtMost(maxReconnectDelayMs)
-
-        reconnectJob = coroutineScope.launch {
+        reconnectJob = sessionScope.launch {
 
             kotlinx.coroutines.delay(delayMs)
             // double-check conditions avant tentative
@@ -839,14 +895,16 @@ class BLEManager internal constructor(
             }
             reconnectRetryCount++
             connectionState = BLEConstants.ConnectionState.CONNECTING
+            reconnectJob = null
             connectionCallback?.onConnecting()
+            if (manualDisconnect) return@launch
             try {
                 val androidDevice = currentDevice?.let { bluetoothDevicesByAddress[it.address] }
                 if (androidDevice != null) {
-                    connectToDevice(androidDevice)
+                    connectionJob = sessionScope.launch { connectToDevice(androidDevice) }
+                    startConnectionTimeout(isReconnectAttempt = true)
                 } else {
-                    connectionCallback?.onConnectionFailed(BLEException("No device to reconnect"))
-                    reconnectJob = null
+                    failConnection(BLEException("No device to reconnect"))
                 }
             } catch (e: Exception) {
                 // in case of immediate failure, let the next onConnectionStateChange trigger a new attempt
@@ -865,7 +923,7 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
+        if (gatt !== bluetoothGatt) return
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Service discovery failed: $status"))
@@ -1021,7 +1079,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
     ) {
-        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
+        if (gatt !== bluetoothGatt) return
         val data = value.clone()
         handleIncomingBytes(data, characteristic.uuid)
     }
@@ -1031,7 +1089,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicChanged(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic
     ) {
-        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
+        if (gatt !== bluetoothGatt) return
         val raw = characteristic.value ?: return
         val data = raw.clone()
         handleIncomingBytes(data, characteristic.uuid)
@@ -1070,7 +1128,7 @@ class BLEManager internal constructor(
     override fun onCharacteristicWrite(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
-        if (bluetoothGatt != null && gatt !== bluetoothGatt) return
+        if (gatt !== bluetoothGatt) return
         writeSession.onAcknowledgment()
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
@@ -1115,7 +1173,7 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun startPollingOrchestration(protocol: EUCProtocol) {
         cancelPollingOrchestration()
-        pollingSession = PollingSession(protocol, coroutineScope,
+        pollingSession = PollingSession(protocol, sessionScope,
             now = monotonicMillis,
             trace = { event -> emitQueryTrace(event.copy(timestampMs = System.currentTimeMillis())) },
             onError = { errorCallback?.onError(BLEException("Polling session failed: ${it.message}")) },
@@ -1134,23 +1192,23 @@ class BLEManager internal constructor(
     internal fun startDataFlowCollection(protocol: EUCProtocol) {
         cancelDataFlowCollection()
         _securityStateFlow.value = protocol.getSecurityState()
-        securityFlowCollectorJob = coroutineScope.launch {
+        securityFlowCollectorJob = sessionScope.launch {
             protocol.securityStateFlow.collect { state ->
                 if (currentProtocol === protocol) _securityStateFlow.value = state
             }
         }
-        securityEventCollectorJob = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        securityEventCollectorJob = sessionScope.launch(start = CoroutineStart.UNDISPATCHED) {
             protocol.securityEventFlow.collect { event ->
                 if (currentProtocol === protocol) _securityEventFlow.tryEmit(event)
             }
         }
-        dataFlowCollectorJob = coroutineScope.launch {
+        dataFlowCollectorJob = sessionScope.launch {
             protocol.dataFlow.collect { d ->
                 dataCallback?.onDataReceived(d)
             }
         }
 
-        writeFlowCollectorJob = coroutineScope.launch {
+        writeFlowCollectorJob = sessionScope.launch {
             protocol.writeFlow.collect { payload ->
                 if (payload.isNotEmpty()) {
                     sendCommand(payload, protocol.getWriteCharacteristicUUID())
@@ -1361,13 +1419,22 @@ class BLEManager internal constructor(
     // Cleanup
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun cleanup() {
+        if (cleanedUp) return
+        cleanedUp = true
         cancelReconnectAttempts()
         scanTimeoutJob?.cancel()
         connectionTimeoutJob?.cancel()
-        disconnect()
-        scanJob?.cancel()
-        connectionJob?.cancel()
-        coroutineScope.cancel()
+        try {
+            if (platformScanCallback != null) stopScan()
+        } finally {
+            try {
+                disconnect()
+            } finally {
+                scanJob?.cancel()
+                connectionJob?.cancel()
+                sessionJob.cancel()
+            }
+        }
     }
 }
 

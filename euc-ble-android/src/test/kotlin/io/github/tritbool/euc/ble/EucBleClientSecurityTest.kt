@@ -25,6 +25,8 @@ import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -40,6 +42,16 @@ import org.mockito.Mockito.mockingDetails
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EucBleClientSecurityTest {
+    @Test
+    fun cleanupCancelsOwnedJobWithoutCancellingSuppliedScope() = runTest {
+        val client = EucBleClient(mock<Context>(), NoOpLogger(), backgroundScope)
+        val ownedJob = EucBleClient::class.java.getDeclaredField("clientJob")
+            .apply { isAccessible = true }.get(client) as Job
+        client.cleanup()
+        assertFalse(ownedJob.isActive)
+        assertTrue(backgroundScope.isActive)
+    }
+
     @Test
     fun customCallerBufferIsNotWipedWhenProtocolReturnsItDirectly() = runTest {
         val (client, protocol, _) = connectedClient()
@@ -382,6 +394,15 @@ class EucBleClientSecurityTest {
         client.bleManager.onCharacteristicChanged(newGatt, characteristic, required)
         runCurrent()
         assertEquals(AuthenticationState.REQUIRED, client.securityStateFlow.value?.authentication)
+    }
+
+    @Test
+    fun lateConnectionCallbackAfterDisconnectIsIgnored() = runTest {
+        val (client, _, gatt) = connectedClient()
+        client.disconnect()
+        client.bleManager.onConnectionStateChange(gatt, BluetoothGatt.GATT_SUCCESS, BluetoothProfile.STATE_CONNECTED)
+        assertEquals(BLEConstants.ConnectionState.DISCONNECTED, client.getConnectionState())
+        assertNull(client.getConnectedDevice())
     }
 
     private fun TestScope.connectedClient(): Triple<EucBleClient, KingsongProtocol, BluetoothGatt> {

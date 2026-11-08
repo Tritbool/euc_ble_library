@@ -33,7 +33,9 @@ import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import io.github.tritbool.euc.ble.protocols.PasswordChangeRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,16 +46,22 @@ import kotlinx.coroutines.flow.StateFlow
  * Protocol registration is fully managed internally; client applications should not register
  * brand-specific protocols, but may inspect and manually select from the registered protocols
  * using [getRegisteredProtocols].
+ *
+ * When a caller scope is supplied, this client creates child jobs and cancels only those jobs
+ * during [cleanup], leaving the supplied scope and unrelated work active.
  */
 class EucBleClient(
     context: Context,
     val logger: Logger = AndroidLogger(),
-    coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    coroutineScope: CoroutineScope? = null
 ) {
-    internal val bleManager = BLEManager(context, logger, coroutineScope)
+    private val clientJob = SupervisorJob(coroutineScope?.coroutineContext?.get(Job))
+    private val clientContext = coroutineScope?.coroutineContext ?: Dispatchers.IO
+    private val clientScope = CoroutineScope(clientContext + clientJob)
+    internal val bleManager = BLEManager(context, logger, clientScope)
 
     init {
-        registerBuiltInProtocols(coroutineScope)
+        registerBuiltInProtocols(clientScope)
     }
 
     fun initialize() {
@@ -203,7 +211,11 @@ class EucBleClient(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun cleanup() {
-        bleManager.cleanup()
+        try {
+            bleManager.cleanup()
+        } finally {
+            clientJob.cancel()
+        }
     }
 
     private fun registerBuiltInProtocols(scope: CoroutineScope) {

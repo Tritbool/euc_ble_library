@@ -46,12 +46,14 @@ import org.junit.platform.suite.api.Suite
 import io.github.tritbool.euc.ble.session.PollingEngineTest
 import io.github.tritbool.euc.ble.session.SessionDriversTest
 import io.github.tritbool.euc.ble.session.ProtocolSelectorTest
+import io.github.tritbool.euc.ble.session.ReconnectPolicyTest
 
 @Suite
 @SelectClasses(
     PollingEngineTest::class,
     SessionDriversTest::class,
     ProtocolSelectorTest::class,
+    ReconnectPolicyTest::class,
     FlowProtocolAdapterTest::class,
     ProtocolOutboxTest::class,
     SyncFrameParsingTest::class,

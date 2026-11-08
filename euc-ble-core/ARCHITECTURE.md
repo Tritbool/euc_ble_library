@@ -145,6 +145,7 @@ core stays portable (Kotlin Multiplatform, and a later Rust port for ESP32 / Sai
 | Polling state | `session.PollingEngine` | Synchronous startup/periodic scheduling, response matching and retries |
 | Polling driver | `session.PollingSession` | Supplies monotonic time and transport callbacks to the polling state machine |
 | Write driver | `session.WriteSession` | Serializes writes, retries stack rejections, owns acknowledgment waits and wipes byte snapshots |
+| Reconnect policy | `session.ReconnectPolicy` | Computes bounded exponential backoff and jitter without scheduling or platform APIs |
 
 Sync protocols must not use coroutines, threads, locks, timers or direct clock reads, and need not be
 thread-safe. The migrated implementations use synchronous parsing and flow-compatible facades.
@@ -163,8 +164,11 @@ after its guard timeout, and is not evidence of a wheel acknowledgment.
 
 `BLEManager` now supplies Android service snapshots, transport submission and callback notifications.
 Connection/reconnection lifecycle, notification setup, forced/manual activation and public flow wiring
-remain in the connector for the next thinning phase. The session drivers still use coroutines;
-the protocol engines and polling state machine do not.
+remain in the Android connector. The reconnect delay policy itself is pure and independently tested.
+Each manager and client owns a child coroutine job: cleanup cancels its own work without cancelling
+the caller's scope. GATT callbacks are accepted only from the currently owned connection, and failed
+device resolution leaves the connection state disconnected. The session drivers still use coroutines;
+the protocol engines and polling/reconnect policies do not.
 
 ### Key Design Principles
 

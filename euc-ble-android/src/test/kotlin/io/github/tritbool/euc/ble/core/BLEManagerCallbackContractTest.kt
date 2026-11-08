@@ -7,14 +7,47 @@ import io.github.tritbool.euc.ble.integration.BleBackendEvent
 import io.github.tritbool.euc.ble.integration.BleBackendListener
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.util.UUID
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class BLEManagerCallbackContractTest {
+    @Test
+    fun connectWithoutAndroidDeviceDoesNotLeaveManagerConnecting() {
+        val manager = BLEManager(mock<Context>(), NoOpLogger())
+        val failures = mutableListOf<BLEException>()
+        manager.setConnectionCallback(object : ConnectionCallback() {
+            override fun onConnectionFailed(error: BLEException) { failures += error }
+        })
+
+        manager.connect(device())
+
+        assertEquals(BLEConstants.ConnectionState.DISCONNECTED, manager.getConnectionState())
+        assertNull(manager.getConnectedDevice())
+        assertEquals("No Android BluetoothDevice available for address 00:11:22:33:44:55",
+            failures.single().message)
+    }
+
+    @Test
+    fun managerCleanupCancelsOwnedJobWithoutCancellingSuppliedScope() = runTest {
+        val manager = BLEManager(mock<Context>(), NoOpLogger(), backgroundScope)
+        val ownedJob = BLEManager::class.java.getDeclaredField("sessionJob")
+            .apply { isAccessible = true }.get(manager) as Job
+        manager.cleanup()
+        assertFalse(ownedJob.isActive)
+        assertTrue(backgroundScope.isActive)
+    }
+
     @Test
     fun connectionCallbackDefaultImplementationsAreSafeNoOps() {
         val callback = object : ConnectionCallback() {}
