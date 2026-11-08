@@ -1419,7 +1419,10 @@ class BLEManager internal constructor(
     }
 
     // Cleanup
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresPermission(allOf = [
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_SCAN
+    ])
     fun cleanup() {
         if (cleanedUp) return
         cleanedUp = true

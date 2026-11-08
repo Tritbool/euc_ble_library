@@ -209,7 +209,10 @@ class EucBleClient(
     val rawFrameFlow: Flow<ByteArray> = bleManager.rawFrameFlow
     val queryTraceFlow: SharedFlow<QueryTraceEvent> = bleManager.queryTraceFlow
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresPermission(allOf = [
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_SCAN
+    ])
     fun cleanup() {
         try {
             bleManager.cleanup()
