@@ -458,6 +458,7 @@ class BLEManager internal constructor(
         connectionCallback?.onDisconnected()
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun failConnection(error: BLEException) {
         manualDisconnect = true
         reconnectJob?.cancel()
@@ -483,6 +484,7 @@ class BLEManager internal constructor(
         connectionCallback?.onConnectionFailed(error)
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun startConnectionTimeout(isReconnectAttempt: Boolean) {
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = sessionScope.launch {

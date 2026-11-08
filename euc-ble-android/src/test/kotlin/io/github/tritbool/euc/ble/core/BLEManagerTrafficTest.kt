@@ -283,8 +283,7 @@ class BLEManagerTrafficTest {
     fun bothNotificationCallbacksPreserveCharacteristicAndChunkBoundaries() = runTest {
         val manager = manager()
         val events = collectTraffic(manager)
-        val gatt = mock<BluetoothGatt>()
-        val characteristic = characteristic()
+        val (gatt, characteristic) = attachGatt(manager)
         val modern = byteArrayOf(0x55)
         val legacy = byteArrayOf(0x01, 0x02)
         @Suppress("DEPRECATION")
