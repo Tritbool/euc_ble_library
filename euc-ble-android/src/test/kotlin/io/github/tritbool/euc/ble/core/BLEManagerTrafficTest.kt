@@ -195,7 +195,7 @@ class BLEManagerTrafficTest {
                 realProtocol.getPollingPlan().copy(startupQueries = emptyList())
         }
         manager.currentProtocol = protocol
-        attachGatt(manager).also { acceptWrites(it.first) }
+        attachInMotionGatt(manager).also { acceptWrites(it) }
         val traces = mutableListOf<QueryTraceEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             manager.queryTraceFlow.collect { traces += it }
@@ -205,7 +205,8 @@ class BLEManagerTrafficTest {
         runCurrent()
         assertTrue(traces.none { it.queryId.startsWith("inmotion.p6-pack-") })
 
-        manager.handleIncomingBytes(ByteUtils.hexToBytes("aaaa11058201020d0199"), characteristicUuid)
+        manager.handleIncomingBytes(ByteUtils.hexToBytes("aaaa11058201020d0199"),
+            UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC))
         advanceTimeBy(3_000)
         runCurrent()
 
@@ -232,7 +233,7 @@ class BLEManagerTrafficTest {
             }
         }
         manager.currentProtocol = protocol
-        attachGatt(manager).also { acceptWrites(it.first) }
+        attachInMotionGatt(manager).also { acceptWrites(it) }
         val sentIdentities = mutableListOf<String>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             manager.queryTraceFlow.collect {

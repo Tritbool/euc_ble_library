@@ -10,12 +10,14 @@ import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class SessionDriversTest {
     private val query = ProtocolQuerySpec("q", CommandType.BEEP, responseTimeoutMs = 200, maxRetries = 0)
     private fun protocol(encode: () -> ByteArray = { byteArrayOf(1) }): EUCProtocol =
