@@ -13,15 +13,20 @@ import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
+import io.github.tritbool.euc.ble.protocols.InMotionSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionP6BmsTest
 import io.github.tritbool.euc.ble.protocols.InmotionNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongProtocolAsyncTest
 import io.github.tritbool.euc.ble.protocols.KingsongSecurityTest
+import io.github.tritbool.euc.ble.protocols.KingsongPasswordTest
+import io.github.tritbool.euc.ble.protocols.SyncTimerProtocolsTest
 import io.github.tritbool.euc.ble.protocols.LeaperkimNoDropTest
 import io.github.tritbool.euc.ble.protocols.LeaperkimProtocolTest
+import io.github.tritbool.euc.ble.protocols.LeaperkimSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.NinebotNoDropTest
 import io.github.tritbool.euc.ble.protocols.NinebotProtocolTest
+import io.github.tritbool.euc.ble.protocols.NinebotSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.NinebotZProtocolTest
 import io.github.tritbool.euc.ble.protocols.NosfetNoDropTest
 import io.github.tritbool.euc.ble.protocols.NosfetProtocolTest
@@ -51,11 +56,14 @@ import org.junit.platform.suite.api.Suite
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,
+    InMotionSyncProtocolTest::class,
     InMotionP6BmsTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
     KingsongProtocolTest::class,
     KingsongSecurityTest::class,
+    KingsongPasswordTest::class,
+    SyncTimerProtocolsTest::class,
     ProtocolParityContractTest::class,
     BleFrequencyAnalysisTest::class,
     WheelLogGotwayTest::class,
@@ -65,8 +73,10 @@ import org.junit.platform.suite.api.Suite
     WheelLogNosfetTest::class,
     WheelLogKingsongTest::class,
     LeaperkimProtocolTest::class,
+    LeaperkimSyncProtocolTest::class,
     NosfetProtocolTest::class,
     NinebotProtocolTest::class,
+    NinebotSyncProtocolTest::class,
     NinebotZProtocolTest::class,
     ExtremeBullProtocolTest::class,
     GotwayNoDropTest::class,

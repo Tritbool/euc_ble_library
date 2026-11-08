@@ -1,0 +1,43 @@
+package io.github.tritbool.euc.ble.protocols
+
+import io.github.tritbool.euc.ble.core.EucClock
+import io.github.tritbool.euc.ble.core.SystemEucClock
+import kotlin.math.roundToInt
+
+class NosfetSyncProtocol(clock: EucClock = SystemEucClock) :
+    LeaperkimSyncProtocol(clock) {
+
+    override val manufacturer: String = "Nosfet"
+
+    override fun decodeSpeed(speedRaw: Short): Double = speedRaw / 10.0
+
+    override fun matchesDeviceName(deviceName: String): Boolean {
+        val lower = deviceName.lowercase()
+        return lower.contains("nosfet") || lower.contains("apex") ||
+               lower.contains("aero") || lower.contains("aeon")
+    }
+
+    override fun modelByMajorVersion(version: Int): String {
+        return when (version) {
+            42 -> "Nosfet Apex"
+            43 -> "Nosfet Aero"
+            44 -> "Nosfet Aeon"
+            else -> "Nosfet"
+        }
+    }
+
+    override fun estimateBatteryPercent(voltageRaw: Int, majorVersion: Int): Int {
+        val battery = when (majorVersion) {
+            43 -> ((voltageRaw - 9600) / (12525.0 - 9600.0) * 100.0)
+            42, 44 -> ((voltageRaw - 11520) / (15030.0 - 11520.0) * 100.0)
+            else -> ((voltageRaw - 9600) / (12525.0 - 9600.0) * 100.0)
+        }
+        return battery.roundToInt().coerceIn(0, 100)
+    }
+
+    override fun bmsCellCount(majorVersion: Int?): Int = when (majorVersion) {
+        42, 44 -> 36
+        43 -> 30
+        else -> super.bmsCellCount(majorVersion)
+    }
+}

@@ -220,6 +220,18 @@ class FlowProtocolAdapterTest {
     }
 
     @Test
+    fun `resetSession drops pending telemetry from previous connection`() = runTest {
+        val adapter = adapter(FakeSyncProtocol())
+        adapter.decode(byteArrayOf(1, 25))
+        adapter.resetSession()
+        adapter.dataFlow.test {
+            expectNoEvents()
+            adapter.decode(byteArrayOf(1, 10))
+            assertEquals(10.0, awaitItem().speed)
+        }
+    }
+
+    @Test
     fun `security outputs update state and events`() = runTest {
         val adapter = adapter(FakeSyncProtocol())
         assertNull(adapter.securityState.value)

@@ -75,6 +75,8 @@ class FlowProtocolAdapter(
     /** Latest notification-confirmed security state, or `null` when unsupported/unknown. */
     val securityState: StateFlow<WheelSecurityState?> = _securityState.asStateFlow()
     override val securityStateFlow: Flow<WheelSecurityState> = _securityState.filterNotNull()
+    private val _nonNullSecurityState = MutableStateFlow(_securityState.value ?: WheelSecurityState())
+    internal val nonNullSecurityState: StateFlow<WheelSecurityState> = _nonNullSecurityState.asStateFlow()
 
     private val _securityEventFlow = MutableSharedFlow<WheelSecurityEvent>(
         extraBufferCapacity = SECURITY_EVENT_BUFFER,
@@ -99,9 +101,12 @@ class FlowProtocolAdapter(
         synchronized(lock) {
             cancelAllTimers()
             while (writeChannel.tryReceive().isSuccess) Unit
+            while (dataChannel.tryReceive().isSuccess) Unit
             protocol.resetSession()
             dispatchOutputs()
-            _securityState.value = protocol.getSecurityState()
+            val state = protocol.getSecurityState()
+            _securityState.value = state
+            _nonNullSecurityState.value = state ?: WheelSecurityState()
         }
     }
 
@@ -141,15 +146,21 @@ class FlowProtocolAdapter(
         result
     }
 
+    internal fun <T> withProtocol(block: (SyncEucProtocol) -> T): T = call { block(protocol) }
+
     /** Must be called while holding [lock]. */
     private fun dispatchOutputs() {
         while (true) {
             when (val output = protocol.pollOutput() ?: return) {
+                is ProtocolOutput.DebugLog -> logger.debug(output.tag, output.message)
                 is ProtocolOutput.Telemetry -> {
                     lastTelemetry = output.data
                     dataChannel.trySend(output.data)
                 }
-                is ProtocolOutput.SecurityStateChanged -> _securityState.value = output.state
+                is ProtocolOutput.SecurityStateChanged -> {
+                    _securityState.value = output.state
+                    _nonNullSecurityState.value = output.state
+                }
                 is ProtocolOutput.SecurityEvent -> _securityEventFlow.tryEmit(output.event)
                 is ProtocolOutput.Write -> if (output.payload.isNotEmpty()) writeChannel.trySend(output.payload)
                 is ProtocolOutput.StartTimer -> startTimer(output.id, output.delayMs)

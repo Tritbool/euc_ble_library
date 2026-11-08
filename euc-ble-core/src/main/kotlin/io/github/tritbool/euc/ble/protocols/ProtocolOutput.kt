@@ -9,6 +9,8 @@ import io.github.tritbool.euc.ble.models.WheelSecurityState
  * session layer must perform. Protocols never perform I/O or schedule work themselves.
  */
 sealed class ProtocolOutput {
+    /** Diagnostic message for the session's logger. */
+    data class DebugLog(val tag: String, val message: String) : ProtocolOutput()
     /** Decoded telemetry. */
     data class Telemetry(val data: EUCData) : ProtocolOutput()
 

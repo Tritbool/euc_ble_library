@@ -11,11 +11,8 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import app.cash.turbine.test
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Assertions.assertThrows
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 class GotwayProtocolTest {
 
@@ -1192,39 +1189,22 @@ class GotwayProtocolTest {
     }
 
     @Test
-    fun testBmsProcessingSnapshotsAndCloseShareTheSameLock() {
-        val processFrame = GotwayProtocol::class.java
-            .getDeclaredMethod("processFrame", ByteArray::class.java)
-            .apply { isAccessible = true }
+    fun testBmsSnapshotsRemainStableAcrossConcurrentProcessingAndReset() {
         val bmsFrame = createGotwayBmsFrame(
             frameType = 0x02, page = 0,
             cellMillivolts = IntArray(8) { 4100 }
         )
-        processFrame.invoke(protocol, bmsFrame)
+        protocol.decode(bmsFrame)
         val snapshot = protocol.getBMSData()
-        val executor = Executors.newSingleThreadExecutor()
+        val executor = Executors.newFixedThreadPool(3)
         try {
-            val operations: List<() -> Unit> = listOf(
-                { processFrame.invoke(protocol, createGotwayFrame(voltageRaw = 6720)); Unit },
-                { processFrame.invoke(protocol, bmsFrame); Unit },
-                { protocol.getBMSData(); Unit },
-                { protocol.close() }
+            val operations = listOf(
+                executor.submit { repeat(100) { protocol.decode(bmsFrame) } },
+                executor.submit { repeat(100) { protocol.getBMSData() } },
+                executor.submit { repeat(100) { protocol.resetSession() } }
             )
-            for (operation in operations) {
-                val started = CountDownLatch(1)
-                val future = synchronized(protocol) {
-                    val task = executor.submit {
-                        started.countDown()
-                        operation()
-                    }
-                    assertTrue(started.await(5, TimeUnit.SECONDS))
-                    assertThrows(TimeoutException::class.java) {
-                        task.get(100, TimeUnit.MILLISECONDS)
-                    }
-                    task
-                }
-                future.get(5, TimeUnit.SECONDS)
-            }
+            operations.forEach { it.get(5, TimeUnit.SECONDS) }
+            protocol.close()
             assertTrue(protocol.getBMSData().isEmpty())
             // A single Type 2 page fills both halves of stream 0 (groups G1 and G2).
             assertEquals(2, snapshot.size)

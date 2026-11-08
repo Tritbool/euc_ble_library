@@ -138,13 +138,16 @@ core stays portable (Kotlin Multiplatform, and a later Rust port for ESP32 / Sai
 |---|---|---|
 | Contract | `protocols.EucProtocolSpec` | Pure metadata, command encoding, polling plan, state queries |
 | Sync protocol | `protocols.SyncEucProtocol` | `onNotification` / `onTimer` / `onCommandSubmitted` inputs; outputs via `pollOutput()` |
-| Outputs | `protocols.ProtocolOutput` | `Telemetry`, `SecurityStateChanged`, `SecurityEvent`, `Write`, `StartTimer`, `CancelTimer` |
+| Outputs | `protocols.ProtocolOutput` | Telemetry, security updates, writes, timer actions and diagnostic logs |
 | Platform inputs | `core.EucClock`, `core.EucRandom` | Injected time and randomness (JVM defaults in `core/JvmPlatform.kt`) |
 | Session bridge | `session.FlowProtocolAdapter` | Serializes calls, drains outputs into the `EUCProtocol` flows, runs timers |
 
 Sync protocols must not use coroutines, threads, locks, timers or direct clock reads, and need not be
-thread-safe. Frame reassembly uses `FrameReassembler.feed()`, which returns frames synchronously.
-Protocols not yet migrated still implement `EUCProtocol` directly.
+thread-safe. The migrated implementations use synchronous parsing and flow-compatible facades.
+All built-in protocol families now have synchronous state machines. Gotway and Leaperkim/Nosfet
+process incoming chunks in order instead of launching one coroutine per chunk. KingSong's password
+timeout starts only after write acceptance and expires as unconfirmed, not as proof of a bad password.
+UUIDs, other JVM APIs, and the coroutine session bridge remain JVM-specific until later phases.
 
 ### Key Design Principles
 
