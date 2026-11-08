@@ -141,6 +141,10 @@ core stays portable (Kotlin Multiplatform, and a later Rust port for ESP32 / Sai
 | Outputs | `protocols.ProtocolOutput` | Telemetry, security updates, writes, timer actions and diagnostic logs |
 | Platform inputs | `core.EucClock`, `core.EucRandom` | Injected time and randomness (JVM defaults in `core/JvmPlatform.kt`) |
 | Session bridge | `session.FlowProtocolAdapter` | Serializes calls, drains outputs into the `EUCProtocol` flows, runs timers |
+| Selection policy | `session.ProtocolSelector` | Matches plain GATT snapshots and device names; rejects ambiguous matches |
+| Polling state | `session.PollingEngine` | Synchronous startup/periodic scheduling, response matching and retries |
+| Polling driver | `session.PollingSession` | Supplies monotonic time and transport callbacks to the polling state machine |
+| Write driver | `session.WriteSession` | Serializes writes, retries stack rejections, owns acknowledgment waits and wipes byte snapshots |
 
 Sync protocols must not use coroutines, threads, locks, timers or direct clock reads, and need not be
 thread-safe. The migrated implementations use synchronous parsing and flow-compatible facades.
@@ -148,6 +152,19 @@ All built-in protocol families now have synchronous state machines. Gotway and L
 process incoming chunks in order instead of launching one coroutine per chunk. KingSong's password
 timeout starts only after write acceptance and expires as unconfirmed, not as proof of a bad password.
 UUIDs, other JVM APIs, and the coroutine session bridge remain JVM-specific until later phases.
+
+Polling response deadlines and `SENT` traces start at transport acceptance, never at enqueue time.
+Response latency uses monotonic milliseconds; Android translates trace timestamps to wall-clock
+time for the public flow. Startup queries finish sequentially before periodic polling begins.
+Model-dependent periodic plans are refreshed without restarting completed one-shot queries.
+Stopping a session invalidates queued requests and callbacks without cancelling the caller's scope.
+Accepted writes are never automatically retried: a missing GATT callback only releases the queue
+after its guard timeout, and is not evidence of a wheel acknowledgment.
+
+`BLEManager` now supplies Android service snapshots, transport submission and callback notifications.
+Connection/reconnection lifecycle, notification setup, forced/manual activation and public flow wiring
+remain in the connector for the next thinning phase. The session drivers still use coroutines;
+the protocol engines and polling state machine do not.
 
 ### Key Design Principles
 

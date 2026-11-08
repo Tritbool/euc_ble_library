@@ -43,9 +43,15 @@ import io.github.tritbool.euc.ble.protocols.ProtocolOutboxTest
 import io.github.tritbool.euc.ble.session.FlowProtocolAdapterTest
 import org.junit.platform.suite.api.SelectClasses
 import org.junit.platform.suite.api.Suite
+import io.github.tritbool.euc.ble.session.PollingEngineTest
+import io.github.tritbool.euc.ble.session.SessionDriversTest
+import io.github.tritbool.euc.ble.session.ProtocolSelectorTest
 
 @Suite
 @SelectClasses(
+    PollingEngineTest::class,
+    SessionDriversTest::class,
+    ProtocolSelectorTest::class,
     FlowProtocolAdapterTest::class,
     ProtocolOutboxTest::class,
     SyncFrameParsingTest::class,

@@ -32,8 +32,8 @@ jacoco {
 }
 
 dependencies {
-    // Transitional: protocols still expose Flow-based views. Removed once every protocol
-    // is a synchronous state machine (see ARCHITECTURE.md, "Sync core").
+    // Transitional: flow-compatible facades and session drivers still live in this JVM module.
+    // Split them from the sans-IO engines before removing coroutines from the portable core.
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     testFixturesApi(platform("org.junit:junit-bom:5.10.2"))

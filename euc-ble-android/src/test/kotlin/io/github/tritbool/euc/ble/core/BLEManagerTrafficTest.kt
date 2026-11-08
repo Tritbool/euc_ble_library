@@ -9,6 +9,10 @@ import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
+import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.CommandSupport
+import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
+import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,6 +40,42 @@ import java.util.UUID
 @OptIn(ExperimentalCoroutinesApi::class)
 class BLEManagerTrafficTest {
     private val characteristicUuid = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
+
+    @Test
+    fun pollingDeadlineStartsAfterQueuedWriteIsAccepted() = runTest {
+        val manager = manager()
+        val protocol = object : EUCProtocol by GotwayProtocol(scope = backgroundScope) {
+            override fun getPollingPlan() = ProtocolPollingPlan(true,
+                startupQueries = listOf(ProtocolQuerySpec("queued", CommandType.BEEP,
+                    responseTimeoutMs = 200, maxRetries = 0)))
+            override fun getCommandSupport(commandType: CommandType) = CommandSupport.SUPPORTED
+            override fun createCommand(commandType: CommandType, value: Any) = byteArrayOf(2)
+        }
+        manager.currentProtocol = protocol
+        attachGatt(manager).also { acceptWrites(it.first) }
+        val traces = mutableListOf<QueryTraceEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.queryTraceFlow.collect { traces += it }
+        }
+        manager.sendCommand(byteArrayOf(1), characteristicUuid)
+        runCurrent()
+        BLEManager::class.java.getDeclaredMethod("startPollingOrchestration", EUCProtocol::class.java)
+            .apply { isAccessible = true }.invoke(manager, protocol)
+        runCurrent()
+        advanceTimeBy(299)
+        runCurrent()
+        assertTrue(traces.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(QueryTracePhase.SENT), traces.map { it.phase })
+        advanceTimeBy(199)
+        runCurrent()
+        assertEquals(1, traces.size)
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(QueryTracePhase.SENT, QueryTracePhase.TIMEOUT, QueryTracePhase.FAILED),
+            traces.map { it.phase })
+    }
 
     @Test
     fun v2GattFingerprintDialectIsReappliedAfterSessionResetBeforePolling() = runTest {
@@ -192,7 +232,7 @@ class BLEManagerTrafficTest {
             }
         }
         manager.currentProtocol = protocol
-        attachGatt(manager)
+        attachGatt(manager).also { acceptWrites(it.first) }
         val sentIdentities = mutableListOf<String>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             manager.queryTraceFlow.collect {
@@ -411,7 +451,8 @@ class BLEManagerTrafficTest {
         assertEquals((1L..128L).toList(), events.map { it.sequence })
     }
 
-    private fun TestScope.manager() = BLEManager(mock<Context>(), NoOpLogger(), backgroundScope)
+    private fun TestScope.manager() = BLEManager(mock<Context>(), NoOpLogger(), backgroundScope,
+        monotonicMillis = { testScheduler.currentTime })
 
     private fun attachInMotionGatt(manager: BLEManager, version: Int = 2): BluetoothGatt {
         val signature = EucFingerprintDatabase.entries

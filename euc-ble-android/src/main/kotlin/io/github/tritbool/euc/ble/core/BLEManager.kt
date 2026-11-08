@@ -34,9 +34,10 @@ import io.github.tritbool.euc.ble.protocols.GattSignature
 import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetFrameDetector
-import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
-import kotlinx.coroutines.CompletableDeferred
+import io.github.tritbool.euc.ble.session.PollingSession
+import io.github.tritbool.euc.ble.session.ProtocolSelector
+import io.github.tritbool.euc.ble.session.WriteSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -56,7 +56,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
@@ -116,15 +115,11 @@ class AndroidLogger : Logger {
 
 class BLEManager internal constructor(
     private val context: Context, private val logger: Logger = AndroidLogger(),
-    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val monotonicMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() }
 ) : BluetoothGattCallback() {
     companion object {
         private const val TAG = "BLEManager"
-        private const val MIN_QUERY_ATTEMPTS = 1
-        private const val MIN_QUERY_TIMEOUT_MS = 200L
-        private const val MAX_WRITE_ATTEMPTS = 5
-        private const val WRITE_RETRY_DELAY_MS = 30L
-        private const val WRITE_ACK_TIMEOUT_MS = 300L
 
         val ENABLE_NOTIFICATION_VALUE_COMPAT = byteArrayOf(0x01, 0x00)
         val ENABLE_INDICATION_VALUE_COMPAT = byteArrayOf(0x02, 0x00)
@@ -162,7 +157,7 @@ class BLEManager internal constructor(
     private var protocolSelectionMode: ProtocolSelectionMode = ProtocolSelectionMode.AUTO
     private var forcedProtocol: EUCProtocol? = null
     private var awaitingManualProtocolSelection: Boolean = false
-    private var queryOrchestrationJob: Job? = null
+    private var pollingSession: PollingSession? = null
     private var dataFlowCollectorJob: Job? = null
     private var writeFlowCollectorJob: Job? = null
     private var securityFlowCollectorJob: Job? = null
@@ -176,17 +171,13 @@ class BLEManager internal constructor(
     )
     /** No replay; bounded, best-effort notifications, including repeated authentication status. */
     val securityEventFlow: SharedFlow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
-    private val pendingQueries: MutableMap<String, PendingQueryState> = ConcurrentHashMap()
 
     // Serialized GATT write queue (see sendCommand)
-    private class PendingWrite(val payload: ByteArray, val characteristicUuid: UUID, val generation: Long)
-    private val writeQueue = Channel<PendingWrite>(Channel.UNLIMITED)
-    private var writeQueueJob: Job? = null
+    private val writeSession = WriteSession(coroutineScope) {
+        errorCallback?.onError(BLEException("Write session failed: ${it.message}"))
+    }
     @Volatile
     private var writeGeneration = 0L
-
-    @Volatile
-    private var pendingWriteAck: CompletableDeferred<Unit>? = null
 
     // Callbacks
     private var platformScanCallback: AndroidScanCallback? = null
@@ -261,14 +252,6 @@ class BLEManager internal constructor(
     private var connectionJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var connectionTimeoutJob: Job? = null
-
-    private data class PendingQueryState(
-        val protocolName: String,
-        val query: ProtocolQuerySpec,
-        val attempt: Int,
-        val sentAtMs: Long,
-        val responseReceived: CompletableDeferred<Unit> = CompletableDeferred()
-    )
 
     // Device cache
     private val discoveredDevices = ConcurrentHashMap<String, EUCDevice>()
@@ -525,85 +508,77 @@ class BLEManager internal constructor(
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun sendCommand(command: ByteArray, characteristicUuid: UUID) {
+        enqueueCommand(command, characteristicUuid)
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun enqueueCommand(
+        command: ByteArray, characteristicUuid: UUID,
+        valid: () -> Boolean = { true },
+        accepted: () -> Unit = {},
+        failed: () -> Unit = {}
+    ) {
         val generation = writeGeneration
         if (connectionState != BLEConstants.ConnectionState.CONNECTED) {
             errorCallback?.onError(BLEException("Not connected to a device"))
+            failed()
             return
         }
         if (command.isEmpty()) {
             errorCallback?.onError(BLEException("Cannot send empty command payload"))
+            failed()
             return
         }
         if (currentProtocol?.canSendCommand(command) == false) {
             errorCallback?.onError(BLEException("Command blocked by protocol security state or pending operation"))
+            failed()
             return
         }
 
         val characteristic = getCharacteristic(characteristicUuid)
         if (characteristic == null) {
             errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
+            failed()
             return
         }
 
         // Android allows a single outstanding GATT operation: a write issued while another
         // one (or a CCCD descriptor write) is in flight is rejected and never reaches the
         // wheel. Writes are therefore serialized through a queue and retried when busy.
-        ensureWriteQueueRunning()
-        val write = PendingWrite(command.clone(), characteristicUuid, generation)
-        if (writeQueue.trySend(write).isFailure) write.payload.fill(0)
-    }
-
-    private fun ensureWriteQueueRunning() {
-        synchronized(writeQueue) {
-            if (writeQueueJob?.isActive == true) return
-            writeQueueJob = coroutineScope.launch {
-                for (write in writeQueue) {
-                    try {
-                        performQueuedWrite(write)
-                    } finally {
-                        write.payload.fill(0)
-                    }
+        val protocol = currentProtocol
+        val payloadSize = command.size
+        var blocked = false
+        writeSession.enqueue(command,
+            valid = { !blocked && generation == writeGeneration &&
+                connectionState == BLEConstants.ConnectionState.CONNECTED && valid() },
+            submit = { bytes ->
+                if (protocol?.canSendCommand(bytes) == false) {
+                    blocked = true
+                    errorCallback?.onError(BLEException("Command blocked by protocol security state or pending operation"))
+                    failed()
+                    false
+                } else {
+                    val target = getCharacteristic(characteristicUuid)
+                    if (target == null) {
+                        blocked = true
+                        errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
+                        failed()
+                        false
+                    } else writeCharacteristicNow(target, bytes)
                 }
-            }
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private suspend fun performQueuedWrite(write: PendingWrite) {
-        var attempts = 0
-        for (attempt in 1..MAX_WRITE_ATTEMPTS) {
-            if (write.generation != writeGeneration) return
-            if (connectionState != BLEConstants.ConnectionState.CONNECTED) return
-            val protocol = currentProtocol
-            if (protocol?.canSendCommand(write.payload) == false) {
-                errorCallback?.onError(BLEException("Command blocked by protocol security state or pending operation"))
-                return
-            }
-            val characteristic = getCharacteristic(write.characteristicUuid) ?: run {
-                errorCallback?.onError(BLEException("Characteristic not found: ${write.characteristicUuid}"))
-                return
-            }
-
-            val ack = CompletableDeferred<Unit>()
-            pendingWriteAck = ack
-            attempts = attempt
-            if (writeCharacteristicNow(characteristic, write.payload)) {
-                if (write.generation == writeGeneration && currentProtocol === protocol) {
-                    protocol?.onCommandSubmitted(write.payload)
+            },
+            retryable = { protocol?.canRetryCommand(it) != false },
+            accepted = { bytes ->
+                if (generation == writeGeneration && currentProtocol === protocol) {
+                    protocol?.onCommandSubmitted(bytes)
+                    accepted()
                 }
-                captureTraffic(TrafficDirection.TX, write.characteristicUuid, write.payload)
-                // Wait for onCharacteristicWrite before issuing the next operation; the
-                // timeout only guards against a callback that never arrives.
-                withTimeoutOrNull(WRITE_ACK_TIMEOUT_MS.milliseconds) { ack.await() }
-                return
-            }
-            pendingWriteAck = null
-            if (protocol?.canRetryCommand(write.payload) == false) break
-            if (attempt < MAX_WRITE_ATTEMPTS) delay((WRITE_RETRY_DELAY_MS * attempt).milliseconds)
-        }
-        errorCallback?.onError(
-            BLEException("BLE stack rejected write after $attempts attempts (${write.payload.size} bytes)")
-        )
+                captureTraffic(TrafficDirection.TX, characteristicUuid, bytes)
+            },
+            failed = { attempts ->
+                errorCallback?.onError(BLEException("BLE stack rejected write after $attempts attempts ($payloadSize bytes)"))
+                failed()
+            })
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -1084,7 +1059,7 @@ class BLEManager internal constructor(
         }
         currentProtocol?.let { protocol ->
             try {
-                matchPendingQueries(protocol, data)
+                pollingSession?.onNotification(data)
                 protocol.decode(data)
             } catch (e: Exception) {
                 errorCallback?.onError(BLEException("Data decoding failed: ${e.message}"))
@@ -1096,7 +1071,7 @@ class BLEManager internal constructor(
         gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
     ) {
         if (bluetoothGatt != null && gatt !== bluetoothGatt) return
-        pendingWriteAck?.complete(Unit)
+        writeSession.onAcknowledgment()
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
             errorCallback?.onError(BLEException("Characteristic write failed: $status"))
@@ -1140,45 +1115,18 @@ class BLEManager internal constructor(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun startPollingOrchestration(protocol: EUCProtocol) {
         cancelPollingOrchestration()
-        val plan = protocol.getPollingPlan()
-        if (!plan.enabled) return
-
-        queryOrchestrationJob = coroutineScope.launch {
-            for (query in plan.startupQueries) {
-                executeQueryWithRetry(protocol, query)
-            }
-
-            val periodicJobs = mutableMapOf<String, Job>()
-            while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
-                // Model-dependent queries may become available only after startup replies.
-                val currentPlan = protocol.getPollingPlan()
-                val queries = if (currentPlan.enabled) currentPlan.periodicQueries else emptyList()
-                val ids = queries.map { it.id }.toSet()
-                (periodicJobs.keys - ids).forEach {
-                    periodicJobs.remove(it)?.cancel()
-                    pendingQueries.remove(it)
-                }
-                queries.forEach { query ->
-                    if (query.id !in periodicJobs) {
-                        periodicJobs[query.id] = launch {
-                            if (query.initialDelayMs > 0L) delay(query.initialDelayMs.milliseconds)
-                            while (connectionState == BLEConstants.ConnectionState.CONNECTED) {
-                                executeQueryWithRetry(protocol, query)
-                                if (query.intervalMs <= 0L) break
-                                delay(query.intervalMs.milliseconds)
-                            }
-                        }
-                    }
-                }
-                delay(250.milliseconds)
-            }
-        }
+        pollingSession = PollingSession(protocol, coroutineScope,
+            now = monotonicMillis,
+            trace = { event -> emitQueryTrace(event.copy(timestampMs = System.currentTimeMillis())) },
+            onError = { errorCallback?.onError(BLEException("Polling session failed: ${it.message}")) },
+            enqueue = { payload, valid, accepted, failed ->
+                enqueueCommand(payload, protocol.getWriteCharacteristicUUID(), valid, accepted, failed)
+            }).also { it.start() }
     }
 
     private fun cancelPollingOrchestration() {
-        queryOrchestrationJob?.cancel()
-        queryOrchestrationJob = null
-        pendingQueries.clear()
+        pollingSession?.stop()
+        pollingSession = null
     }
 
     @VisibleForTesting(otherwise = PRIVATE)
@@ -1235,14 +1183,7 @@ class BLEManager internal constructor(
         nosfetFrameDetector.reset()
         currentSelectionReason = null
         writeGeneration++
-        writeQueueJob?.cancel()
-        writeQueueJob = null
-        pendingWriteAck?.cancel()
-        pendingWriteAck = null
-        while (true) {
-            val write = writeQueue.tryReceive().getOrNull() ?: break
-            write.payload.fill(0)
-        }
+        writeSession.reset()
         currentProtocol?.resetSession()
         _securityStateFlow.value = null
     }
@@ -1289,148 +1230,10 @@ class BLEManager internal constructor(
         discoveredServices: List<BluetoothGattService>,
         signaturesProvider: (String) -> List<GattSignature> = EucFingerprintDatabase::getSignatures
     ): Pair<EUCProtocol?, Int> {
-        val matchesWSign = protocols.map { protocol ->
-            var matches: Pair<EUCProtocol?, GattSignature?> = Pair(null, null)
-            val signatures = signaturesProvider(protocol.javaClass.simpleName)
-            logger.debug(
-                TAG + ":selectByGattFingerprint",
-                "$protocol nb signatures : ${signatures.size}"
-            )
-            signatures.forEach { signature ->
-                logger.debug(
-                    TAG + ":selectByGattFingerprint",
-                    "$protocol SIGNATURE : $signature"
-                )
-            }
-            signatures.isNotEmpty() && signatures.any { signature ->
-                logger.debug(
-                    TAG + ":selectByGattFingerprint",
-                    "$protocol TESTING SIGNATURE : $signature"
-                )
-                val match = matchesGattSignature(
-                    discoveredServices,
-                    signature,
-                    protocol.javaClass.simpleName
-                )
-                if (match) {
-                    matches = Pair(protocol, signature)
-                    true
-                } else {
-                    false
-                }
-            }
-            matches
-        }
-
-        val matches = matchesWSign.filter { match -> match.first != null }
-        return if (matches.size == 1) {
-            logger.info(
-                TAG + ":selectByGattFingerprint",
-                "GATT fingerprint uniquely matched protocol ${matches.single().first?.javaClass!!.simpleName}"
-            )
-            // return the protocol and the version of the first matching signature
-            Pair(matches.single().first, matches.single().second?.first()!!.version)
-        } else {
-            if (matches.size > 1) {
-                logger.warn(
-                    TAG + ":selectByGattFingerprint",
-                    "GATT fingerprint matched multiple protocols manual selection required"
-                )
-                matches.forEach { match ->
-                    logger.warn(
-                        TAG + ":selectByGattFingerprint",
-                        "GATT fingerprint matched ${match.first?.javaClass!!.simpleName}"
-                    )
-
-                }
-            }
-            Pair(null, 0)
-        }
-    }
-
-    /**
-     * Returns true if all [GattServiceSpec] entries in [signature] are satisfied by the
-     * discovered GATT services.
-     */
-    private fun matchesGattSignature(
-        discoveredServices: List<BluetoothGattService>,
-        signature: GattSignature,
-        protocolName: String
-    ): Boolean {
-        return signature.all { serviceSpec ->
-            logger.debug(
-                TAG + ":matchesGattSignature",
-                "CHECKING SIGNATURE FOR PROTOCOL $protocolName"
-            )
-
-            logger.debug(TAG + ":matchesGattSignature", "discoveredServices UUIDs")
-            discoveredServices.forEach { ds ->
-                logger.debug(TAG + ":matchesGattSignature", "${ds.uuid}")
-            }
-
-            logger.debug(TAG + ":matchesGattSignature", "Spec UUID : ${serviceSpec.uuid}")
-
-            val sf = discoveredServices.find { it.uuid == serviceSpec.uuid }
-            logger.debug(TAG + ":matchesGattSignature", "FOUND SERVICE$sf")
-
-            val service = discoveredServices.find { it.uuid == serviceSpec.uuid }
-                ?: return@all false
-
-
-            logger.debug(
-                TAG + ":matchesGattSignature",
-                "$protocolName: FOUND SERVICE : ${serviceSpec.uuid}"
-            )
-            val presentCharUUIDs = service.characteristics.map { it.uuid }.toSet()
-            logger.debug(
-                TAG + ":matchesGattSignature",
-                "FOUND characteristics: ${presentCharUUIDs}"
-            )
-            val reqs = serviceSpec.requiredCharacteristicUUIDs.size
-
-            logger.debug(
-                TAG + ":matchesGattSignature",
-                "requiredCharacteristicUUIDs list: ${serviceSpec.requiredCharacteristicUUIDs}"
-            )
-            logger.debug(
-                TAG + ":matchesGattSignature",
-                "excludedCharacteristicUUIDs list: ${serviceSpec.excludedCharacteristicUUIDs}"
-            )
-
-            val excls = serviceSpec.excludedCharacteristicUUIDs.size
-            logger.debug(TAG + ":matchesGattSignature", "requiredCharacteristicUUIDs: $reqs")
-            var foundReqs = 0
-            var absentExcls = 0
-            val findReqs = serviceSpec.requiredCharacteristicUUIDs.map { req ->
-                if (req in presentCharUUIDs) {
-                    logger.debug(
-                        TAG + ":matchesGattSignature",
-                        "FOUND REQUIRED CHAR : ${req} ${++foundReqs}/$reqs"
-                    )
-                    true
-                } else {
-                    logger.debug(TAG + ":matchesGattSignature", "COULD NOT FIND: ${req}")
-                    false
-                }
-            }
-
-            val findExcl = serviceSpec.excludedCharacteristicUUIDs.map { req ->
-                if (req in presentCharUUIDs) {
-                    logger.debug(
-                        TAG + ":matchesGattSignature",
-                        "Expected excluded service found: ${req}"
-                    )
-                    false
-                } else {
-                    logger.debug(
-                        TAG + ":matchesGattSignature",
-                        "Excluded service : ${req} ${++absentExcls}/$excls"
-                    )
-                    true
-                }
-            }
-            return@all findReqs.all { it } && findExcl.all { it }
-        }
+        return ProtocolSelector(protocols, logger).byFingerprint(
+            discoveredServices.map { service ->
+                ProtocolSelector.Service(service.uuid, service.characteristics.map { it.uuid }.toSet())
+            }, signaturesProvider)
     }
 
     /**
@@ -1448,26 +1251,7 @@ class BLEManager internal constructor(
         baseProtocol: EUCProtocol,
         deviceName: String
     ): EUCProtocol? {
-        val matches = protocols.filter { proto ->
-            proto.javaClass != baseProtocol.javaClass &&
-                    baseProtocol.javaClass.isAssignableFrom(proto.javaClass) &&
-                    proto.matchesDeviceName(deviceName)
-        }
-        return if (matches.size == 1) {
-            logger.info(
-                TAG,
-                "Device name '$deviceName' refined fingerprint match to subclass ${matches.single().javaClass.simpleName}"
-            )
-            matches.single()
-        } else {
-            if (matches.size > 1) {
-                logger.warn(
-                    TAG,
-                    "Device name '$deviceName' matched multiple subclass protocols (${matches.joinToString { it.javaClass.simpleName }}); using base protocol"
-                )
-            }
-            null
-        }
+        return ProtocolSelector(protocols, logger).subclass(baseProtocol, deviceName)
     }
 
     /**
@@ -1482,22 +1266,7 @@ class BLEManager internal constructor(
      */
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun selectByDeviceName(deviceName: String): EUCProtocol? {
-        val matches = protocols.filter { it.matchesDeviceName(deviceName) }
-        return if (matches.size == 1) {
-            logger.info(
-                TAG,
-                "Device name '$deviceName' matched protocol ${matches.single().javaClass.simpleName}"
-            )
-            matches.single()
-        } else {
-            if (matches.size > 1) {
-                logger.warn(
-                    TAG,
-                    "Device name '$deviceName' matched multiple protocols (${matches.joinToString { it.javaClass.simpleName }}); ambiguous"
-                )
-            }
-            null
-        }
+        return ProtocolSelector(protocols, logger).byName(deviceName)
     }
 
     private fun protocolIdentifier(protocol: EUCProtocol): String {
@@ -1579,159 +1348,6 @@ class BLEManager internal constructor(
             protocolClassName = protocol.javaClass.name,
             reason = reason
         )
-    }
-
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private suspend fun executeQueryWithRetry(protocol: EUCProtocol, query: ProtocolQuerySpec) {
-        val retryCount = query.maxRetries.coerceAtLeast(0)
-        val totalAttempts = retryCount + MIN_QUERY_ATTEMPTS
-        for (attempt in 1..totalAttempts) {
-            if (connectionState != BLEConstants.ConnectionState.CONNECTED) return
-            val sent = sendProtocolQuery(protocol, query, attempt)
-            if (!sent) return
-
-            val timeoutMs = query.responseTimeoutMs.coerceAtLeast(MIN_QUERY_TIMEOUT_MS)
-            val state = pendingQueries[query.id]
-            if (state != null) {
-                // Return as soon as the response is matched instead of always sleeping the
-                // full timeout: request/response wheels answer in tens of milliseconds, and
-                // the fixed delay capped the whole polling loop at the timeout duration.
-                withTimeoutOrNull(timeoutMs.milliseconds) { state.responseReceived.await() }
-            }
-
-            if (!pendingQueries.containsKey(query.id)) {
-                return
-            }
-
-            pendingQueries.remove(query.id)
-            emitQueryTrace(
-                QueryTraceEvent(
-                    timestampMs = System.currentTimeMillis(),
-                    protocol = protocol.manufacturer,
-                    queryId = query.id,
-                    commandType = query.commandType,
-                    phase = QueryTracePhase.TIMEOUT,
-                    attempt = attempt,
-                    message = "No matching response after ${timeoutMs}ms"
-                )
-            )
-
-            if (attempt < totalAttempts) {
-                emitQueryTrace(
-                    QueryTraceEvent(
-                        timestampMs = System.currentTimeMillis(),
-                        protocol = protocol.manufacturer,
-                        queryId = query.id,
-                        commandType = query.commandType,
-                        phase = QueryTracePhase.RETRY_SCHEDULED,
-                        attempt = attempt + 1,
-                        message = "Retry scheduled in ${query.retryBackoffMs}ms"
-                    )
-                )
-                if (query.retryBackoffMs > 0L) delay(query.retryBackoffMs.milliseconds)
-            } else {
-                emitQueryTrace(
-                    QueryTraceEvent(
-                        timestampMs = System.currentTimeMillis(),
-                        protocol = protocol.manufacturer,
-                        queryId = query.id,
-                        commandType = query.commandType,
-                        phase = QueryTracePhase.FAILED,
-                        attempt = attempt,
-                        message = "Query exhausted retries"
-                    )
-                )
-            }
-        }
-    }
-
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun sendProtocolQuery(
-        protocol: EUCProtocol, query: ProtocolQuerySpec, attempt: Int
-    ): Boolean {
-        if (protocol.getCommandSupport(query.commandType) == CommandSupport.UNSUPPORTED) {
-            emitQueryTrace(
-                QueryTraceEvent(
-                    timestampMs = System.currentTimeMillis(),
-                    protocol = protocol.manufacturer,
-                    queryId = query.id,
-                    commandType = query.commandType,
-                    phase = QueryTracePhase.UNSUPPORTED,
-                    attempt = attempt,
-                    message = "Command is unsupported by protocol support matrix"
-                )
-            )
-            return false
-        }
-
-        val payload = protocol.createCommand(query.commandType, query.value)
-        if (payload.isEmpty()) {
-            emitQueryTrace(
-                QueryTraceEvent(
-                    timestampMs = System.currentTimeMillis(),
-                    protocol = protocol.manufacturer,
-                    queryId = query.id,
-                    commandType = query.commandType,
-                    phase = QueryTracePhase.UNSUPPORTED,
-                    attempt = attempt,
-                    message = "Command payload is empty"
-                )
-            )
-            return false
-        }
-
-        sendCommand(payload, protocol.getWriteCharacteristicUUID())
-        pendingQueries[query.id] = PendingQueryState(
-            protocolName = protocol.manufacturer,
-            query = query,
-            attempt = attempt,
-            sentAtMs = System.currentTimeMillis()
-        )
-
-        emitQueryTrace(
-            QueryTraceEvent(
-                timestampMs = System.currentTimeMillis(),
-                protocol = protocol.manufacturer,
-                queryId = query.id,
-                commandType = query.commandType,
-                phase = QueryTracePhase.SENT,
-                attempt = attempt
-            )
-        )
-        return true
-    }
-
-    private fun matchPendingQueries(protocol: EUCProtocol, data: ByteArray) {
-        if (pendingQueries.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val matchedIds = mutableListOf<String>()
-
-        for ((id, state) in pendingQueries) {
-            if (state.protocolName != protocol.manufacturer) continue
-            if (!protocol.matchesQueryResponse(state.query, data)) continue
-            matchedIds.add(id)
-            state.responseReceived.complete(Unit)
-            val rawLatency = now - state.sentAtMs
-            if (rawLatency < 0L) {
-                logger.warn(
-                    "BLEQueryTrace",
-                    "Negative latency detected for query=${state.query.id} protocol=${state.protocolName}; sentAt=${state.sentAtMs} now=$now"
-                )
-            }
-            emitQueryTrace(
-                QueryTraceEvent(
-                    timestampMs = now,
-                    protocol = state.protocolName,
-                    queryId = id,
-                    commandType = state.query.commandType,
-                    phase = QueryTracePhase.RESPONSE_MATCHED,
-                    attempt = state.attempt,
-                    latencyMs = if (rawLatency < 0L) 0L else rawLatency
-                )
-            )
-        }
-
-        matchedIds.forEach { pendingQueries.remove(it) }
     }
 
     private fun emitQueryTrace(event: QueryTraceEvent) {
