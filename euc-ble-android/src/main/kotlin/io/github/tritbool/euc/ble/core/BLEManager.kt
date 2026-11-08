@@ -38,6 +38,7 @@ import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -1190,7 +1191,7 @@ class BLEManager internal constructor(
                 if (currentProtocol === protocol) _securityStateFlow.value = state
             }
         }
-        securityEventCollectorJob = coroutineScope.launch {
+        securityEventCollectorJob = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             protocol.securityEventFlow.collect { event ->
                 if (currentProtocol === protocol) _securityEventFlow.tryEmit(event)
             }
