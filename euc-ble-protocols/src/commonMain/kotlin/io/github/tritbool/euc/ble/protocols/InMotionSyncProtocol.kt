@@ -3,7 +3,6 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucClock
-import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
@@ -15,7 +14,7 @@ import kotlin.math.roundToInt
 /**
  * Single InMotion protocol entrypoint with auto-detected internal dialects (legacy V1 and V2).
  */
-class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncEucProtocol {
+class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     companion object {
 
@@ -153,6 +152,7 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
 
 
     override val manufacturer: String = "InMotion"
+    override val protocolId: String = "InMotionProtocol"
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -1531,8 +1531,8 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
     private fun getCombinedCellVoltages(snapshot: InMotionBmsSnapshot): List<Double>? {
         if (snapshot.packCellVoltages.isNotEmpty()) {
             return snapshot.packCellVoltages
-                .toSortedMap()
-                .values
+                .entries.sortedBy { it.key }
+                .map { it.value }
                 .flatten()
                 .takeIf { it.isNotEmpty() }
         }
@@ -2099,24 +2099,24 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
         var checksum = 0
         for (b in can) checksum = (checksum + (b.toInt() and 0xFF)) and 0xFF
 
-        val out = java.io.ByteArrayOutputStream(40)
-        out.write(V1_HEADER.toInt() and 0xFF)
-        out.write(V1_HEADER.toInt() and 0xFF)
+        val out = ArrayList<Byte>(40)
+        out.add(V1_HEADER)
+        out.add(V1_HEADER)
         for (b in can) v1WriteEscaped(out, b)
         v1WriteEscaped(out, checksum.toByte())
-        out.write(V1_TRAILER.toInt() and 0xFF)
-        out.write(V1_TRAILER.toInt() and 0xFF)
+        out.add(V1_TRAILER)
+        out.add(V1_TRAILER)
         return out.toByteArray()
     }
 
-    private fun v1WriteEscaped(out: java.io.ByteArrayOutputStream, b: Byte) {
+    private fun v1WriteEscaped(out: MutableList<Byte>, b: Byte) {
         when (b) {
             V1_HEADER, V1_TRAILER, V1_ESCAPE -> {
-                out.write(V1_ESCAPE.toInt() and 0xFF)
-                out.write(b.toInt() and 0xFF)
+                out.add(V1_ESCAPE)
+                out.add(b)
             }
 
-            else -> out.write(b.toInt() and 0xFF)
+            else -> out.add(b)
         }
     }
 
@@ -2191,7 +2191,7 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
         // see InMotionP6BmsTest); the V9 preserves its historical wheel-level
         // fallback until the first pack page arrives.
         if (supportsExtendedRoutingPacks()) {
-            val packs = p6Packs.toSortedMap().values.toList()
+            val packs = p6Packs.entries.sortedBy { it.key }.map { it.value }
             if (packs.isNotEmpty()) return packs
             if (modelName == P6) return null
         }
@@ -2208,7 +2208,7 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
             return null
         }
         if (packCellVoltages.isNotEmpty()) {
-            return packCellVoltages.toSortedMap().map { (index, cells) ->
+            return packCellVoltages.entries.sortedBy { it.key }.map { (index, cells) ->
                 BMSData(
                     bmsIndex = index,
                     voltage = packVoltages?.getOrNull(index - 1),

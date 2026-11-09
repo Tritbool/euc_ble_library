@@ -6,16 +6,6 @@ import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.SystemEucClock
 import kotlinx.coroutines.CoroutineScope
 
-class ExtremeBullSyncProtocol(clock: EucClock = SystemEucClock) :
-    GotwaySyncProtocol(clock) {
-    override val manufacturer: String = "ExtremeBull"
-    override fun matchesDeviceName(deviceName: String): Boolean {
-        val lower = deviceName.lowercase()
-        return lower.contains("extreme") || lower.contains("bull") ||
-            lower.contains("commander") || lower.contains("rocket") || lower.contains("griffin")
-    }
-}
-
 class ExtremeBullProtocol(
     scope: CoroutineScope? = null,
     logger: Logger = NoOpLogger(),

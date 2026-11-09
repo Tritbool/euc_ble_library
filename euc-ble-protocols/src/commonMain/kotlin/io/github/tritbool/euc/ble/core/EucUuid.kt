@@ -1,9 +1,10 @@
 package io.github.tritbool.euc.ble.core
 
 /** Canonical UUID value usable by platform-neutral protocol and GATT-fingerprint code. */
-@JvmInline
-value class EucUuid private constructor(val value: String) {
+class EucUuid private constructor(val value: String) {
     override fun toString(): String = value
+    override fun equals(other: Any?): Boolean = other is EucUuid && value == other.value
+    override fun hashCode(): Int = value.hashCode()
 
     companion object {
         fun parse(value: String): EucUuid {

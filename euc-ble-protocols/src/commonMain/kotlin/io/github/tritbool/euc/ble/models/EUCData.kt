@@ -1,5 +1,7 @@
 package io.github.tritbool.euc.ble.models
 
+import io.github.tritbool.euc.ble.core.InternalEucBleApi
+
 /**
  * Represents real-time telemetry data from an Electric Unicycle.
  *
@@ -72,7 +74,7 @@ package io.github.tritbool.euc.ble.models
  * configured [speedLimit]. Null until received; the reason for a reduction is not reported here.
  */
 data class EUCData(
-    internal val frameType: String = "BASE",
+    @property:InternalEucBleApi val frameType: String = "BASE",
     val speed: Double,              // km/h
     val voltage: Double,            // volts
     val current: Double,            // amps
@@ -127,9 +129,7 @@ data class EUCData(
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as EUCData
+        if (other !is EUCData) return false
 
         if (timestamp != other.timestamp) return false
         if (manufacturer != other.manufacturer) return false

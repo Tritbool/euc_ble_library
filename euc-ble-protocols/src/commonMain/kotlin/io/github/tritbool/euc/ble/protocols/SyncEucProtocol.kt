@@ -9,9 +9,9 @@ package io.github.tritbool.euc.ble.protocols
  *
  * Implementations must not use coroutines, threads, locks, timers or wall-clock reads other than
  * an injected [io.github.tritbool.euc.ble.core.EucClock]. They are not required to be thread-safe:
- * the session layer (for example [io.github.tritbool.euc.ble.session.FlowProtocolAdapter])
- * serializes every call. This keeps the contract directly portable to a Rust `no_std`-friendly
- * state machine.
+ * the caller/session layer serializes every call and drains outputs before the next input.
+ * The contract has no async runtime dependency. A Rust port must still choose allocation,
+ * command-value and queue-capacity representations; this Kotlin implementation uses collections.
  *
  * [EucProtocolSpec.resetSession] must also discard queued outputs; the session layer disarms all
  * timers on reset.

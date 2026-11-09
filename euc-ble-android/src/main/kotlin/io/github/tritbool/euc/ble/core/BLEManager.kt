@@ -1301,7 +1301,7 @@ class BLEManager internal constructor(
     }
 
     /**
-     * Looks for a registered protocol that is a strict subclass of [baseProtocol]'s class
+     * Looks for a registered protocol whose parent identity is [baseProtocol]'s identity
      * and whose [EUCProtocol.matchesDeviceName] returns true for [deviceName].
      *
      * Used to refine a GATT fingerprint match with a more specific sub-protocol

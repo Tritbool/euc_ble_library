@@ -3,8 +3,8 @@ package io.github.tritbool.euc.ble.core
 import java.security.SecureRandom
 import java.util.Calendar
 
-// JVM implementations of the platform abstractions. Kept in a dedicated file so that a future
-// KMP split can move them to jvmMain without touching the platform-independent contracts.
+// JVM defaults for the compatibility facades. The KMP engine artifact only contains contracts;
+// its callers must supply platform time and secure randomness explicitly.
 
 /** [EucClock] backed by the JVM system clock and default time zone. */
 object SystemEucClock : EucClock {

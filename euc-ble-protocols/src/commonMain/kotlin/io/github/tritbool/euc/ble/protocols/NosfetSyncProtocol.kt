@@ -1,13 +1,14 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.EucClock
-import io.github.tritbool.euc.ble.core.SystemEucClock
 import kotlin.math.roundToInt
 
-class NosfetSyncProtocol(clock: EucClock = SystemEucClock) :
+class NosfetSyncProtocol(clock: EucClock) :
     LeaperkimSyncProtocol(clock) {
 
     override val manufacturer: String = "Nosfet"
+    override val protocolId: String = "NosfetProtocol"
+    override val parentProtocolId: String = "LeaperkimProtocol"
 
     override fun decodeSpeed(speedRaw: Short): Double = speedRaw / 10.0
 

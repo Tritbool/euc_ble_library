@@ -3,7 +3,6 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucClock
-import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
@@ -38,7 +37,7 @@ data class NinebotBmsSnapshot(
 /**
  * Ninebot protocol MVP parser for common WheelLog-style telemetry payloads.
  */
-class NinebotSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncEucProtocol {
+class NinebotSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     companion object {
         private const val FRAME_HEADER = 0x55
@@ -78,6 +77,7 @@ class NinebotSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncEu
     }
 
     override val manufacturer: String = "Ninebot"
+    override val protocolId: String = "NinebotProtocol"
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,

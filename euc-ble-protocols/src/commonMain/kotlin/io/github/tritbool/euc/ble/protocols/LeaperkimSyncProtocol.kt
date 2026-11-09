@@ -5,7 +5,6 @@ import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucCrc32
 import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.EucDateTime
-import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
@@ -22,7 +21,7 @@ import kotlin.math.roundToInt
  * - Full frame size: len + 4 bytes
  * - For long frames (len > 38), trailing CRC32 is expected
  */
-open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncEucProtocol {
+open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     companion object {
         private const val LEAPERKIM_MAX_BMS_CELLS = 42
         private val LKAP = byteArrayOf(0x4C, 0x6B, 0x41, 0x70)  // "LkAp"
@@ -30,6 +29,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) :
     }
 
     override val manufacturer: String = "Leaperkim"
+    override val protocolId: String = "LeaperkimProtocol"
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
@@ -538,7 +538,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) :
      */
     private fun buildLockFrame(locked: Boolean): ByteArray = buildLockFrame(locked, clock.localDateTime())
 
-    internal fun buildLockFrame(locked: Boolean, now: EucDateTime): ByteArray {
+    fun buildLockFrame(locked: Boolean, now: EucDateTime): ByteArray {
         val state: Byte = if (locked) 0x01 else 0x00
         val day = now.dayOfMonth.toByte()
         val hour = now.hour.toByte()

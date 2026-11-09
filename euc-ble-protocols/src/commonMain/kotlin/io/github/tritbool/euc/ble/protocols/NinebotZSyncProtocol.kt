@@ -2,7 +2,6 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.EucClock
-import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.core.EucUuid as UUID
@@ -11,7 +10,7 @@ import io.github.tritbool.euc.ble.core.EucUuid as UUID
  * Dedicated Ninebot Z-series protocol split with stateful handshake/polling queries.
  * Decoding is delegated to NinebotProtocol while command/query orchestration is Z-specific.
  */
-class NinebotZSyncProtocol(clock: EucClock = SystemEucClock) : SyncEucProtocol {
+class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
 
     companion object {
         private const val FRAME_HEADER = BLEConstants.NINEBOT_FRAME_FIRST_BYTE
@@ -54,6 +53,7 @@ class NinebotZSyncProtocol(clock: EucClock = SystemEucClock) : SyncEucProtocol {
     private val delegate = NinebotSyncProtocol(clock)
 
     override val manufacturer: String = "Ninebot"
+    override val protocolId: String = "NinebotZProtocol"
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,

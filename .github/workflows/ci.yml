@@ -32,6 +32,11 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Set up Node for non-JVM protocol tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
@@ -40,6 +45,12 @@ jobs:
 
       - name: Test quality reporting
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v
+
+      - name: Verify coroutine-free protocols on JVM and JavaScript
+        run: >
+          ./gradlew -Peuc.includeAndroid=false
+          :euc-ble-protocols:check
+          --no-daemon --stacktrace
 
       - name: Run unit tests + coverage reports
         id: tests
@@ -230,6 +241,7 @@ jobs:
         with:
           name: test-and-coverage-reports
           path: |
+            euc-ble-protocols/build/reports/tests/
             euc-ble-core/build/reports/tests/
             euc-ble-core/build/reports/jacoco/
             euc-ble-android/build/reports/tests/

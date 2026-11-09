@@ -118,6 +118,8 @@ class FlowProtocolAdapter(
     }
 
     override val manufacturer: String get() = protocol.manufacturer
+    override val protocolId: String get() = protocol.protocolId
+    override val parentProtocolId: String? get() = protocol.parentProtocolId
     override fun getSecurityState(): WheelSecurityState? = call { protocol.getSecurityState() }
     override fun canSendCommand(payload: ByteArray): Boolean = call { protocol.canSendCommand(payload) }
     override fun onCommandSubmitted(payload: ByteArray) = call { protocol.onCommandSubmitted(payload) }

@@ -377,7 +377,7 @@ class BLEManagerGattFingerprintTest {
         vararg specs: GattServiceSpec
     ): (String) -> List<GattSignature> {
         val sig: GattSignature = specs.toList()
-        return { name -> if (name == proto.javaClass.simpleName) listOf(sig) else emptyList() }
+        return { name -> if (name == proto.protocolId) listOf(sig) else emptyList() }
     }
 
     private class RecordingConnectionCallback : ConnectionCallback() {
@@ -403,11 +403,12 @@ class BLEManagerGattFingerprintTest {
     }
 
     /**
-     * Stub whose simple class name "KingsongProtocol" matches the real EucFingerprintDatabase
+     * Stub whose explicit identity matches the real EucFingerprintDatabase
      * entry, so integration tests use the real fingerprint without importing the actual protocol.
      */
     private class KingsongProtocol(private val dataCharUuid: UUID) : EUCProtocol {
         override val manufacturer: String = "KingSong"
+        override val protocolId: String = "KingsongProtocol"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
         override fun getDataCharacteristicUUID(): EucUuid = dataCharUuid.toEucUuid()
@@ -419,12 +420,13 @@ class BLEManagerGattFingerprintTest {
     }
 
     /**
-     * Stub whose simple class name "InMotionProtocol" matches the real EucFingerprintDatabase
+     * Stub whose explicit identity matches the real EucFingerprintDatabase
      * entry. The library uses a single InMotionProtocol for both V1 (0000ffc0 service) and
      * V2 (Nordic UART + 00002aa6), so both GATT signatures are registered under this key.
      */
     private class InMotionProtocol : EUCProtocol {
         override val manufacturer: String = "InMotion"
+        override val protocolId: String = "InMotionProtocol"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
 
@@ -440,11 +442,12 @@ class BLEManagerGattFingerprintTest {
     }
 
     /**
-     * Stub whose simple class name "NinebotZProtocol" matches the real EucFingerprintDatabase
+     * Stub whose explicit identity matches the real EucFingerprintDatabase
      * entry, used alongside [InMotionProtocol] to verify Nordic UART + 00002aa6 disambiguation.
      */
     private class NinebotZProtocol : EUCProtocol {
         override val manufacturer: String = "Ninebot"
+        override val protocolId: String = "NinebotZProtocol"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
         override fun getDataCharacteristicUUID(): EucUuid =

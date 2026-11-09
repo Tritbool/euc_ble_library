@@ -481,6 +481,7 @@ class BLEManagerDeviceNameSelectionTest {
     /** Strict subclass of [BaseStub] that matches "extreme" / "bull" device names. */
     private class ExtremeBullSubStub : BaseStub() {
         override val manufacturer = "ExtremeBull"
+        override val parentProtocolId: String = "Base"
         override fun matchesDeviceName(deviceName: String): Boolean {
             val lower = deviceName.lowercase()
             return lower.contains("extreme") || lower.contains("bull")
@@ -490,6 +491,7 @@ class BLEManagerDeviceNameSelectionTest {
     /** Stub that matches Nosfet-related names as a subclass of [BaseStub]. */
     private class NosfetSubStub : BaseStub() {
         override val manufacturer = "Nosfet"
+        override val parentProtocolId: String = "Base"
         override fun matchesDeviceName(deviceName: String): Boolean {
             val lower = deviceName.lowercase()
             return lower.contains("nosfet") || lower.contains("apex") ||

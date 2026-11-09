@@ -2,6 +2,8 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucRandom
+import io.github.tritbool.euc.ble.core.SecureEucRandom
+import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.PasswordOperationStatus
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -14,7 +16,7 @@ import org.junit.jupiter.api.Test
 class SyncTimerProtocolsTest {
     @Test
     fun `Gotway timer actions retain all delayed command writes in order`() {
-        val engine = GotwaySyncProtocol()
+        val engine = GotwaySyncProtocol(SystemEucClock)
         assertArrayEquals("b".encodeToByteArray(), engine.createCommand(CommandType.SET_SPEED_LIMIT, 42))
         val timers = engine.drainOutputs().filterIsInstance<ProtocolOutput.StartTimer>()
         assertEquals(listOf(100L, 200L, 300L, 400L, 500L, 600L), timers.map { it.delayMs })
@@ -30,7 +32,7 @@ class SyncTimerProtocolsTest {
 
     @Test
     fun `Gotway reset discards pending timer writes`() {
-        val engine = GotwaySyncProtocol()
+        val engine = GotwaySyncProtocol(SystemEucClock)
         engine.createCommand(CommandType.LIGHT_ON, Unit)
         val timer = engine.drainOutputs().filterIsInstance<ProtocolOutput.StartTimer>().single()
         engine.resetSession()
@@ -40,7 +42,7 @@ class SyncTimerProtocolsTest {
 
     @Test
     fun `KingSong password timeout starts on acceptance and remains unconfirmed`() {
-        val engine = KingsongSyncProtocol(unlockRandom = EucRandom { 0 })
+        val engine = KingsongSyncProtocol(SystemEucClock, EucRandom { 0 })
         val payload = engine.createCommand(CommandType.SET_PASSWORD, "0012")
         assertTrue(engine.drainOutputs().isEmpty())
         engine.onCommandSubmitted(payload)
@@ -57,7 +59,7 @@ class SyncTimerProtocolsTest {
 
     @Test
     fun `KingSong confirmation cancels timer and emits no timeout after reset`() {
-        val engine = KingsongSyncProtocol()
+        val engine = KingsongSyncProtocol(SystemEucClock, SecureEucRandom())
         val payload = engine.createCommand(CommandType.SET_PASSWORD, "0012")
         engine.onCommandSubmitted(payload)
         val timer = engine.pollOutput() as ProtocolOutput.StartTimer
@@ -74,7 +76,7 @@ class SyncTimerProtocolsTest {
 
     @Test
     fun `KingSong unlock uses injected nonce and received challenge`() {
-        val engine = KingsongSyncProtocol(unlockRandom = EucRandom { 0 })
+        val engine = KingsongSyncProtocol(SystemEucClock, EucRandom { 0 })
         engine.onNotification(ByteUtils.hexToBytes("AA5501003034343030300000000000005F145A5A"))
         engine.drainOutputs()
         val command = engine.createCommand(CommandType.UNLOCK, Unit)

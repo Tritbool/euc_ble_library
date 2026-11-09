@@ -3,7 +3,6 @@ package io.github.tritbool.euc.ble.protocols
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucClock
-import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
@@ -88,7 +87,7 @@ import kotlin.math.abs
  *    present during the initial reverse engineering.
  */
 open class GotwaySyncProtocol(
-    private val clock: EucClock = SystemEucClock,
+    private val clock: EucClock,
 ) : SyncEucProtocol {
 
 
@@ -298,6 +297,7 @@ open class GotwaySyncProtocol(
     private var wheelInMiles = false
 
     override val manufacturer: String = "Gotway"
+    override val protocolId: String = "GotwayProtocol"
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,

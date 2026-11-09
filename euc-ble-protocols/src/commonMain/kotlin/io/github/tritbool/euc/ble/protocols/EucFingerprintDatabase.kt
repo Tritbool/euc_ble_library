@@ -14,8 +14,7 @@ import io.github.tritbool.euc.ble.core.EucUuid as UUID
  * of [GattServiceSpec] entries that must ALL match (AND semantics).
  *
  * Protocols without a fingerprint entry may be identified by device name or telemetry.
- * Otherwise, callers can use [io.github.tritbool.euc.ble.EucBleClient.selectProtocol]
- * or [io.github.tritbool.euc.ble.EucBleClient.forceProtocol].
+ * Otherwise, the connector must provide manual selection.
  */
 @InternalEucBleApi
 object EucFingerprintDatabase {

@@ -32,8 +32,8 @@ jacoco {
 }
 
 dependencies {
-    // Transitional: flow-compatible facades and session drivers still live in this JVM module.
-    // Split them from the sans-IO engines before removing coroutines from the portable core.
+    api(project(":euc-ble-protocols"))
+    // Compatibility facades and async session drivers deliberately stay outside the engines.
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     testFixturesApi(platform("org.junit:junit-bom:5.10.2"))
@@ -64,8 +64,13 @@ val focusedPackages = listOf(
     "io/github/tritbool/euc/ble/frames/**"
 )
 
+val protocolClasses = project(":euc-ble-protocols").layout.buildDirectory.dir("classes/kotlin/jvm/main")
+val protocolSources = project(":euc-ble-protocols").file("src/commonMain/kotlin")
+
 tasks.jacocoTestReport {
     dependsOn(tasks.test)
+    additionalClassDirs.from(protocolClasses)
+    additionalSourceDirs.from(protocolSources)
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -86,6 +91,8 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
             fileTree(dir) { include(focusedPackages) }
         }
     )
+    additionalClassDirs.from(fileTree(protocolClasses) { include(focusedPackages) })
+    additionalSourceDirs.from(protocolSources)
     reports {
         xml.required.set(true)
         html.required.set(true)

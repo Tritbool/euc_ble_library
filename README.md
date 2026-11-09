@@ -42,13 +42,21 @@ Repository administrators must configure:
 
 | Module | Artifact | Content |
 |---|---|---|
-| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | Pure Kotlin/JVM protocol core: protocols, frame parsers, models. No Android dependency. |
+| `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | KMP synchronous engines, parsers, models and pure policies (`commonMain`; JVM and JavaScript targets). No Android or coroutine dependency. |
+| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | JVM compatibility facades, platform providers and async session drivers. Exposes `euc-ble-protocols` through `api`. |
 | `euc-ble-android` | `io.github.tritbool:euc-ble-library` | Android BLE connector (`BLEManager`) and the `EucBleClient` entry point. Depends on `euc-ble-core` (`api`). |
 
 Android applications keep depending on `euc-ble-library`; package names are unchanged.
-The core can be built and tested without an Android SDK:
+Rebuild consumers after the module split; this preserves package names and the JVM facade's
+default time/random providers, not binary compatibility with previously compiled applications.
+Direct synchronous-engine constructors now require explicit `EucClock` (and KingSong `EucRandom`).
+Custom protocols should declare a stable `protocolId` for fingerprint selection and an optional
+`parentProtocolId` for family refinement; selection no longer inspects Java class inheritance.
+
+The portable engines can be tested without an Android SDK (Node.js and npm must be on `PATH`):
 
 ```bash
+./gradlew -Peuc.includeAndroid=false :euc-ble-protocols:check
 ./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
 ```
 

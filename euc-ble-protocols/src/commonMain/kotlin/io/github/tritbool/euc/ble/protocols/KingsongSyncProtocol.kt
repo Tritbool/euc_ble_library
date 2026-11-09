@@ -4,8 +4,6 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.EucRandom
-import io.github.tritbool.euc.ble.core.SystemEucClock
-import io.github.tritbool.euc.ble.core.SecureEucRandom
 import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
@@ -27,8 +25,8 @@ import io.github.tritbool.euc.ble.core.EucUuid as UUID
  * 0xF1/0xF2 (Smart BMS data).
  */
 class KingsongSyncProtocol(
-    private val clock: EucClock = SystemEucClock,
-    private val unlockRandom: EucRandom = SecureEucRandom()
+    private val clock: EucClock,
+    private val unlockRandom: EucRandom
 ) : SyncEucProtocol {
 
     private val header = BLEConstants.KINGSONG_FRAME_HEADER_1
@@ -113,6 +111,7 @@ class KingsongSyncProtocol(
     }
 
     override val manufacturer: String = "KingSong"
+    override val protocolId: String = "KingsongProtocol"
     override val preferredWriteType: ProtocolWriteType = ProtocolWriteType.NO_RESPONSE
     override val supportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
@@ -349,7 +348,7 @@ class KingsongSyncProtocol(
         private const val OFFSET_PAGE_NUM = 17
 
         private const val QUERY_ID_REQUEST_ALARMS = "ks.request-alarms"
-        internal const val PASSWORD_OPERATION_TIMEOUT_MS = 3000L
+        const val PASSWORD_OPERATION_TIMEOUT_MS = 3000L
         private const val PASSWORD_TIMER = "kingsong.password"
 
         // KingSong never transmits a battery percentage; it is derived from the
@@ -368,7 +367,7 @@ class KingsongSyncProtocol(
          * Number of cells in series for a KingSong model name reported in frame 0xBB
          * (e.g. "KS-S18", "KS-16X"), or null when the model is unknown.
          */
-        internal fun seriesCellsForModel(model: String?): Int? {
+        fun seriesCellsForModel(model: String?): Int? {
             val n = model?.lowercase() ?: return null
             return when {
                 "s22" in n || "s20" in n || "f16" in n  -> 30
@@ -384,13 +383,13 @@ class KingsongSyncProtocol(
         }
 
         /** Smallest known pack class able to reach [voltage]. */
-        internal fun seriesCellsForVoltage(voltage: Double): Int? {
+        fun seriesCellsForVoltage(voltage: Double): Int? {
             if (voltage <= 0.0) return null
             return KNOWN_SERIES_COUNTS.firstOrNull { voltage <= it * MAX_V_PER_CELL_FOR_INFERENCE }
                 ?: KNOWN_SERIES_COUNTS.last()
         }
 
-        internal fun batteryPercentFromVoltage(voltage: Double, seriesCells: Int): Int {
+        fun batteryPercentFromVoltage(voltage: Double, seriesCells: Int): Int {
             if (voltage <= 0.0 || seriesCells <= 0) return 0
             val perCell = voltage / seriesCells
             val raw = (perCell - KS_EMPTY_V_PER_CELL) * 100.0 /
@@ -625,7 +624,7 @@ class KingsongSyncProtocol(
             end++
         }
         if (end == 0) return
-        val name = String(data, base + 2, end).trim()
+        val name = data.decodeToString(base + 2, base + 2 + end).trim()
         val parts = name.split("-")
         if (parts.size >= 2) {
             lastKnownModel = parts.dropLast(1).joinToString("-")
@@ -651,7 +650,7 @@ class KingsongSyncProtocol(
         val snBytes = ByteArray(SERIAL_NUMBER_LENGTH)
         data.copyInto(snBytes, destinationOffset = 0, startIndex = base + 2, endIndex = base + 16)
         data.copyInto(snBytes, destinationOffset = 14, startIndex = base + 17, endIndex = base + 20)
-        lastKnownSerialNumber = String(snBytes).trimEnd('\u0000').trim()
+        lastKnownSerialNumber = snBytes.decodeToString().trimEnd('\u0000').trim()
     }
 
     private fun parseTypeF5(data: ByteArray, base: Int) {

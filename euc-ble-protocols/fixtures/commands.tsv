@@ -1,0 +1,9 @@
+# Protocol	Command	value type	value	expected command bytes (hex)
+GotwayProtocol	BEEP	unit		62
+ExtremeBullProtocol	BEEP	unit		62
+LeaperkimProtocol	LIGHT_ON	unit		5365744C696768744F4E
+NosfetProtocol	LIGHT_OFF	unit		5365744C696768744F4646
+KingsongProtocol	BEEP	unit		AA55000000000000000000000000000088145A5A
+NinebotProtocol	BEEP	unit		55052118013D
+NinebotZProtocol	CUSTOM	hex	00A5FF	00A5FF
+InMotionProtocol	CUSTOM	hex	00A5FF	00A5FF

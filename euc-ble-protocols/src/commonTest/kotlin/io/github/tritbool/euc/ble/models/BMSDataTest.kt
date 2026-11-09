@@ -1,9 +1,9 @@
 package io.github.tritbool.euc.ble.models
 
-import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertFalse
-import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
-import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
-import org.junit.jupiter.api.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 /**
  * Unit tests for the BMSData model and its charging-status resolution.

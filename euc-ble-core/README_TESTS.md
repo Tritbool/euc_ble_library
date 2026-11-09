@@ -23,6 +23,18 @@ Each CSV row contains the exact byte sequence received from the wheel over BLE. 
 
 ---
 
+## Portable engine tests
+
+Run `./gradlew -Peuc.includeAndroid=false :euc-ble-protocols:check` with Node.js/npm on `PATH`.
+This compiles the engines without JVM APIs and runs common tests on JVM and JavaScript.
+`PortableReplayTest` covers golden commands for all eight engines, fragmented InMotion
+authentication, acceptance-aware timers, reset, pure selection/polling and byte/CRC utilities.
+`BMSDataTest` now lives in `euc-ble-protocols/src/commonTest` and runs on both targets.
+The language-neutral command vectors are in `euc-ble-protocols/fixtures/commands.tsv`.
+
+The JVM `AllTests` suite below covers compatibility/session behavior and existing capture replays;
+it is not a replacement for the portable module's `check` task.
+
 ## Test inventory
 
 ### WheelLog integration tests (real captures)
@@ -85,7 +97,7 @@ Exercise decoded-data delivery from each protocol under concurrent load.
 
 | Suite | Contents |
 |---|---|
-| `AllTests` | Entry point for CI – runs everything |
+| `AllTests` | JVM compatibility/session and capture replay suite |
 | `RegularTestsSuite` | Selected protocol, capture, and utility tests |
 | `NoDropTestsSuite` | No-drop tests plus client entry-point capture integration |
 

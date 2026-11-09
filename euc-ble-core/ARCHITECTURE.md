@@ -129,17 +129,19 @@ java -jar plantuml.jar class_diagram.puml
 └─────────────────────────────────────────────────┘
 ```
 
-### Sync protocol core and session layer (migration in progress)
+### Portable synchronous engines and JVM session layer
 
-Protocols are being migrated to synchronous, I/O-free ("sans-IO") state machines so that the
-core stays portable (Kotlin Multiplatform, and a later Rust port for ESP32 / SailfishOS):
+The module boundary is enforced by Gradle: `euc-ble-protocols` is Kotlin Multiplatform with all
+production sources in `commonMain` and no coroutine dependency. `euc-ble-core` depends on it and
+provides JVM compatibility facades and async drivers; `euc-ble-android` depends on core and owns GATT.
+Dependencies never point from the portable engines back to either connector or coroutine runtime.
 
 | Layer | Package | Responsibility |
 |---|---|---|
 | Contract | `protocols.EucProtocolSpec` | Pure metadata, command encoding, polling plan, state queries |
 | Sync protocol | `protocols.SyncEucProtocol` | `onNotification` / `onTimer` / `onCommandSubmitted` inputs; outputs via `pollOutput()` |
 | Outputs | `protocols.ProtocolOutput` | Telemetry, security updates, writes, timer actions and diagnostic logs |
-| Platform inputs | `core.EucClock`, `core.EucRandom` | Injected time and randomness (JVM defaults in `core/JvmPlatform.kt`) |
+| Platform inputs | `core.EucClock`, `core.EucRandom` | Required engine inputs; JVM facade defaults remain in `euc-ble-core/core/JvmPlatform.kt` |
 | Session bridge | `session.FlowProtocolAdapter` | Serializes calls, drains outputs into the `EUCProtocol` flows, runs timers |
 | Selection policy | `session.ProtocolSelector` | Matches plain GATT snapshots and device names; rejects ambiguous matches |
 | Polling state | `session.PollingEngine` | Synchronous startup/periodic scheduling, response matching and retries |
@@ -153,17 +155,42 @@ All built-in protocol families now have synchronous state machines. Gotway and L
 process incoming chunks in order instead of launching one coroutine per chunk. KingSong's password
 timeout starts only after write acceptance and expires as unconfirmed, not as proof of a bad password.
 UUID handling and protocol byte/CRC operations now use portable core implementations; conversion to
-`java.util.UUID` is confined to the Android connector. This is still a Kotlin/JVM module, not a
-Kotlin Multiplatform module: `SystemEucClock` and `SecureEucRandom` in `core/JvmPlatform.kt` are JVM
-providers, and the compatibility flows and coroutine session drivers remain in core. The
+`java.util.UUID` is confined to the Android connector. The engine sources compile for JVM and
+JavaScript and their shared tests run on both targets. Java streams, sorted maps, reflection,
+byte-array string constructors and platform-provider defaults are absent from this artifact.
+Selection uses explicit protocol and parent identities, not runtime class names. The
 `EUCDevice.timestamp` default is `0` when the caller has no discovery timestamp; Android scan
 results provide the actual wall-clock timestamp.
 
-Before creating `commonMain`/platform source sets, move JVM clock/random providers to a JVM or
-platform module and inject platform implementations where protocols are constructed. Then decide
-whether coroutine flow facades remain in a multiplatform session module or move to platform
-connectors. Do not replace clock or secure-random defaults with fixed values to obtain a common
-source set.
+#### Why JVM dependencies matter
+
+`java.io`, `Calendar`, `SecureRandom`, Java reflection, and JVM-specific standard-library extensions
+exist only with the Java runtime. They cannot be referenced from KMP common code or executed by
+Kotlin/JS, Kotlin/Native, or Rust on an ESP32. Even seemingly ordinary Kotlin calls such as
+`toSortedMap()` can hide a JVM dependency. Non-JVM compilation is the check, not an import search.
+JVM APIs are fine in the JVM session/connector boundary; they are not a problem everywhere.
+Coroutines themselves support KMP, but do not belong in synchronous protocol engines.
+
+The JVM facades retain production clocks and secure randomness. Other hosts supply their own
+`EucClock` and `EucRandom`; deterministic test providers must not become production defaults.
+Drain every output after each input, perform writes externally, report actual write acceptance,
+and deliver timer expiries only while that session remains active.
+
+#### Rust / embedded boundary and remaining work
+
+This is a portable Kotlin reference implementation, not a Rust library or an ESP32 firmware build.
+The common command vectors in `euc-ble-protocols/fixtures/commands.tsv` are language-neutral;
+the same vectors and common replay tests run on JVM and Node. A Rust implementation can consume
+the vectors without a JVM. They are initial parity vectors, not exhaustive cross-language proof.
+
+The Kotlin API still uses `Any` command/query values for facade compatibility. A Rust API should
+represent these with explicit command/value enums. The implementation uses allocated collections,
+strings and growing output queues, so it is not a fixed-memory or allocation-free `no_std` design.
+An embedded port must specify capacities, overflow errors, payload ownership and backpressure,
+and use monotonic time for durations versus wall time for telemetry and vendor timestamp commands.
+The async JVM drivers still have unbounded channels; no arbitrary cap/drop policy was introduced
+that could silently lose commands or telemetry. Native targets and non-Android BLE connectors are
+not yet configured; only JVM and JavaScript are currently compiled and tested.
 
 Polling response deadlines and `SENT` traces start at transport acceptance, never at enqueue time.
 Response latency uses monotonic milliseconds; Android translates trace timestamps to wall-clock
