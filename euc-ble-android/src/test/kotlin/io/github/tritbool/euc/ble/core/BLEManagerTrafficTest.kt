@@ -179,7 +179,7 @@ class BLEManagerTrafficTest {
             attachInMotionGatt(manager, version = 1)
 
             assertTrue(if (forced) manager.forceProtocol(protocol) else manager.selectProtocol(protocol))
-            assertEquals(UUID.fromString(BLEConstants.INMOTION_WRITE_CHARACTERISTIC),
+            assertEquals(EucUuid.parse(BLEConstants.INMOTION_WRITE_CHARACTERISTIC),
                 protocol.getWriteCharacteristicUUID())
             assertTrue(protocol.getPollingPlan().startupQueries.any { it.id == "inmotion.v1-pin" })
             manager.disconnect()
@@ -272,7 +272,7 @@ class BLEManagerTrafficTest {
 
         val event = events.single()
         assertEquals(TrafficDirection.RX, event.direction)
-        assertEquals(characteristicUuid, event.characteristicUuid)
+        assertEquals(characteristicUuid.toEucUuid(), event.characteristicUuid)
         assertEquals(1L, event.sequence)
         assertTrue(event.timestampMs in before..System.currentTimeMillis())
         assertArrayEquals(byteArrayOf(0x55, 0x01), event.bytes)
@@ -324,7 +324,7 @@ class BLEManagerTrafficTest {
 
         val event = events.single()
         assertEquals(TrafficDirection.TX, event.direction)
-        assertEquals(characteristicUuid, event.characteristicUuid)
+        assertEquals(characteristicUuid.toEucUuid(), event.characteristicUuid)
         assertArrayEquals(byteArrayOf(0x51), event.bytes)
         assertTrue(event.timestampMs in before..System.currentTimeMillis())
         assertTrue(raw.isEmpty())
