@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble
 
 import android.content.Context
 import io.github.tritbool.euc.ble.core.BLEManager
+import io.github.tritbool.euc.ble.core.toAndroidUuid
 import io.github.tritbool.euc.ble.core.DataCallback
 import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.models.EUCData
@@ -233,7 +234,9 @@ class EucBleClientEntryPointWheelLogTest {
                 decodedFrames.trySend(data)
             }
         })
-        frames.forEach { frame -> bleManager.handleIncomingBytes(frame, protocol.getDataCharacteristicUUID()) }
+        frames.forEach {
+            frame -> bleManager.handleIncomingBytes(frame, protocol.getDataCharacteristicUUID().toAndroidUuid())
+        }
         decodedFrames.close()
         return buildList {
             for (item in decodedFrames) add(item)

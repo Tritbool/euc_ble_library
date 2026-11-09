@@ -10,6 +10,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.core.EucUuid
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -39,7 +40,8 @@ class BLEManagerProtocolSelectionTest {
         val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B1"))
         register(alpha, beta)
 
-        val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
+        val gatt = createGattWithCharacteristics(
+            alpha.getDataCharacteristicUUID().toAndroidUuid(), beta.getDataCharacteristicUUID().toAndroidUuid())
         attachSession(device("Unknown wheel", 0), gatt)
 
         manager.setProtocolSelectionMode(ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK)
@@ -56,7 +58,8 @@ class BLEManagerProtocolSelectionTest {
         val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B2"))
         register(alpha, beta)
 
-        val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
+        val gatt = createGattWithCharacteristics(
+            alpha.getDataCharacteristicUUID().toAndroidUuid(), beta.getDataCharacteristicUUID().toAndroidUuid())
         attachSession(device("Unknown wheel", 0), gatt)
 
         manager.setProtocolSelectionMode(ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK)
@@ -76,7 +79,8 @@ class BLEManagerProtocolSelectionTest {
         val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B3"))
         register(alpha, beta)
 
-        val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
+        val gatt = createGattWithCharacteristics(
+            alpha.getDataCharacteristicUUID().toAndroidUuid(), beta.getDataCharacteristicUUID().toAndroidUuid())
         attachSession(device("Unknown wheel", 0), gatt)
 
         assertTrue(manager.forceProtocol(beta))
@@ -93,7 +97,8 @@ class BLEManagerProtocolSelectionTest {
         val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B4"))
         register(alpha, beta)
 
-        val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID(), beta.getDataCharacteristicUUID())
+        val gatt = createGattWithCharacteristics(
+            alpha.getDataCharacteristicUUID().toAndroidUuid(), beta.getDataCharacteristicUUID().toAndroidUuid())
         attachSession(device("Unknown wheel", 0), gatt)
 
         // AUTO mode (default): no fingerprint match → no protocol selected, no callback
@@ -109,7 +114,7 @@ class BLEManagerProtocolSelectionTest {
         val beta = BetaProtocol(uuid("00000000-0000-0000-0000-0000000000B5"))
         register(alpha, beta)
 
-        val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID())
+        val gatt = createGattWithCharacteristics(alpha.getDataCharacteristicUUID().toAndroidUuid())
         attachSession(device("Unknown wheel", 0), gatt)
 
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
@@ -199,8 +204,8 @@ class BLEManagerProtocolSelectionTest {
         override val manufacturer: String = "Test"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
-        override fun getDataCharacteristicUUID(): UUID = dataCharacteristicUuid
-        override fun getServiceUUID(): UUID = UUID.fromString("00000000-0000-0000-0000-00000000F000")
+        override fun getDataCharacteristicUUID(): EucUuid = EucUuid.parse(dataCharacteristicUuid.toString())
+        override fun getServiceUUID(): EucUuid = EucUuid.parse("00000000-0000-0000-0000-00000000F000")
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf(0x01)
         override fun isDeviceReady(data: EUCData): Boolean = true
         override fun close() = Unit

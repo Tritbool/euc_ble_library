@@ -47,6 +47,8 @@ import io.github.tritbool.euc.ble.session.PollingEngineTest
 import io.github.tritbool.euc.ble.session.SessionDriversTest
 import io.github.tritbool.euc.ble.session.ProtocolSelectorTest
 import io.github.tritbool.euc.ble.session.ReconnectPolicyTest
+import io.github.tritbool.euc.ble.core.EucUuidTest
+import io.github.tritbool.euc.ble.core.EucCrc32Test
 
 @Suite
 @SelectClasses(
@@ -54,6 +56,8 @@ import io.github.tritbool.euc.ble.session.ReconnectPolicyTest
     SessionDriversTest::class,
     ProtocolSelectorTest::class,
     ReconnectPolicyTest::class,
+    EucUuidTest::class,
+    EucCrc32Test::class,
     FlowProtocolAdapterTest::class,
     ProtocolOutboxTest::class,
     SyncFrameParsingTest::class,

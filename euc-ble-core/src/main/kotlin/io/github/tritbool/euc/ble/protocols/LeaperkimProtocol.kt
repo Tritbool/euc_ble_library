@@ -7,7 +7,6 @@ import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.session.FlowProtocolAdapter
 import kotlinx.coroutines.CoroutineScope
-import java.util.Calendar
 
 private class LegacyLeaperkimEngine(clock: EucClock) : LeaperkimSyncProtocol(clock) {
     lateinit var owner: LeaperkimProtocol
@@ -75,17 +74,8 @@ open class LeaperkimProtocol protected constructor(
         return null
     }
 
-    internal fun buildLockFrame(locked: Boolean, now: Calendar): ByteArray =
-        adapter.withProtocol {
-            engine.buildLockFrame(
-                locked,
-                EucDateTime(
-                    now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1,
-                    now.get(Calendar.DAY_OF_MONTH), now.get(Calendar.HOUR_OF_DAY),
-                    now.get(Calendar.MINUTE), now.get(Calendar.SECOND)
-                )
-            )
-        }
+    internal fun buildLockFrame(locked: Boolean, now: EucDateTime): ByteArray =
+        adapter.withProtocol { engine.buildLockFrame(locked, now) }
 
     override fun close() {
         adapter.resetSession()

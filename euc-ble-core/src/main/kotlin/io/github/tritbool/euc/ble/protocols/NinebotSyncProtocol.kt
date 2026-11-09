@@ -7,7 +7,7 @@ import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
 

@@ -11,6 +11,7 @@ import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattServiceSpec
+import io.github.tritbool.euc.ble.core.EucUuid
 import io.github.tritbool.euc.ble.protocols.GattSignature
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -60,7 +61,7 @@ class BLEManagerGattFingerprintTest {
         manager.registerProtocol(proto)
         val gatt = gattWithServices(service(uuid("0000ffe0-0000-1000-8000-00805f9b34fb")))
         val provider =
-            providerFor(proto, GattServiceSpec(uuid = uuid("DEADBEEF-0000-0000-0000-000000000001")))
+            providerFor(proto, GattServiceSpec(uuid = eucUuid("DEADBEEF-0000-0000-0000-000000000001")))
         assertNull(manager.selectByGattFingerprint(gatt.services, provider).first)
     }
 
@@ -73,8 +74,8 @@ class BLEManagerGattFingerprintTest {
         val provider = providerFor(
             proto,
             GattServiceSpec(
-                uuid = kingSongLikeUuid,
-                requiredCharacteristicUUIDs = setOf(exclusiveCharUuid)
+                uuid = kingSongLikeUuid.toEucUuid(),
+                requiredCharacteristicUUIDs = setOf(exclusiveCharUuid.toEucUuid())
             )
         )
         val gatt = gattWithServices(service(kingSongLikeUuid, exclusiveCharUuid))
@@ -90,8 +91,8 @@ class BLEManagerGattFingerprintTest {
         val provider = providerFor(
             proto,
             GattServiceSpec(
-                uuid = serviceUuid,
-                requiredCharacteristicUUIDs = setOf(requiredCharUuid)
+                uuid = serviceUuid.toEucUuid(),
+                requiredCharacteristicUUIDs = setOf(requiredCharUuid.toEucUuid())
             )
         )
         val gatt =
@@ -108,8 +109,8 @@ class BLEManagerGattFingerprintTest {
         val provider = providerFor(
             proto,
             GattServiceSpec(
-                uuid = serviceUuid,
-                excludedCharacteristicUUIDs = setOf(excludedCharUuid)
+                uuid = serviceUuid.toEucUuid(),
+                excludedCharacteristicUUIDs = setOf(excludedCharUuid.toEucUuid())
             )
         )
         val gatt = gattWithServices(service(serviceUuid, excludedCharUuid))
@@ -124,10 +125,10 @@ class BLEManagerGattFingerprintTest {
         val proto = SimpleProtocol(uuid("AA000000-0000-0000-0000-000000000006"))
         manager.registerProtocol(proto)
         val signature: GattSignature = listOf(
-            GattServiceSpec(uuid = nordicUartUuid),
+            GattServiceSpec(uuid = nordicUartUuid.toEucUuid()),
             GattServiceSpec(
-                uuid = genericAccessUuid,
-                excludedCharacteristicUUIDs = setOf(excludedCharUuid)
+                uuid = genericAccessUuid.toEucUuid(),
+                excludedCharacteristicUUIDs = setOf(excludedCharUuid.toEucUuid())
             )
         )
         val provider: (String) -> List<GattSignature> = { listOf(signature) }
@@ -146,7 +147,7 @@ class BLEManagerGattFingerprintTest {
         manager.registerProtocol(alpha)
         manager.registerProtocol(beta)
         val provider: (String) -> List<GattSignature> = {
-            listOf(listOf(GattServiceSpec(uuid = sharedServiceUuid)))
+            listOf(listOf(GattServiceSpec(uuid = sharedServiceUuid.toEucUuid())))
         }
         val gatt = gattWithServices(service(sharedServiceUuid))
         assertNull(manager.selectByGattFingerprint(gatt.services, provider).first)
@@ -160,8 +161,8 @@ class BLEManagerGattFingerprintTest {
         manager.registerProtocol(proto)
         val provider: (String) -> List<GattSignature> = {
             listOf(
-                listOf(GattServiceSpec(uuid = sig1ServiceUuid)),
-                listOf(GattServiceSpec(uuid = sig2ServiceUuid))
+                listOf(GattServiceSpec(uuid = sig1ServiceUuid.toEucUuid())),
+                listOf(GattServiceSpec(uuid = sig2ServiceUuid.toEucUuid()))
             )
         }
         val gatt = gattWithServices(service(sig2ServiceUuid))
@@ -334,6 +335,7 @@ class BLEManagerGattFingerprintTest {
     )
 
     private fun uuid(value: String): UUID = UUID.fromString(value)
+    private fun eucUuid(value: String): EucUuid = EucUuid.parse(value)
 
     private fun service(serviceUuid: UUID, vararg charUuids: UUID): BluetoothGattService {
         val characteristics = charUuids.map { charUuid ->
@@ -392,8 +394,8 @@ class BLEManagerGattFingerprintTest {
     ) : EUCProtocol {
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
-        override fun getDataCharacteristicUUID(): UUID = dataCharUuid
-        override fun getServiceUUID(): UUID = uuid("00000000-0000-0000-0000-000000000000")
+        override fun getDataCharacteristicUUID(): EucUuid = dataCharUuid.toEucUuid()
+        override fun getServiceUUID(): EucUuid = EucUuid.parse("00000000-0000-0000-0000-000000000000")
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
         override fun isDeviceReady(data: EUCData): Boolean = true
         override fun close() = Unit
@@ -408,8 +410,8 @@ class BLEManagerGattFingerprintTest {
         override val manufacturer: String = "KingSong"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
-        override fun getDataCharacteristicUUID(): UUID = dataCharUuid
-        override fun getServiceUUID(): UUID = uuid("0000fff0-0000-1000-8000-00805f9b34fb")
+        override fun getDataCharacteristicUUID(): EucUuid = dataCharUuid.toEucUuid()
+        override fun getServiceUUID(): EucUuid = EucUuid.parse("0000fff0-0000-1000-8000-00805f9b34fb")
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
         override fun isDeviceReady(data: EUCData): Boolean = true
         override fun close() = Unit
@@ -427,10 +429,10 @@ class BLEManagerGattFingerprintTest {
         override fun decode(data: ByteArray): EUCData? = null
 
         // V1 read characteristic; V2 also exists (6e400003) but both are probed at connection time
-        override fun getDataCharacteristicUUID(): UUID =
-            uuid("0000ffe4-0000-1000-8000-00805f9b34fb")
+        override fun getDataCharacteristicUUID(): EucUuid =
+            EucUuid.parse("0000ffe4-0000-1000-8000-00805f9b34fb")
 
-        override fun getServiceUUID(): UUID = uuid("0000ffe0-0000-1000-8000-00805f9b34fb")
+        override fun getServiceUUID(): EucUuid = EucUuid.parse("0000ffe0-0000-1000-8000-00805f9b34fb")
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
         override fun isDeviceReady(data: EUCData): Boolean = true
         override fun close() = Unit
@@ -445,10 +447,10 @@ class BLEManagerGattFingerprintTest {
         override val manufacturer: String = "Ninebot"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray): EUCData? = null
-        override fun getDataCharacteristicUUID(): UUID =
-            uuid("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+        override fun getDataCharacteristicUUID(): EucUuid =
+            EucUuid.parse("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
-        override fun getServiceUUID(): UUID = uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+        override fun getServiceUUID(): EucUuid = EucUuid.parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
         override fun createCommand(commandType: CommandType, value: Any): ByteArray = byteArrayOf()
         override fun isDeviceReady(data: EUCData): Boolean = true
         override fun close() = Unit

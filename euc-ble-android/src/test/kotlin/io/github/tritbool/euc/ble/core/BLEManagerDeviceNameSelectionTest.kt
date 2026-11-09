@@ -9,6 +9,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.core.EucUuid
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
@@ -386,7 +387,10 @@ class BLEManagerDeviceNameSelectionTest {
 
     private fun gotwayGatt(): BluetoothGatt = buildGatt(
         EucFingerprintDatabase.getSignatures("GotwayProtocol").last().map { spec ->
-            serviceWithChars(spec.uuid, spec.requiredCharacteristicUUIDs.toList())
+            serviceWithChars(
+                spec.uuid.toAndroidUuid(),
+                spec.requiredCharacteristicUUIDs.map { it.toAndroidUuid() }
+            )
         }
     )
 
@@ -467,8 +471,8 @@ class BLEManagerDeviceNameSelectionTest {
         override val manufacturer = "Base"
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray) = null
-        override fun getDataCharacteristicUUID() = UUID.fromString("AA000000-0000-0000-0000-000000000001")
-        override fun getServiceUUID() = UUID.fromString("AA000000-0000-0000-0000-000000000000")
+        override fun getDataCharacteristicUUID() = EucUuid.parse("AA000000-0000-0000-0000-000000000001")
+        override fun getServiceUUID() = EucUuid.parse("AA000000-0000-0000-0000-000000000000")
         override fun createCommand(commandType: CommandType, value: Any) = byteArrayOf()
         override fun isDeviceReady(data: EUCData) = true
         override fun close() = Unit
@@ -497,8 +501,8 @@ class BLEManagerDeviceNameSelectionTest {
     private class MatchAllStub(override val manufacturer: String) : EUCProtocol {
         override val dataFlow: Flow<EUCData> = emptyFlow()
         override fun decode(data: ByteArray) = null
-        override fun getDataCharacteristicUUID() = UUID.fromString("BB000000-0000-0000-0000-000000000001")
-        override fun getServiceUUID() = UUID.fromString("BB000000-0000-0000-0000-000000000000")
+        override fun getDataCharacteristicUUID() = EucUuid.parse("BB000000-0000-0000-0000-000000000001")
+        override fun getServiceUUID() = EucUuid.parse("BB000000-0000-0000-0000-000000000000")
         override fun createCommand(commandType: CommandType, value: Any) = byteArrayOf()
         override fun isDeviceReady(data: EUCData) = true
         override fun matchesDeviceName(deviceName: String) = true

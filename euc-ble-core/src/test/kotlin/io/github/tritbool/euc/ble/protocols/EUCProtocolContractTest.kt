@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 
 class EUCProtocolContractTest {
     @Test

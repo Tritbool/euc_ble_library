@@ -1,6 +1,5 @@
 package io.github.tritbool.euc.ble.core
 
-import java.util.UUID
 
 /**
  * Constants and helper functions for BLE operations specific to Electric Unicycles.
@@ -102,7 +101,7 @@ object BLEConstants {
     const val MANUFACTURER_LEAPERKIM = MANUFACTURER_VETERAN
 
     // Helper functions
-    fun String.toUUID(): UUID = UUID.fromString(this)
+    fun String.toUUID(): EucUuid = EucUuid.parse(this)
 
     // Frame header magic bytes for each protocol — available as a canonical reference to avoid
     // scattering magic bytes across protocol files.

@@ -3,11 +3,11 @@ package io.github.tritbool.euc.ble.session
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.GattSignature
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid
 
 /** Selection policy over plain GATT snapshots; notification setup belongs to the connector. */
 class ProtocolSelector(private val protocols: List<EUCProtocol>, private val logger: Logger) {
-    data class Service(val uuid: UUID, val characteristics: Set<UUID>)
+    data class Service(val uuid: EucUuid, val characteristics: Set<EucUuid>)
 
     fun byFingerprint(
         services: List<Service>, signatures: (String) -> List<GattSignature>

@@ -16,7 +16,7 @@ import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.PasswordOperation
 import io.github.tritbool.euc.ble.models.PasswordOperationStatus
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 
 /**
  * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
@@ -631,7 +631,7 @@ class KingsongSyncProtocol(
             lastKnownModel = parts.dropLast(1).joinToString("-")
             try {
                 val versionInt = parts.last().toInt()
-                lastKnownFirmwareVersion = "%.2f".format(versionInt / 100.0)
+                lastKnownFirmwareVersion = "${versionInt / 100}.${(versionInt % 100).toString().padStart(2, '0')}"
             } catch (_: NumberFormatException) {
                 // version part not numeric, keep model as full name
                 lastKnownModel = name
@@ -649,8 +649,8 @@ class KingsongSyncProtocol(
         if (!ensureRange(data, base + 2, 14)) return
         if (!ensureRange(data, base + 17, 3)) return
         val snBytes = ByteArray(SERIAL_NUMBER_LENGTH)
-        System.arraycopy(data, base + 2, snBytes, 0, 14)
-        System.arraycopy(data, base + 17, snBytes, 14, 3)
+        data.copyInto(snBytes, destinationOffset = 0, startIndex = base + 2, endIndex = base + 16)
+        data.copyInto(snBytes, destinationOffset = 14, startIndex = base + 17, endIndex = base + 20)
         lastKnownSerialNumber = String(snBytes).trimEnd('\u0000').trim()
     }
 
@@ -1019,7 +1019,7 @@ class KingsongSyncProtocol(
                 buildWheelParamCommand(subByte = 0x01, value16 = raw)
             }
 
-            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
 
             else -> byteArrayOf()
         }

@@ -108,7 +108,7 @@ class BLEManagerCallbackContractTest {
                 BleBackendEvent.Connected(null),
                 BleBackendEvent.Disconnected,
                 BleBackendEvent.Error(error),
-                BleBackendEvent.ServicesDiscovered(listOf(serviceUuid)),
+                BleBackendEvent.ServicesDiscovered(listOf(serviceUuid.toEucUuid())),
                 BleBackendEvent.MtuChanged(247),
                 BleBackendEvent.ProtocolSelectionRequired(listOf(protocol)),
                 BleBackendEvent.ProtocolSelected(selection)

@@ -241,7 +241,7 @@ class BLEManager internal constructor(
                     sequence = ++trafficSequence,
                     timestampMs = System.currentTimeMillis(),
                     direction = direction,
-                    characteristicUuid = characteristicUuid,
+                    characteristicUuid = characteristicUuid.toEucUuid(),
                     bytes = bytes.clone()
                 )
             )
@@ -551,7 +551,7 @@ class BLEManager internal constructor(
             return
         }
         try {
-            sendCommand(payload, protocol.getWriteCharacteristicUUID())
+            sendCommand(payload, protocol.getWriteCharacteristicUUID().toAndroidUuid())
         } finally {
             if (sensitivePayload) payload.fill(0)
         }
@@ -787,7 +787,8 @@ class BLEManager internal constructor(
             address = device.address,
             manufacturerId = 0,       // inconnu jusqu'à la connexion GATT
             manufacturerData = null,  // idem
-            rssi = result.rssi
+            rssi = result.rssi,
+            timestamp = System.currentTimeMillis()
         )
 
         discoveredDevices[eucDevice.address] = eucDevice
@@ -948,7 +949,7 @@ class BLEManager internal constructor(
                 disconnect()
                 return
             }
-            forced.getCandidateDataCharacteristicUUIDs().distinct()
+            forced.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
                 .forEach { enableNotifications(it) }
             connectionCallback?.onServicesDiscovered(gatt.services)
             if (!activateProtocolIfReady(
@@ -966,7 +967,7 @@ class BLEManager internal constructor(
         if (device.name.contains("nosfet", ignoreCase = true)) {
             val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
             if (nosfet != null) {
-                nosfet.getCandidateDataCharacteristicUUIDs().distinct()
+                nosfet.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
                     .forEach { enableNotifications(it) }
                 connectionCallback?.onServicesDiscovered(gatt.services)
                 if (!activateProtocolIfReady(
@@ -1027,7 +1028,7 @@ class BLEManager internal constructor(
             else ProtocolSelectionReason.AUTO_GATT_FINGERPRINT
             val logReason = if (subclassOverride != null) "GATT fingerprint + device name"
             else "GATT fingerprint"
-            selected.getCandidateDataCharacteristicUUIDs().distinct()
+            selected.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
                 .forEach { enableNotifications(it) }
             if (!activateProtocolIfReady(selected, reason, logReason, fingerprintMatchVersion)) {
                 disconnect()
@@ -1037,7 +1038,7 @@ class BLEManager internal constructor(
             logger.info(TAG, "Trying to get protocol for device ${device.name}")
             val deviceNameMatch = selectByDeviceName(device.name)
             if (deviceNameMatch != null) {
-                deviceNameMatch.getCandidateDataCharacteristicUUIDs().distinct()
+                deviceNameMatch.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
                     .forEach { enableNotifications(it) }
                 if (!activateProtocolIfReady(
                         deviceNameMatch,
@@ -1052,7 +1053,7 @@ class BLEManager internal constructor(
                 when (protocolSelectionMode) {
                     ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK -> {
                         protocols.forEach { proto ->
-                            proto.getCandidateDataCharacteristicUUIDs().distinct()
+                            proto.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
                                 .forEach { enableNotifications(it) }
                         }
                         notifyProtocolSelectionRequired()
@@ -1061,10 +1062,10 @@ class BLEManager internal constructor(
                     else -> {
                         val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
                         if (nosfet != null && nosfet.getCandidateDataCharacteristicUUIDs().any {
-                                getCharacteristic(it) != null
+                                getCharacteristic(it.toAndroidUuid()) != null
                             }
                         ) {
-                            nosfet.getCandidateDataCharacteristicUUIDs().distinct()
+                            nosfet.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
                                 .forEach { enableNotifications(it) }
                             return
                         }
@@ -1106,7 +1107,7 @@ class BLEManager internal constructor(
             currentProtocol !is NosfetProtocol
         ) {
             val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
-            if (nosfet != null && characteristicUuid in nosfet.getCandidateDataCharacteristicUUIDs()) {
+            if (nosfet != null && characteristicUuid.toEucUuid() in nosfet.getCandidateDataCharacteristicUUIDs()) {
                 val frame = nosfetFrameDetector.detect(data)
                 if (frame != null && activateProtocolIfReady(
                         nosfet, ProtocolSelectionReason.AUTO_TELEMETRY, "Nosfet firmware in telemetry"
@@ -1180,7 +1181,7 @@ class BLEManager internal constructor(
             trace = { event -> emitQueryTrace(event.copy(timestampMs = System.currentTimeMillis())) },
             onError = { errorCallback?.onError(BLEException("Polling session failed: ${it.message}")) },
             enqueue = { payload, valid, accepted, failed ->
-                enqueueCommand(payload, protocol.getWriteCharacteristicUUID(), valid, accepted, failed)
+                enqueueCommand(payload, protocol.getWriteCharacteristicUUID().toAndroidUuid(), valid, accepted, failed)
             }).also { it.start() }
     }
 
@@ -1213,7 +1214,7 @@ class BLEManager internal constructor(
         writeFlowCollectorJob = sessionScope.launch {
             protocol.writeFlow.collect { payload ->
                 if (payload.isNotEmpty()) {
-                    sendCommand(payload, protocol.getWriteCharacteristicUUID())
+                    sendCommand(payload, protocol.getWriteCharacteristicUUID().toAndroidUuid())
                 }
             }
         }
@@ -1292,7 +1293,10 @@ class BLEManager internal constructor(
     ): Pair<EUCProtocol?, Int> {
         return ProtocolSelector(protocols, logger).byFingerprint(
             discoveredServices.map { service ->
-                ProtocolSelector.Service(service.uuid, service.characteristics.map { it.uuid }.toSet())
+                ProtocolSelector.Service(
+                    service.uuid.toEucUuid(),
+                    service.characteristics.map { it.uuid.toEucUuid() }.toSet()
+                )
             }, signaturesProvider)
     }
 
@@ -1340,7 +1344,7 @@ class BLEManager internal constructor(
         val servicesReady =
             currentDevice != null && bluetoothGatt?.services?.isNotEmpty() == true
         if (!servicesReady) return null
-        selectedProtocol.getCandidateDataCharacteristicUUIDs()
+        selectedProtocol.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }
             .distinct()
             .forEach { characteristicUuid ->
                 enableNotifications(characteristicUuid)
@@ -1371,7 +1375,7 @@ class BLEManager internal constructor(
         }
         val hasReadableCharacteristic =
             protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
-                getCharacteristic(uuid) != null
+                getCharacteristic(uuid.toAndroidUuid()) != null
             }
         if (!hasReadableCharacteristic) {
             errorCallback?.onError(
@@ -1379,7 +1383,7 @@ class BLEManager internal constructor(
             )
             return false
         }
-        if (getCharacteristic(protocol.getWriteCharacteristicUUID()) == null) {
+        if (getCharacteristic(protocol.getWriteCharacteristicUUID().toAndroidUuid()) == null) {
             errorCallback?.onError(
                 BLEException("Protocol ${protocolIdentifier(protocol)} write characteristic is unavailable on this device")
             )
@@ -1512,7 +1516,7 @@ class ListenerConnectionCallback(
     }
 
     override fun onServicesDiscovered(services: List<BluetoothGattService>) {
-        listener?.onEvent(BleBackendEvent.ServicesDiscovered(services.map { it.uuid }))
+        listener?.onEvent(BleBackendEvent.ServicesDiscovered(services.map { it.uuid.toEucUuid() }))
     }
 
     override fun onMtuChanged(mtu: Int) {

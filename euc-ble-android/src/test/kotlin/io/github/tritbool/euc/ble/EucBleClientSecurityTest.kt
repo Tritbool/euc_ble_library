@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.BLEManager
+import io.github.tritbool.euc.ble.core.toAndroidUuid
 import io.github.tritbool.euc.ble.core.ErrorCallback
 import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.core.TrafficDirection
@@ -425,7 +426,7 @@ class EucBleClientSecurityTest {
 
     private fun attachGatt(manager: BLEManager, protocol: KingsongProtocol): BluetoothGatt {
         val characteristic = mock<BluetoothGattCharacteristic>()
-        whenever(characteristic.uuid).thenReturn(protocol.getDataCharacteristicUUID())
+        whenever(characteristic.uuid).thenReturn(protocol.getDataCharacteristicUUID().toAndroidUuid())
         whenever(characteristic.properties).thenReturn(
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
         )

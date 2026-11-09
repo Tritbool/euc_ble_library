@@ -8,7 +8,7 @@ import io.github.tritbool.euc.ble.frames.FixedSizeFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 import kotlin.math.abs
 
 /**
@@ -757,7 +757,7 @@ open class GotwaySyncProtocol(
         logger.debug(
             "GotwayASCII",
             "parseLegacyAsciiMetadata: rawSize=${data.size} first5=${
-                data.take(5).map { "%02X".format(it) }
+                data.take(5).map { ByteUtils.byteToHex(it) }
             }"
         )
 
@@ -853,7 +853,7 @@ open class GotwaySyncProtocol(
         logger.debug(
             "GotwayQueryMatch",
             "matchesQueryResponse: query=${query.commandType} size=${data.size} data=${
-                data.take(20).map { "%02X".format(it) }
+                data.take(20).map { ByteUtils.byteToHex(it) }
             }"
         )
 

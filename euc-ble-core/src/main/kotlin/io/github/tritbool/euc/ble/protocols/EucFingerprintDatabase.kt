@@ -1,7 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.InternalEucBleApi
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 
 /**
  * EUC BLE protocol fingerprint database.

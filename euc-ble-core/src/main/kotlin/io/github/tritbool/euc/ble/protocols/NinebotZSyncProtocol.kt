@@ -5,7 +5,7 @@ import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 
 /**
  * Dedicated Ninebot Z-series protocol split with stateful handshake/polling queries.
@@ -112,8 +112,8 @@ class NinebotZSyncProtocol(clock: EucClock = SystemEucClock) : SyncEucProtocol {
             CommandType.CALIBRATE -> buildActionCommand(0x7A, 0x01)
             CommandType.REQUEST_SERIAL -> buildQueryCommand(0x10)
             CommandType.REQUEST_FIRMWARE -> buildQueryCommand(0x1A)
-            CommandType.REQUEST_BATTERY_INFO -> QUERY_BMS_1.clone()
-            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+            CommandType.REQUEST_BATTERY_INFO -> QUERY_BMS_1.copyOf()
+            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
             else -> byteArrayOf()
         }
     }

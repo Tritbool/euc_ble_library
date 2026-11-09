@@ -13,6 +13,7 @@ import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
+import io.github.tritbool.euc.ble.core.EucUuid
 import io.github.tritbool.euc.ble.models.EUCDevice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -87,9 +88,9 @@ class BLEManagerTrafficTest {
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
         assertSame(protocol, manager.currentProtocol)
-        assertEquals(UUID.fromString(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC),
+        assertEquals(EucUuid.parse(BLEConstants.INMOTION_V2_WRITE_CHARACTERISTIC),
             protocol.getWriteCharacteristicUUID())
-        assertEquals(UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC),
+        assertEquals(EucUuid.parse(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC),
             protocol.getDataCharacteristicUUID())
         assertTrue(protocol.getPollingPlan().enabled)
     }
@@ -121,7 +122,7 @@ class BLEManagerTrafficTest {
 
             assertTrue(if (forced) manager.forceProtocol(protocol) else manager.selectProtocol(protocol))
             assertSame(protocol, manager.currentProtocol)
-            assertEquals(write.uuid, protocol.getWriteCharacteristicUUID())
+            assertEquals(write.uuid.toEucUuid(), protocol.getWriteCharacteristicUUID())
 
             // Drop every startup response, as can happen while notifications are enabling.
             advanceTimeBy(16_000)
@@ -131,7 +132,7 @@ class BLEManagerTrafficTest {
             } >= 2)
             assertTrue(traffic.any { it.direction == TrafficDirection.TX })
             assertTrue(traffic.filter { it.direction == TrafficDirection.TX }
-                .all { it.characteristicUuid == write.uuid })
+                .all { it.characteristicUuid == write.uuid.toEucUuid() })
 
             val readUuid = UUID.fromString(BLEConstants.INMOTION_V2_READ_CHARACTERISTIC)
             manager.handleIncomingBytes(ByteUtils.hexToBytes("aaaa11058201020d0199"), readUuid)
@@ -296,7 +297,9 @@ class BLEManagerTrafficTest {
         legacy.fill(0)
 
         assertEquals(listOf(1L, 2L), events.map { it.sequence })
-        assertTrue(events.all { it.direction == TrafficDirection.RX && it.characteristicUuid == characteristicUuid })
+        assertTrue(events.all {
+            it.direction == TrafficDirection.RX && it.characteristicUuid == characteristicUuid.toEucUuid()
+        })
         assertArrayEquals(byteArrayOf(0x55), events[0].bytes)
         assertArrayEquals(byteArrayOf(0x01, 0x02), events[1].bytes)
     }
@@ -461,14 +464,14 @@ class BLEManagerTrafficTest {
         val services = signature.map { spec ->
             val characteristics = spec.requiredCharacteristicUUIDs.map { uuid ->
                 mock<BluetoothGattCharacteristic>().also { characteristic ->
-                    whenever(characteristic.uuid).thenReturn(uuid)
+                    whenever(characteristic.uuid).thenReturn(uuid.toAndroidUuid())
                     whenever(characteristic.properties).thenReturn(
                         BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
                     )
                 }
             }
             mock<BluetoothGattService>().also { service ->
-                whenever(service.uuid).thenReturn(spec.uuid)
+                whenever(service.uuid).thenReturn(spec.uuid.toAndroidUuid())
                 whenever(service.characteristics).thenReturn(characteristics)
             }
         }

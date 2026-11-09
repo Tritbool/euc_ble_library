@@ -11,7 +11,7 @@ package io.github.tritbool.euc.ble.models
  * @param manufacturerId The manufacturer identifier from BLE advertising data
  * @param manufacturerData The manufacturer-specific data from BLE advertising, null if not available
  * @param rssi The received signal strength indicator (dBm)
- * @param timestamp The timestamp when the device was discovered (milliseconds)
+ * @param timestamp The discovery timestamp in milliseconds, or `0` when unavailable
  */
 data class EUCDevice(
     val name: String,
@@ -19,7 +19,7 @@ data class EUCDevice(
     val manufacturerId: Int,
     val manufacturerData: ByteArray?=null,
     val rssi: Int,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = 0L
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

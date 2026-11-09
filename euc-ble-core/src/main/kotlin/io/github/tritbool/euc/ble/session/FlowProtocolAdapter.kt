@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid
 
 /**
  * Session-layer bridge exposing a synchronous [SyncEucProtocol] through the coroutine-based
@@ -122,11 +122,11 @@ class FlowProtocolAdapter(
     override fun canSendCommand(payload: ByteArray): Boolean = call { protocol.canSendCommand(payload) }
     override fun onCommandSubmitted(payload: ByteArray) = call { protocol.onCommandSubmitted(payload) }
     override fun canRetryCommand(payload: ByteArray): Boolean = call { protocol.canRetryCommand(payload) }
-    override fun getCandidateDataCharacteristicUUIDs(): List<UUID> =
+    override fun getCandidateDataCharacteristicUUIDs(): List<EucUuid> =
         call { protocol.getCandidateDataCharacteristicUUIDs() }
-    override fun getDataCharacteristicUUID(): UUID = call { protocol.getDataCharacteristicUUID() }
-    override fun getServiceUUID(): UUID = call { protocol.getServiceUUID() }
-    override fun getWriteCharacteristicUUID(): UUID = call { protocol.getWriteCharacteristicUUID() }
+    override fun getDataCharacteristicUUID(): EucUuid = call { protocol.getDataCharacteristicUUID() }
+    override fun getServiceUUID(): EucUuid = call { protocol.getServiceUUID() }
+    override fun getWriteCharacteristicUUID(): EucUuid = call { protocol.getWriteCharacteristicUUID() }
     override fun createCommand(commandType: CommandType, value: Any): ByteArray =
         call { protocol.createCommand(commandType, value) }
     override val supportedCommandTypes: Set<CommandType> get() = call { protocol.supportedCommandTypes }

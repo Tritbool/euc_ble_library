@@ -152,7 +152,18 @@ thread-safe. The migrated implementations use synchronous parsing and flow-compa
 All built-in protocol families now have synchronous state machines. Gotway and Leaperkim/Nosfet
 process incoming chunks in order instead of launching one coroutine per chunk. KingSong's password
 timeout starts only after write acceptance and expires as unconfirmed, not as proof of a bad password.
-UUIDs, other JVM APIs, and the coroutine session bridge remain JVM-specific until later phases.
+UUID handling and protocol byte/CRC operations now use portable core implementations; conversion to
+`java.util.UUID` is confined to the Android connector. This is still a Kotlin/JVM module, not a
+Kotlin Multiplatform module: `SystemEucClock` and `SecureEucRandom` in `core/JvmPlatform.kt` are JVM
+providers, and the compatibility flows and coroutine session drivers remain in core. The
+`EUCDevice.timestamp` default is `0` when the caller has no discovery timestamp; Android scan
+results provide the actual wall-clock timestamp.
+
+Before creating `commonMain`/platform source sets, move JVM clock/random providers to a JVM or
+platform module and inject platform implementations where protocols are constructed. Then decide
+whether coroutine flow facades remain in a multiplatform session module or move to platform
+connectors. Do not replace clock or secure-random defaults with fixed values to obtain a common
+source set.
 
 Polling response deadlines and `SENT` traces start at transport acceptance, never at enqueue time.
 Response latency uses monotonic milliseconds; Android translates trace timestamps to wall-clock

@@ -2,7 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.InternalEucBleApi
 import io.github.tritbool.euc.ble.core.ByteUtils
-import java.util.zip.CRC32
+import io.github.tritbool.euc.ble.core.EucCrc32
 
 @InternalEucBleApi
 class NosfetFrameDetector {
@@ -27,7 +27,7 @@ class NosfetFrameDetector {
                 val frame = buffer.subList(start, buffer.size).toByteArray()
                 if (ByteUtils.getUnsignedShortBE(frame, 28) / 1000 !in 42..44) continue
                 if (len > 38) {
-                    val crc = CRC32().apply { update(frame, 0, len) }.value
+                    val crc = EucCrc32.calculate(frame, 0, len)
                     val expected = ByteUtils.getUnsignedIntBE(frame, len)
                     if (crc != expected) continue
                 }

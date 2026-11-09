@@ -2,6 +2,7 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
+import io.github.tritbool.euc.ble.core.EucCrc32
 import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.EucDateTime
 import io.github.tritbool.euc.ble.core.SystemEucClock
@@ -9,8 +10,7 @@ import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
-import java.util.UUID
-import java.util.zip.CRC32
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 import kotlin.math.roundToInt
 
 /**
@@ -382,9 +382,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) :
 
     private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
         if (frame.size < len + 4) return false
-        val crc = CRC32()
-        crc.update(frame, 0, len)
-        val calc = crc.value
+        val calc = EucCrc32.calculate(frame, 0, len)
         val provided = ByteUtils.getUnsignedIntBE(frame, len).toLong()
         return calc == provided
     }
@@ -427,7 +425,13 @@ open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) :
         val major = versionRaw / 1000
         val minor = (versionRaw % 1000) / 100
         val patch = versionRaw % 100
-        return "%03d.%01d.%02d".format(major, minor, patch)
+        return buildString(9) {
+            append(major.toString().padStart(3, '0'))
+            append('.')
+            append(minor)
+            append('.')
+            append(patch.toString().padStart(2, '0'))
+        }
     }
 
     private fun deriveRideTimeSeconds(nowMs: Long): Long {
@@ -512,7 +516,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) :
             CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
             CommandType.CUSTOM -> {
                 when (value) {
-                    is ByteArray -> value.clone()
+                    is ByteArray -> value.copyOf()
                     is String -> value.encodeToByteArray()
                     else -> byteArrayOf()
                 }
@@ -571,7 +575,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock = SystemEucClock) :
         payloadHead.copyInto(out, 5)
         out[5 + payloadHead.size] = valueByte
         val crcEnd = totalLen - 4
-        val crc = CRC32().apply { update(out, 0, crcEnd) }.value.toInt()
+        val crc = EucCrc32.calculate(out, 0, crcEnd).toInt()
         out[crcEnd]     = ((crc ushr 24) and 0xFF).toByte()
         out[crcEnd + 1] = ((crc ushr 16) and 0xFF).toByte()
         out[crcEnd + 2] = ((crc ushr 8)  and 0xFF).toByte()

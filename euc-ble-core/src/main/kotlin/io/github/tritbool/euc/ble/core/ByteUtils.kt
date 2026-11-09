@@ -1,19 +1,26 @@
 package io.github.tritbool.euc.ble.core
 
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.experimental.xor
 
 /**
  * Utility class for byte operations commonly used in BLE protocols
  */
 object ByteUtils {
+    private const val HEX_DIGITS = "0123456789ABCDEF"
+
+    fun byteToHex(value: Byte): String {
+        val unsigned = value.toInt() and 0xFF
+        return buildString(2) {
+            append(HEX_DIGITS[unsigned ushr 4])
+            append(HEX_DIGITS[unsigned and 0x0F])
+        }
+    }
     
     /**
      * Convert bytes to hex string
      */
     fun bytesToHex(bytes: ByteArray, separator: String = " "): String {
-        return bytes.joinToString(separator) { "%02X".format(it) }
+        return bytes.joinToString(separator) { byteToHex(it) }
     }
     
     /**
@@ -57,14 +64,14 @@ object ByteUtils {
      * Get signed short (2 bytes) in little-endian format
      */
     fun getSignedShortLE(data: ByteArray, offset: Int): Short {
-        return ByteBuffer.wrap(data, offset, 2).order(ByteOrder.LITTLE_ENDIAN).short
+        return getUnsignedShortLE(data, offset).toShort()
     }
     
     /**
      * Get signed short (2 bytes) in big-endian format
      */
     fun getSignedShortBE(data: ByteArray, offset: Int): Short {
-        return ByteBuffer.wrap(data, offset, 2).order(ByteOrder.BIG_ENDIAN).short
+        return getUnsignedShortBE(data, offset).toShort()
     }
     
     /**
@@ -87,42 +94,56 @@ object ByteUtils {
      * Get signed int (4 bytes) in little-endian format
      */
     fun getSignedIntLE(data: ByteArray, offset: Int): Int {
-        return ByteBuffer.wrap(data, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        return (getUnsignedByte(data, offset) or
+            (getUnsignedByte(data, offset + 1) shl 8) or
+            (getUnsignedByte(data, offset + 2) shl 16) or
+            (getUnsignedByte(data, offset + 3) shl 24))
     }
     
     /**
      * Get signed int (4 bytes) in big-endian format
      */
     fun getSignedIntBE(data: ByteArray, offset: Int): Int {
-        return ByteBuffer.wrap(data, offset, 4).order(ByteOrder.BIG_ENDIAN).int
+        return (getUnsignedByte(data, offset) shl 24) or
+            (getUnsignedByte(data, offset + 1) shl 16) or
+            (getUnsignedByte(data, offset + 2) shl 8) or
+            getUnsignedByte(data, offset + 3)
     }
     
     /**
      * Convert short to byte array in little-endian format
      */
     fun shortToBytesLE(value: Short): ByteArray {
-        return ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(value).array()
+        val unsigned = value.toInt()
+        return byteArrayOf(unsigned.toByte(), (unsigned ushr 8).toByte())
     }
     
     /**
      * Convert short to byte array in big-endian format
      */
     fun shortToBytesBE(value: Short): ByteArray {
-        return ByteBuffer.allocate(2).order(ByteOrder.BIG_ENDIAN).putShort(value).array()
+        val unsigned = value.toInt()
+        return byteArrayOf((unsigned ushr 8).toByte(), unsigned.toByte())
     }
     
     /**
      * Convert int to byte array in little-endian format
      */
     fun intToBytesLE(value: Int): ByteArray {
-        return ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()
+        return byteArrayOf(
+            value.toByte(), (value ushr 8).toByte(),
+            (value ushr 16).toByte(), (value ushr 24).toByte()
+        )
     }
     
     /**
      * Convert int to byte array in big-endian format
      */
     fun intToBytesBE(value: Int): ByteArray {
-        return ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(value).array()
+        return byteArrayOf(
+            (value ushr 24).toByte(), (value ushr 16).toByte(),
+            (value ushr 8).toByte(), value.toByte()
+        )
     }
     
     /**

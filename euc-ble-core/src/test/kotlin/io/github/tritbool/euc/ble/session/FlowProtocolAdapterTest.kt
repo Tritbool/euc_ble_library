@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 class FlowProtocolAdapterTest {
@@ -48,8 +48,8 @@ class FlowProtocolAdapterTest {
         private var security: WheelSecurityState? = null
 
         override val manufacturer = "Fake"
-        override fun getDataCharacteristicUUID(): UUID = UUID(0, 1)
-        override fun getServiceUUID(): UUID = UUID(0, 2)
+        override fun getDataCharacteristicUUID(): UUID = UUID.parse("00000000-0000-0000-0000-000000000001")
+        override fun getServiceUUID(): UUID = UUID.parse("00000000-0000-0000-0000-000000000002")
         override fun isDeviceReady(data: EUCData) = true
         override fun getSecurityState(): WheelSecurityState? = security
         override fun createCommand(commandType: CommandType, value: Any): ByteArray {
@@ -255,10 +255,11 @@ class FlowProtocolAdapterTest {
         val protocol = FakeSyncProtocol()
         val adapter = adapter(protocol)
         assertEquals("Fake", adapter.manufacturer)
-        assertEquals(UUID(0, 1), adapter.getDataCharacteristicUUID())
-        assertEquals(UUID(0, 1), adapter.getWriteCharacteristicUUID())
-        assertEquals(listOf(UUID(0, 1)), adapter.getCandidateDataCharacteristicUUIDs())
-        assertEquals(UUID(0, 2), adapter.getServiceUUID())
+        val dataUuid = UUID.parse("00000000-0000-0000-0000-000000000001")
+        assertEquals(dataUuid, adapter.getDataCharacteristicUUID())
+        assertEquals(dataUuid, adapter.getWriteCharacteristicUUID())
+        assertEquals(listOf(dataUuid), adapter.getCandidateDataCharacteristicUUIDs())
+        assertEquals(UUID.parse("00000000-0000-0000-0000-000000000002"), adapter.getServiceUUID())
         adapter.onCommandSubmitted(byteArrayOf(7))
         assertArrayEquals(byteArrayOf(7), protocol.submitted.single())
         assertFalse(adapter.getPollingPlan().enabled)

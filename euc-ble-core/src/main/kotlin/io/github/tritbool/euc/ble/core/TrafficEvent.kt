@@ -1,7 +1,5 @@
 package io.github.tritbool.euc.ble.core
 
-import java.util.UUID
-
 enum class TrafficDirection {
     RX, TX
 }
@@ -22,6 +20,6 @@ data class TrafficEvent(
     val sequence: Long,
     val timestampMs: Long,
     val direction: TrafficDirection,
-    val characteristicUuid: UUID,
+    val characteristicUuid: EucUuid,
     val bytes: ByteArray
 )

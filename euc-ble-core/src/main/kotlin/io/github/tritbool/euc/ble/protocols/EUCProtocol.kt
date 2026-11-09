@@ -6,8 +6,7 @@ import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-import java.io.Closeable
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid
 
 /**
  * Specifies a single GATT service requirement within a [GattSignature].
@@ -22,10 +21,10 @@ import java.util.UUID
  * @param excludedCharacteristicUUIDs Characteristic UUIDs that must NOT be present in the service.
  */
 data class GattServiceSpec(
-    val uuid: UUID,
+    val uuid: EucUuid,
     val version:Int = 1,
-    val requiredCharacteristicUUIDs: Set<UUID> = emptySet(),
-    val excludedCharacteristicUUIDs: Set<UUID> = emptySet(),
+    val requiredCharacteristicUUIDs: Set<EucUuid> = emptySet(),
+    val excludedCharacteristicUUIDs: Set<EucUuid> = emptySet(),
 )
 
 /**
@@ -69,17 +68,17 @@ interface EucProtocolSpec {
      * dialect (such as InMotion V1/V2) should override this to return all possible candidates so
      * that BLE notifications are enabled for each characteristic at connection time.
      */
-    fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(getDataCharacteristicUUID())
+    fun getCandidateDataCharacteristicUUIDs(): List<EucUuid> = listOf(getDataCharacteristicUUID())
 
     /**
      * Get the UUID for the data characteristic
      */
-    fun getDataCharacteristicUUID(): UUID
+    fun getDataCharacteristicUUID(): EucUuid
 
     /**
      * Get the UUID for the service
      */
-    fun getServiceUUID(): UUID
+    fun getServiceUUID(): EucUuid
 
     /**
      * Create a command for the EUC
@@ -127,7 +126,7 @@ interface EucProtocolSpec {
     /**
      * Get the UUID for the write characteristic (if different from data characteristic)
      */
-    fun getWriteCharacteristicUUID(): UUID = getDataCharacteristicUUID()
+    fun getWriteCharacteristicUUID(): EucUuid = getDataCharacteristicUUID()
 
     /**
      * Preferred GATT write type for commands sent by this protocol.
@@ -162,7 +161,8 @@ interface EucProtocolSpec {
  * New protocol logic should implement [SyncEucProtocol] and be exposed through
  * [io.github.tritbool.euc.ble.session.FlowProtocolAdapter].
  */
-interface EUCProtocol : EucProtocolSpec, Closeable {
+interface EUCProtocol : EucProtocolSpec {
+    fun close()
     val dataFlow: Flow<EUCData>
 
     /**

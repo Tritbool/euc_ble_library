@@ -9,7 +9,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid as UUID
 import kotlin.math.roundToInt
 
 /**
@@ -656,7 +656,7 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
     private fun decodeLegacySerial(frame: ByteArray): String? {
         if (frame.size < 27) return null
         val serialBytes = frame.copyOfRange(19, 27).reversedArray()
-        return serialBytes.joinToString("") { "%02X".format(it) }.ifEmpty { null }
+        return serialBytes.joinToString("") { ByteUtils.byteToHex(it) }.ifEmpty { null }
     }
 
     private fun mapLegacyModel(modelCode: Int): String {
@@ -1554,7 +1554,7 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
             CommandType.BEEP -> buildV1HornFrame()
             CommandType.LOCK -> buildV1LockFrame(true)
             CommandType.UNLOCK -> buildV1LockFrame(false)
-            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
             else -> byteArrayOf()
         }
     }
@@ -1659,7 +1659,7 @@ class InMotionSyncProtocol(private val clock: EucClock = SystemEucClock) : SyncE
                 byteArrayOf()
             )
 
-            CommandType.CUSTOM -> (value as? ByteArray)?.clone() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
 
             else -> byteArrayOf()
         }
