@@ -1,6 +1,9 @@
 # EUC BLE Core Library Architecture
 
 This document provides an overview of the library architecture using PlantUML diagrams.
+The older diagrams below describe the Android-facing API. The
+[portable engines and session section](#portable-synchronous-engines-and-jvm-session-layer)
+defines the current module boundaries and the remaining architecture work.
 
 ## Diagram Files
 
@@ -176,21 +179,70 @@ The JVM facades retain production clocks and secure randomness. Other hosts supp
 Drain every output after each input, perform writes externally, report actual write acceptance,
 and deliver timer expiries only while that session remains active.
 
-#### Rust / embedded boundary and remaining work
+#### Typed protocol inputs
 
-This is a portable Kotlin reference implementation, not a Rust library or an ESP32 firmware build.
-The common command vectors in `euc-ble-protocols/fixtures/commands.tsv` are language-neutral;
-the same vectors and common replay tests run on JVM and Node. A Rust implementation can consume
-the vectors without a JVM. They are initial parity vectors, not exhaustive cross-language proof.
+The synchronous `createCommand` contract and `ProtocolQuerySpec.value` use `CommandValue`, not
+`Any`. Available variants are `None`, `Integer`, `Toggle`, `Text`, `Bytes`, `Integers` and
+`PasswordChangeRequest`. This is a Kotlin type-safety and ownership boundary, not a Rust binding.
+Binary/list inputs snapshot their sources and return copies; mutating a command result cannot
+alter the next polling request. Text/password diagnostics are redacted. This does not make
+credential strings erasable, nor make other protocol byte arrays immutable.
 
-The Kotlin API still uses `Any` command/query values for facade compatibility. A Rust API should
-represent these with explicit command/value enums. The implementation uses allocated collections,
-strings and growing output queues, so it is not a fixed-memory or allocation-free `no_std` design.
-An embedded port must specify capacities, overflow errors, payload ownership and backpressure,
-and use monotonic time for durations versus wall time for telemetry and vendor timestamp commands.
-The async JVM drivers still have unbounded channels; no arbitrary cap/drop policy was introduced
-that could silently lose commands or telemetry. Native targets and non-Android BLE connectors are
-not yet configured; only JVM and JavaScript are currently compiled and tested.
+The JVM `EUCProtocol.createCommand(CommandType, Any)` overload remains the legacy extension point.
+Built-in facades convert `Unit`, `Int`, `Boolean`, `String`, `ByteArray`, `IntArray`, integer lists,
+and password-change requests before entering the engine. Unrepresentable values are logged and
+return an empty payload, preserving the existing failure convention. Mixed-type integer lists
+are now rejected rather than silently filtering out non-integers. Android reports empty payloads
+through its error callback. Polling still invokes the legacy extension point so existing custom
+facades and delegated decorators keep their encoding overrides.
+
+Direct engine callers and custom polling-plan builders must migrate to typed values:
+
+```kotlin
+engine.createCommand(CommandType.BEEP)
+engine.createCommand(CommandType.SET_LIGHT_MODE, CommandValue.Integer(2))
+ProtocolQuerySpec("probe", CommandType.CUSTOM, CommandValue.Bytes(probeBytes))
+```
+
+An empty encoded payload still conflates unsupported commands, wrong value variants and state
+restrictions. A typed encoding result with explicit rejection reasons remains follow-up work;
+the typed value model alone does not enforce each command's permitted variant at compile time.
+
+#### Architecture audit and remaining work
+
+**Goal:** this remains a Kotlin/KMP library. A separate sister Rust library may use the architecture
+and behavior as a model; this project does not need FFI, Rust-compatible APIs, Rust crates, or
+allocation-free firmware constraints. KMP does not imply Kotlin can target ESP32 RISC-V.
+The common command vectors in `euc-ble-protocols/fixtures/commands.tsv` and replay tests are
+behavioral regression evidence, not proof of a complete architecture or a complete future sister library.
+
+The protocol/session separation is enforced for engines, but the complete session is **not yet
+multiplatform or independently reusable with another BLE stack**. The intended dependency direction is:
+
+```text
+Kotlin application
+  -> KMP async session -> synchronous protocol core
+           |
+           v
+     BLE transport interface <- platform BLE connector
+```
+
+This is the target architecture, not the current module graph. Coroutines are appropriate in the
+session layer and do not need to be removed for KMP. Platform APIs are appropriate in connectors
+and platform providers, not in common session or protocol logic.
+
+| Priority | Remaining gap | Next evolution and completion criterion |
+|---|---|---|
+| 1 | No interchangeable BLE-stack port | Define transport operations/events consumed by the session: connect/disconnect, discovery snapshots, subscription, RX, submission acceptance, write completion and failures. Include endpoint identity, connection generation and capabilities/limits; keep Android permission checks and native handles in the connector. Wire Android to this port and exercise the same session through an in-memory connector. `integration/BleBackend.kt` currently defines outward events/listeners, not such a transport interface. |
+| 2 | Async session implementation remains JVM-only | Extract shared orchestration into a KMP session artifact, moving polling/reconnect policies out of the protocol artifact with it. Replace JVM synchronization/volatile assumptions with a tested serialization model; keep existing JVM facades as compatibility wrappers. Run shared session tests on JVM and JS before claiming this layer is portable. |
+| 3 | Lifecycle and write policy remain partly connector-owned | Move connection activation, subscription sequencing, reconnect orchestration and write retry/timeout decisions into the session. `WriteSession` still embeds these latter decisions in its coroutine loop. Distinguish stack acceptance, GATT completion, wheel confirmation and timeout, reject stale callbacks, and preserve the no-replay rule for accepted writes. |
+| 4 | Resource and ownership contracts remain incomplete | Specify command backpressure and telemetry overflow separately, define byte lifetimes at every handoff, and test shutdown/reset while queues and writes are active. `ProtocolOutbox` grows and the async drivers use unbounded channels. Do not silently drop control commands or introduce arbitrary capacity limits. |
+| 5 | Time semantics and target validation remain incomplete | Separate monotonic elapsed time from wall-clock telemetry/vendor timestamps; audit ride-duration calculations. Add a supported Kotlin/Native target and shared core/session tests. Test real connectors on their supported platforms; JVM/JS success alone is not Native or BLE-stack validation. |
+
+These are cohesive follow-up stages, not work completed by the typed-input change. In particular,
+copying `BLEManager` to another OS would duplicate session behavior rather than fulfill the target.
+The first transport extraction must move real call paths and have connector-contract tests; adding
+an unused interface or merely renaming modules would not close the gap.
 
 Polling response deadlines and `SENT` traces start at transport acceptance, never at enqueue time.
 Response latency uses monotonic milliseconds; Android translates trace timestamps to wall-clock

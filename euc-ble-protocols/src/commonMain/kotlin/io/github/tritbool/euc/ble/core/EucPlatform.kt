@@ -20,7 +20,7 @@ data class EucDateTime(
 
 /**
  * Time source injected into protocols, so that decoding stays deterministic in tests and portable
- * to platforms without a JVM clock (ESP32, SailfishOS via a Rust port).
+ * across Kotlin targets without depending on a particular platform clock.
  */
 interface EucClock {
     /** Wall-clock time in milliseconds since the Unix epoch. */

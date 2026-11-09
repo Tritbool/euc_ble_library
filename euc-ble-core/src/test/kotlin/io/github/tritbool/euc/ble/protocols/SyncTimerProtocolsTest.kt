@@ -17,7 +17,7 @@ class SyncTimerProtocolsTest {
     @Test
     fun `Gotway timer actions retain all delayed command writes in order`() {
         val engine = GotwaySyncProtocol(SystemEucClock)
-        assertArrayEquals("b".encodeToByteArray(), engine.createCommand(CommandType.SET_SPEED_LIMIT, 42))
+        assertArrayEquals("b".encodeToByteArray(), engine.createCommand(CommandType.SET_SPEED_LIMIT, CommandValue.Integer(42)))
         val timers = engine.drainOutputs().filterIsInstance<ProtocolOutput.StartTimer>()
         assertEquals(listOf(100L, 200L, 300L, 400L, 500L, 600L), timers.map { it.delayMs })
         assertEquals(6, timers.map { it.id }.distinct().size)
@@ -33,7 +33,7 @@ class SyncTimerProtocolsTest {
     @Test
     fun `Gotway reset discards pending timer writes`() {
         val engine = GotwaySyncProtocol(SystemEucClock)
-        engine.createCommand(CommandType.LIGHT_ON, Unit)
+        engine.createCommand(CommandType.LIGHT_ON)
         val timer = engine.drainOutputs().filterIsInstance<ProtocolOutput.StartTimer>().single()
         engine.resetSession()
         engine.onTimer(timer.id)
@@ -43,7 +43,7 @@ class SyncTimerProtocolsTest {
     @Test
     fun `KingSong password timeout starts on acceptance and remains unconfirmed`() {
         val engine = KingsongSyncProtocol(SystemEucClock, EucRandom { 0 })
-        val payload = engine.createCommand(CommandType.SET_PASSWORD, "0012")
+        val payload = engine.createCommand(CommandType.SET_PASSWORD, CommandValue.Text("0012"))
         assertTrue(engine.drainOutputs().isEmpty())
         engine.onCommandSubmitted(payload)
         val timer = engine.pollOutput() as ProtocolOutput.StartTimer
@@ -60,7 +60,7 @@ class SyncTimerProtocolsTest {
     @Test
     fun `KingSong confirmation cancels timer and emits no timeout after reset`() {
         val engine = KingsongSyncProtocol(SystemEucClock, SecureEucRandom())
-        val payload = engine.createCommand(CommandType.SET_PASSWORD, "0012")
+        val payload = engine.createCommand(CommandType.SET_PASSWORD, CommandValue.Text("0012"))
         engine.onCommandSubmitted(payload)
         val timer = engine.pollOutput() as ProtocolOutput.StartTimer
         engine.onNotification(ByteUtils.hexToBytes("AA55303031320100000000000000000043145A5A"))
@@ -79,9 +79,9 @@ class SyncTimerProtocolsTest {
         val engine = KingsongSyncProtocol(SystemEucClock, EucRandom { 0 })
         engine.onNotification(ByteUtils.hexToBytes("AA5501003034343030300000000000005F145A5A"))
         engine.drainOutputs()
-        val command = engine.createCommand(CommandType.UNLOCK, Unit)
+        val command = engine.createCommand(CommandType.UNLOCK)
         assertArrayEquals("408020".encodeToByteArray(), command.copyOfRange(10, 16))
         engine.resetSession()
-        assertTrue(engine.createCommand(CommandType.UNLOCK, Unit).isEmpty())
+        assertTrue(engine.createCommand(CommandType.UNLOCK).isEmpty())
     }
 }

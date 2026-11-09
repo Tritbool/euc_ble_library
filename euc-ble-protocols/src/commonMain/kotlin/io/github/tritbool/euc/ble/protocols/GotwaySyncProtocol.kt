@@ -927,7 +927,7 @@ open class GotwaySyncProtocol(
         scheduleWrite(BEEP_FOLLOWUP_DELAY_MS, "b".encodeToByteArray())
     }
 
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
         // Begode/Gotway has no binary command envelope: every control command is a
         // 1-byte ASCII character written without response to the FFE1 characteristic,
         // with no checksum/ack (confirmed via legacy WheelLog.Android's GotwayAdapter
@@ -954,7 +954,7 @@ open class GotwaySyncProtocol(
             CommandType.SET_LIGHT_MODE -> {
                 // Begode/Gotway front light has three states (matches legacy WheelLog
                 // GotwayAdapter.setLightMode): 0 = off, 1 = on, 2 = strobe.
-                val command = when ((value as? Int)?.coerceIn(0, 2)) {
+                val command = when ((value as? CommandValue.Integer)?.value?.coerceIn(0, 2)) {
                     0 -> "E".encodeToByteArray()
                     1 -> "Q".encodeToByteArray()
                     2 -> "T".encodeToByteArray()
@@ -967,7 +967,7 @@ open class GotwaySyncProtocol(
             CommandType.SET_PEDALS_MODE -> {
                 // Matches legacy WheelLog GotwayAdapter.updatePedalsMode: 0=hard, 1=medium,
                 // 2=soft, 3=free-standing/independent pedals ("free").
-                val command = when (value as? Int) {
+                val command = when ((value as? CommandValue.Integer)?.value) {
                     0 -> "s".encodeToByteArray()
                     1 -> "f".encodeToByteArray()
                     2 -> "h".encodeToByteArray()
@@ -985,7 +985,7 @@ open class GotwaySyncProtocol(
                 // 1 = one alarm (35/45 km/h) + 80% PWM tiltback,
                 // 2 = 80% PWM tiltback only (no speed alarms),
                 // 3 = dynamic/proportional PWM tiltback (custom firmware "dynamic tiltback").
-                val command = when (value as? Int) {
+                val command = when ((value as? CommandValue.Integer)?.value) {
                     0 -> "o".encodeToByteArray()
                     1 -> "u".encodeToByteArray()
                     2 -> "i".encodeToByteArray()
@@ -1001,7 +1001,7 @@ open class GotwaySyncProtocol(
                 // GotwayAdapter.updateMaxSpeed): a short beep, then "W"+"Y" to select the
                 // parameter, then the two ASCII digits of the speed in km/h, then a closing
                 // double-beep. A value of 0 disables the tiltback speed limit via '"'.
-                val maxSpeed = (value as? Int) ?: return byteArrayOf()
+                val maxSpeed = (value as? CommandValue.Integer)?.value ?: return byteArrayOf()
                 if (maxSpeed <= 0) {
                     scheduleWrite(100L, "\"".encodeToByteArray())
                     scheduleWrite(200L, "b".encodeToByteArray())

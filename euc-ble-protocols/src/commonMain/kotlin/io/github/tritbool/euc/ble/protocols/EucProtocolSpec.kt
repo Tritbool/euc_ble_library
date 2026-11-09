@@ -83,9 +83,10 @@ interface EucProtocolSpec {
     fun getServiceUUID(): EucUuid
 
     /**
-     * Create a command for the EUC
+     * Encode a command. Returns an owned byte array, or an empty array when unsupported,
+     * invalid or blocked by protocol state. The session must surface an empty result as failure.
      */
-    fun createCommand(commandType: CommandType, value: Any): ByteArray
+    fun createCommand(commandType: CommandType, value: CommandValue = CommandValue.None): ByteArray
 
     /**
      * Explicit command support matrix for this protocol.
@@ -229,7 +230,7 @@ enum class CommandSupport {
 data class ProtocolQuerySpec(
     val id: String,
     val commandType: CommandType,
-    val value: Any = Unit,
+    val value: CommandValue = CommandValue.None,
     val initialDelayMs: Long = 0L,
     val intervalMs: Long = 0L,
     val responseTimeoutMs: Long = 1500L,

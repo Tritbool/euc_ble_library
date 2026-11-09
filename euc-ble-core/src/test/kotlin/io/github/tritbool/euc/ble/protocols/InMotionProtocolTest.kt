@@ -264,7 +264,7 @@ class InMotionProtocolTest {
         assertEquals(CommandType.CUSTOM, query.commandType)
 
         assertArrayEquals(
-            query.value as ByteArray,
+            (query.value as CommandValue.Bytes).copyBytes(),
             protocol.createCommand(query.commandType, query.value)
         )
     }

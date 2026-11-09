@@ -57,7 +57,7 @@ class LeaperkimSyncProtocolTest {
     @Test
     fun `lock command uses injected local time`() {
         val engine = LeaperkimSyncProtocol(clock)
-        val command = engine.createCommand(CommandType.LOCK, Unit)
+        val command = engine.createCommand(CommandType.LOCK)
         assertArrayEquals(byteArrayOf(17, 15, 10, 9), command.copyOfRange(9, 13))
     }
 

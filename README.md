@@ -52,6 +52,10 @@ default time/random providers, not binary compatibility with previously compiled
 Direct synchronous-engine constructors now require explicit `EucClock` (and KingSong `EucRandom`).
 Custom protocols should declare a stable `protocolId` for fingerprint selection and an optional
 `parentProtocolId` for family refinement; selection no longer inspects Java class inheritance.
+Synchronous engines and polling-query values use `CommandValue` (for example
+`CommandValue.Integer(2)` or `CommandValue.Bytes(payload)`); no-value commands default to
+`CommandValue.None`. JVM/Android facades retain the legacy `Any` overload. Mixed-type alarm lists
+are rejected, not silently filtered; byte/list values snapshot their inputs.
 
 The portable engines can be tested without an Android SDK (Node.js and npm must be on `PATH`):
 
@@ -61,7 +65,8 @@ The portable engines can be tested without an Android SDK (Node.js and npm must 
 ```
 
 See [`euc-ble-core/ARCHITECTURE.md`](euc-ble-core/ARCHITECTURE.md) for the sync-core / session split
-and the portability roadmap (KMP, Rust for ESP32 / SailfishOS).
+and remaining KMP session / interchangeable BLE-connector work. This library stays Kotlin/KMP;
+a future sister Rust library will be a separate implementation using the architecture as a model.
 
 ## Client application
 

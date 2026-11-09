@@ -92,7 +92,7 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
     fun getZBmsSnapshots(): List<NinebotBmsSnapshot> = delegate.getZBmsSnapshots()
     override fun getBMSData(): List<BMSData>? = delegate.getBMSData()
 
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
         return when (commandType) {
             CommandType.LIGHT_ON -> buildActionCommand(0x50, 0x01)
             CommandType.LIGHT_OFF -> buildActionCommand(0x50, 0x00)
@@ -100,12 +100,12 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
             CommandType.LOCK -> buildActionCommand(0x31, 0x01)
             CommandType.UNLOCK -> buildActionCommand(0x31, 0x00)
             CommandType.SET_SPEED_LIMIT -> {
-                val speedKmh = (value as? Int)?.coerceIn(5, 60) ?: return byteArrayOf()
+                val speedKmh = (value as? CommandValue.Integer)?.value?.coerceIn(5, 60) ?: return byteArrayOf()
                 buildActionCommand(0x70, speedKmh)
             }
 
             CommandType.SET_ALARM_SPEED -> {
-                val speedKmh = (value as? Int)?.coerceIn(5, 60) ?: return byteArrayOf()
+                val speedKmh = (value as? CommandValue.Integer)?.value?.coerceIn(5, 60) ?: return byteArrayOf()
                 buildActionCommand(0x71, speedKmh)
             }
 
@@ -113,7 +113,7 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
             CommandType.REQUEST_SERIAL -> buildQueryCommand(0x10)
             CommandType.REQUEST_FIRMWARE -> buildQueryCommand(0x1A)
             CommandType.REQUEST_BATTERY_INFO -> QUERY_BMS_1.copyOf()
-            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? CommandValue.Bytes)?.copyBytes() ?: byteArrayOf()
             else -> byteArrayOf()
         }
     }
@@ -125,13 +125,13 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     "ninebot-z.ble-version",
                     CommandType.CUSTOM,
-                    QUERY_BLE_VERSION,
+                    CommandValue.Bytes(QUERY_BLE_VERSION),
                     maxRetries = 2
                 ),
                 ProtocolQuerySpec(
                     "ninebot-z.auth-key",
                     CommandType.CUSTOM,
-                    QUERY_AUTH_KEY,
+                    CommandValue.Bytes(QUERY_AUTH_KEY),
                     maxRetries = 3
                 ),
                 ProtocolQuerySpec("ninebot-z.serial", CommandType.REQUEST_SERIAL, maxRetries = 3),
@@ -143,22 +143,22 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     "ninebot-z.params-1",
                     CommandType.CUSTOM,
-                    QUERY_PARAMS_PAGE_1,
+                    CommandValue.Bytes(QUERY_PARAMS_PAGE_1),
                     maxRetries = 2
                 ),
                 ProtocolQuerySpec(
                     "ninebot-z.params-2",
                     CommandType.CUSTOM,
-                    QUERY_PARAMS_PAGE_2,
+                    CommandValue.Bytes(QUERY_PARAMS_PAGE_2),
                     maxRetries = 2
                 ),
                 ProtocolQuerySpec(
                     "ninebot-z.bms1",
                     CommandType.CUSTOM,
-                    QUERY_BMS_1,
+                    CommandValue.Bytes(QUERY_BMS_1),
                     maxRetries = 2
                 ),
-                ProtocolQuerySpec("ninebot-z.bms2", CommandType.CUSTOM, QUERY_BMS_2, maxRetries = 2)
+                ProtocolQuerySpec("ninebot-z.bms2", CommandType.CUSTOM, CommandValue.Bytes(QUERY_BMS_2), maxRetries = 2)
             ),
             periodicQueries = listOf(
                 ProtocolQuerySpec(
@@ -170,7 +170,7 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     "ninebot-z.keepalive",
                     CommandType.CUSTOM,
-                    QUERY_PARAMS_PAGE_1,
+                    CommandValue.Bytes(QUERY_PARAMS_PAGE_1),
                     intervalMs = 5000L,
                     maxRetries = 1
                 )

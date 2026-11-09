@@ -1547,14 +1547,14 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
      * Command dispatcher for legacy InMotion V1 wheels. Uses V1 CAN frames
      * wrapped in `AA AA … 55 55` framing (eucplanet InMotionV1Commands).
      */
-    private fun createV1Command(commandType: CommandType, value: Any): ByteArray {
+    private fun createV1Command(commandType: CommandType, value: CommandValue): ByteArray {
         return when (commandType) {
             CommandType.LIGHT_ON -> buildV1LightFrame(true)
             CommandType.LIGHT_OFF -> buildV1LightFrame(false)
             CommandType.BEEP -> buildV1HornFrame()
             CommandType.LOCK -> buildV1LockFrame(true)
             CommandType.UNLOCK -> buildV1LockFrame(false)
-            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? CommandValue.Bytes)?.copyBytes() ?: byteArrayOf()
             else -> byteArrayOf()
         }
     }
@@ -1567,7 +1567,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     private fun decodeP6SignedOffset80Temperature(raw: Int): Double =
         (raw + 80).toDouble()
 
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
         // Route legacy V1 commands through the V1 CAN frame builder.
         if (lastDetectedDialect == Dialect.LEGACY_V1) {
             return createV1Command(commandType, value)
@@ -1597,7 +1597,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             }
 
             CommandType.LIGHT_BRIGHTNESS -> {
-                val brightness = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                val brightness = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x2b, brightness.toByte()))
             }
 
@@ -1630,7 +1630,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 // units (the P6 form, per eucplanet; NOT the V14 4-byte packet).
                 // Verified against a real V9: 25 km/h -> `02 21 60 21 c4 09`,
                 // 35 km/h -> `02 21 60 21 ac 0d`.
-                val maxSpeedKmh = (value as? Int)?.coerceIn(0, 999) ?: return byteArrayOf()
+                val maxSpeedKmh = (value as? CommandValue.Integer)?.value?.coerceIn(0, 999) ?: return byteArrayOf()
                 val raw = (maxSpeedKmh * 100).coerceAtMost(0xFFFF)
                 buildExtendedRoutingCommand(
                     0x21,
@@ -1659,7 +1659,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 byteArrayOf()
             )
 
-            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? CommandValue.Bytes)?.copyBytes() ?: byteArrayOf()
 
             else -> byteArrayOf()
         }
@@ -1685,7 +1685,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             ProtocolQuerySpec(
                 id = "inmotion.v1-factory-password",
                 commandType = CommandType.CUSTOM,
-                value = buildV1FactoryPasswordFrame(),
+                value = CommandValue.Bytes(buildV1FactoryPasswordFrame()),
                 initialDelayMs = 0L,
                 responseTimeoutMs = 400L,
                 maxRetries = 2
@@ -1693,7 +1693,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             ProtocolQuerySpec(
                 id = "inmotion.v1-pin",
                 commandType = CommandType.CUSTOM,
-                value = buildV1PinFrame(),
+                value = CommandValue.Bytes(buildV1PinFrame()),
                 initialDelayMs = 50L,
                 responseTimeoutMs = 400L,
                 maxRetries = 2
@@ -1710,7 +1710,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             ProtocolQuerySpec(
                 id = "inmotion.v1-slow-info",
                 commandType = CommandType.CUSTOM,
-                value = buildV1SlowInfoFrame(),
+                value = CommandValue.Bytes(buildV1SlowInfoFrame()),
                 initialDelayMs = 250L,
                 responseTimeoutMs = 1_200L,
                 maxRetries = 2
@@ -1727,7 +1727,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.extended-identification",
                     commandType = CommandType.CUSTOM,
-                    value = buildExtendedRoutingQuery(EXTENDED_SUB_INFO),
+                    value = CommandValue.Bytes(buildExtendedRoutingQuery(EXTENDED_SUB_INFO)),
                     initialDelayMs = if (dialectAlreadyV2) 0L else 200L,
                     responseTimeoutMs = 800L,
                     maxRetries = 2
@@ -1747,7 +1747,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.extended-realtime",
                     commandType = CommandType.CUSTOM,
-                    value = buildExtendedRoutingQuery(EXTENDED_SUB_REALTIME),
+                    value = CommandValue.Bytes(buildExtendedRoutingQuery(EXTENDED_SUB_REALTIME)),
                     intervalMs = 1_000L,
                     responseTimeoutMs = 800L,
                     maxRetries = 1
@@ -1763,7 +1763,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     ProtocolQuerySpec(
                         id = "inmotion.control-auth",
                         commandType = CommandType.CUSTOM,
-                        value = buildControlAuthRequest(),
+                        value = CommandValue.Bytes(buildControlAuthRequest()),
                         initialDelayMs = 6_000L,
                         intervalMs = 6_000L,
                         responseTimeoutMs = 1_200L,
@@ -1783,7 +1783,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.extended-identification",
                     commandType = CommandType.CUSTOM,
-                    value = buildExtendedRoutingQuery(EXTENDED_SUB_INFO),
+                    value = CommandValue.Bytes(buildExtendedRoutingQuery(EXTENDED_SUB_INFO)),
                     intervalMs = 4_000L,
                     responseTimeoutMs = 800L,
                     maxRetries = 1
@@ -1792,7 +1792,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-1-cells",
                     commandType = CommandType.CUSTOM,
-                    value = buildV14PackCellsQuery(0x24),
+                    value = CommandValue.Bytes(buildV14PackCellsQuery(0x24)),
                     initialDelayMs = 1_000L,
                     intervalMs = 4_000L,
                     responseTimeoutMs = 1_200L,
@@ -1801,7 +1801,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-2-cells",
                     commandType = CommandType.CUSTOM,
-                    value = buildV14PackCellsQuery(0x25),
+                    value = CommandValue.Bytes(buildV14PackCellsQuery(0x25)),
                     initialDelayMs = 2_000L,
                     intervalMs = 4_000L,
                     responseTimeoutMs = 1_200L,
@@ -1810,7 +1810,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-3-cells",
                     commandType = CommandType.CUSTOM,
-                    value = buildV14PackCellsQuery(0x26),
+                    value = CommandValue.Bytes(buildV14PackCellsQuery(0x26)),
                     initialDelayMs = 3_000L,
                     intervalMs = 4_000L,
                     responseTimeoutMs = 1_200L,
@@ -1819,7 +1819,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.v14-pack-4-cells",
                     commandType = CommandType.CUSTOM,
-                    value = buildV14PackCellsQuery(0x27),
+                    value = CommandValue.Bytes(buildV14PackCellsQuery(0x27)),
                     initialDelayMs = 4_000L,
                     intervalMs = 4_000L,
                     responseTimeoutMs = 1_200L,
@@ -1883,7 +1883,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         command: Int,
         data: ByteArray
     ): Boolean {
-        val request = query.value as? ByteArray ?: return false
+        val request = (query.value as? CommandValue.Bytes)?.copyBytes() ?: return false
 // V1 slow-info request (a raw V1 CAN frame, not a V2 message): V1 frames are
 // wrapped AA AA ... 55 55 while V2 messages end with a checksum byte. The wheel
 // answers the slow-info request with MAIN_INFO pages (cmd 0x82: car type, serial,
@@ -1951,10 +1951,10 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 ProtocolQuerySpec(
                     id = "inmotion.p6-pack-${pack - 0x23}-$subtype",
                     commandType = CommandType.CUSTOM,
-                    value = buildMessage(
+                    value = CommandValue.Bytes(buildMessage(
                         FLAG_EXTENDED, COMMAND_MAIN_INFO,
                         byteArrayOf(pack.toByte(), subtype.toByte())
-                    ),
+                    )),
                     initialDelayMs = ((pack - 0x24) * 3 + subtype) * 250L,
                     intervalMs = if (subtype == 4) 0L else 4_000L,
                     responseTimeoutMs = 1_200L,

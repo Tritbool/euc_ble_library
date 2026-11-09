@@ -563,7 +563,7 @@ class NinebotSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         return (((voltage - 52.0) / (84.0 - 52.0)) * 100.0).toInt().coerceIn(0, 100)
     }
 
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
         return when (commandType) {
             CommandType.LIGHT_ON -> buildControlCommand(0x50, 0x01)
             CommandType.LIGHT_OFF -> buildControlCommand(0x50, 0x00)

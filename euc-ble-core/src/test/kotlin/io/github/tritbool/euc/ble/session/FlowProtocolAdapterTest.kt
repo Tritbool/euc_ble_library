@@ -6,6 +6,7 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.CommandValue
 import io.github.tritbool.euc.ble.protocols.ProtocolOutbox
 import io.github.tritbool.euc.ble.protocols.ProtocolOutput
 import io.github.tritbool.euc.ble.protocols.SyncEucProtocol
@@ -52,7 +53,7 @@ class FlowProtocolAdapterTest {
         override fun getServiceUUID(): UUID = UUID.parse("00000000-0000-0000-0000-000000000002")
         override fun isDeviceReady(data: EUCData) = true
         override fun getSecurityState(): WheelSecurityState? = security
-        override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+        override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
             outbox.push(ProtocolOutput.StartTimer("cmd", 50))
             return byteArrayOf(0x42)
         }

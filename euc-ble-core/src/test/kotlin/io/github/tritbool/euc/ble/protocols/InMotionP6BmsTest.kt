@@ -183,7 +183,7 @@ class InMotionP6BmsTest {
             ByteUtils.bytesToHex(protocol.createCommand(it.commandType, it.value), "").lowercase()
         })
         assertEquals(listOf(0L, 0L), packQueries(protocol).filter {
-            (it.value as ByteArray)[6] == 4.toByte()
+            (it.value as CommandValue.Bytes).copyBytes()[6] == 4.toByte()
         }.map { it.intervalMs })
     }
 
@@ -197,7 +197,7 @@ class InMotionP6BmsTest {
         }) {
             val matches = queries.filter { protocol.matchesQueryResponse(it, r.wire) }
             assertEquals(1, matches.size)
-            val request = matches.single().value as ByteArray
+            val request = (matches.single().value as CommandValue.Bytes).copyBytes()
             assertEquals(r.pack, request[5].toInt() and 0xFF)
             assertEquals(subtype(r), request[6].toInt() and 0xFF)
         }

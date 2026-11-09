@@ -29,8 +29,8 @@ class PortableReplayTest {
             assertEquals(5, columns.size, row)
             val (protocol, command, kind, value, expected) = columns
             val input = when (kind) {
-                "unit" -> Unit
-                "hex" -> ByteUtils.hexToBytes(value)
+                "unit" -> CommandValue.None
+                "hex" -> CommandValue.Bytes(ByteUtils.hexToBytes(value))
                 else -> error("Unknown fixture value kind: $kind")
             }
             val engine = engines.getValue(protocol)
@@ -44,7 +44,7 @@ class PortableReplayTest {
     @Test
     fun acceptanceStartsPasswordTimerAndResetInvalidatesIt() {
         val engine = KingsongSyncProtocol(clock, EucRandom { 0 })
-        val payload = engine.createCommand(CommandType.SET_PASSWORD, "0012")
+        val payload = engine.createCommand(CommandType.SET_PASSWORD, CommandValue.Text("0012"))
         assertNull(engine.pollOutput())
         engine.onCommandSubmitted(payload)
         val timer = assertIs<ProtocolOutput.StartTimer>(engine.pollOutput())
@@ -64,7 +64,7 @@ class PortableReplayTest {
         engine.setDialect(1)
         assertContentEquals(
             ByteUtils.hexToBytes("AAAA1601A5550FB200000011000000080500004B5555"),
-            engine.createCommand(CommandType.BEEP, Unit)
+            engine.createCommand(CommandType.BEEP)
         )
     }
 
@@ -129,5 +129,56 @@ class PortableReplayTest {
         assertEquals(EucUuid.parse("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"),
             EucUuid.parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e"))
         assertFailsWith<IllegalArgumentException> { EucUuid.parse("not-a-uuid") }
+    }
+
+    @Test
+    fun typedValuesEncodeSettingsAndPasswordsWithoutSessionRuntime() {
+        val kingSong = KingsongSyncProtocol(clock, EucRandom { 0 })
+        assertContentEquals(
+            ByteUtils.hexToBytes("AA55140100000000000000000000000073145A5A"),
+            kingSong.createCommand(CommandType.SET_LIGHT_MODE, CommandValue.Integer(2))
+        )
+        val alarms = kingSong.createCommand(
+            CommandType.SET_ALARM_SPEED, CommandValue.Integers(listOf(10, 20, 30))
+        )
+        assertContentEquals(ByteUtils.hexToBytes("AA550A0014001E00000000000000000085145A5A"), alarms)
+        assertContentEquals(ByteUtils.hexToBytes("AA55303033343030313200000000000041145A5A"),
+            kingSong.createCommand(CommandType.CHANGE_PASSWORD, PasswordChangeRequest("0012", "0034")))
+
+        val leaperkim = LeaperkimSyncProtocol(clock)
+        assertContentEquals(ByteUtils.hexToBytes("4C6B41700D0180800157ED3BD54C6441700D010080016FF832F9"),
+            leaperkim.createCommand(CommandType.SET_HIGH_BEAM, CommandValue.Toggle(true)))
+        assertContentEquals("custom".encodeToByteArray(),
+            leaperkim.createCommand(CommandType.CUSTOM, CommandValue.Text("custom")))
+        assertTrue(kingSong.createCommand(
+            CommandType.SET_LIGHT_MODE, CommandValue.Text("wrong kind")
+        ).isEmpty())
+        assertNull(kingSong.pollOutput())
+    }
+
+    @Test
+    fun commandValuesOwnSnapshotsAndDoNotExposeCredentialTextInDiagnostics() {
+        val bytes = byteArrayOf(1, 2, 3)
+        val payload = CommandValue.Bytes(bytes)
+        val query = ProtocolQuerySpec("snapshot", CommandType.CUSTOM, payload)
+        bytes.fill(0)
+        payload.copyBytes().fill(0)
+        assertEquals(CommandValue.Bytes(byteArrayOf(1, 2, 3)), query.value)
+        assertEquals(payload.hashCode(), query.value.hashCode())
+
+        val engine = InMotionSyncProtocol(clock)
+        engine.createCommand(query.commandType, query.value).fill(0)
+        assertContentEquals(byteArrayOf(1, 2, 3), engine.createCommand(query.commandType, query.value))
+        val source = mutableListOf(10, 20, 30)
+        val integers = CommandValue.Integers(source)
+        source[0] = 99
+        assertEquals(listOf(10, 20, 30), integers.copyValues())
+        assertEquals(CommandValue.Integers(listOf(10, 20, 30)), integers)
+
+        val text = CommandValue.Text("0012")
+        val change = PasswordChangeRequest("0012", "0034")
+        assertFalse(text.toString().contains("0012"))
+        assertFalse(change.toString().contains("0012"))
+        assertFalse(change.toString().contains("0034"))
     }
 }

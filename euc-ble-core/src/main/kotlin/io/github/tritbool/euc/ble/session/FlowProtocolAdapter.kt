@@ -9,6 +9,7 @@ import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.CommandValue
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolOutput
 import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import io.github.tritbool.euc.ble.core.EucUuid
+import io.github.tritbool.euc.ble.protocols.toCommandValue
 
 /**
  * Session-layer bridge exposing a synchronous [SyncEucProtocol] through the coroutine-based
@@ -129,7 +131,16 @@ class FlowProtocolAdapter(
     override fun getDataCharacteristicUUID(): EucUuid = call { protocol.getDataCharacteristicUUID() }
     override fun getServiceUUID(): EucUuid = call { protocol.getServiceUUID() }
     override fun getWriteCharacteristicUUID(): EucUuid = call { protocol.getWriteCharacteristicUUID() }
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray =
+    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+        val typed = try {
+            value.toCommandValue()
+        } catch (e: IllegalArgumentException) {
+            logger.warn(TAG, "Invalid command value for '$commandType': ${e.message}")
+            return byteArrayOf()
+        }
+        return createCommand(commandType, typed)
+    }
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray =
         call { protocol.createCommand(commandType, value) }
     override val supportedCommandTypes: Set<CommandType> get() = call { protocol.supportedCommandTypes }
     override fun getCommandSupport(commandType: CommandType): CommandSupport =

@@ -11,6 +11,13 @@ import kotlinx.coroutines.flow.emptyFlow
  * [io.github.tritbool.euc.ble.session.FlowProtocolAdapter] owns serialization and timers.
  */
 interface EUCProtocol : EucProtocolSpec {
+    /** Legacy extension point. Built-in facades check and convert values at the JVM boundary. */
+    fun createCommand(commandType: CommandType, value: Any): ByteArray
+
+    /** Keeps legacy custom implementations working when polling supplies typed values. */
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray =
+        createCommand(commandType, value.toLegacyValue())
+
     fun close()
     val dataFlow: Flow<EUCData>
 

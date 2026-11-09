@@ -3,6 +3,7 @@ package io.github.tritbool.euc.ble.session
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
+import io.github.tritbool.euc.ble.protocols.toLegacyValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -72,7 +73,7 @@ class PollingSession(
                 is PollingEngine.Output.Trace -> trace(output.event)
                 is PollingEngine.Output.Query -> {
                     val payload = if (protocol.getCommandSupport(output.spec.commandType) == CommandSupport.SUPPORTED)
-                        protocol.createCommand(output.spec.commandType, output.spec.value) else byteArrayOf()
+                        protocol.createCommand(output.spec.commandType, output.spec.value.toLegacyValue()) else byteArrayOf()
                     if (payload.isEmpty()) {
                         engine.onFailed(output.token, now(), unsupported = true)
                     } else {

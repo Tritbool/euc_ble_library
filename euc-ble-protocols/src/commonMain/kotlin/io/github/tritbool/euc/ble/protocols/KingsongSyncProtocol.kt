@@ -836,14 +836,14 @@ class KingsongSyncProtocol(
     private fun isValidPassword(value: String): Boolean =
         value.length == 4 && value.all { it in '0'..'9' }
 
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
         return when (commandType) {
             CommandType.SET_PASSWORD, CommandType.CHANGE_PASSWORD, CommandType.REMOVE_PASSWORD -> {
                 val change = value as? PasswordChangeRequest
                 val password = if (commandType == CommandType.CHANGE_PASSWORD) {
                     change?.newPassword
                 } else {
-                    value as? String
+                    (value as? CommandValue.Text)?.value
                 } ?: return byteArrayOf()
                 if (!isValidPassword(password) ||
                     (commandType == CommandType.CHANGE_PASSWORD &&
@@ -861,7 +861,7 @@ class KingsongSyncProtocol(
                 }
             }
             CommandType.AUTHENTICATE -> {
-                val pin = value as? String ?: return byteArrayOf()
+                val pin = (value as? CommandValue.Text)?.value ?: return byteArrayOf()
                 if (pin.length != 4 || pin.any { it !in '0'..'9' }) return byteArrayOf()
                 buildLegacyCommand(command = 0x44).also { frame ->
                     pin.forEachIndexed { index, digit -> frame[index + 2] = digit.code.toByte() }
@@ -909,7 +909,7 @@ class KingsongSyncProtocol(
             )
 
             CommandType.SET_LIGHT_MODE -> {
-                val mode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
+                val mode = (value as? CommandValue.Integer)?.value?.coerceIn(0, 2) ?: return byteArrayOf()
                 val wireMode = when (mode) {
                     0 -> 0x13
                     1 -> 0x12
@@ -921,7 +921,7 @@ class KingsongSyncProtocol(
             CommandType.BEEP -> buildLegacyCommand(command = 0x88)
             CommandType.POWER_OFF -> buildLegacyCommand(command = 0x40)
             CommandType.SET_PEDALS_MODE -> {
-                val pedalsMode = (value as? Int)?.coerceIn(0, 2) ?: return byteArrayOf()
+                val pedalsMode = (value as? CommandValue.Integer)?.value?.coerceIn(0, 2) ?: return byteArrayOf()
                 buildLegacyCommand(
                     command = 0x87,
                     payload2 = pedalsMode,
@@ -931,12 +931,12 @@ class KingsongSyncProtocol(
             }
 
             CommandType.SET_LED_MODE -> {
-                val ledMode = (value as? Int)?.coerceIn(0, 0xFF) ?: return byteArrayOf()
+                val ledMode = (value as? CommandValue.Integer)?.value?.coerceIn(0, 0xFF) ?: return byteArrayOf()
                 buildLegacyCommand(command = 0x6C, payload2 = ledMode)
             }
 
             CommandType.LIGHT_BRIGHTNESS -> {
-                val intVal = (value as? Int) ?: return byteArrayOf()
+                val intVal = (value as? CommandValue.Integer)?.value ?: return byteArrayOf()
                 val mode = when {
                     intVal <= 0 -> 0
                     intVal >= 100 -> 2
@@ -953,7 +953,7 @@ class KingsongSyncProtocol(
             CommandType.SET_SPEED_LIMIT -> {
                 // KingSong uses a combined command (0x85) that sets alarms + max speed together.
                 // SET_SPEED_LIMIT updates the max speed while preserving current alarm values.
-                val maxSpeed = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                val maxSpeed = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildAlarmSpeedCommand(
                     alarm1 = lastKnownAlarm1Speed ?: 0,
                     alarm2 = lastKnownAlarm2Speed ?: 0,
@@ -963,12 +963,7 @@ class KingsongSyncProtocol(
             }
 
             CommandType.SET_ALARM_SPEED -> {
-                // value is expected to be a Map or IntArray [alarm1, alarm2, alarm3]
-                val speeds = when (value) {
-                    is IntArray -> value
-                    is List<*> -> (value.filterIsInstance<Int>()).toIntArray()
-                    else -> return byteArrayOf()
-                }
+                val speeds = (value as? CommandValue.Integers)?.copyValues() ?: return byteArrayOf()
                 if (speeds.size < 3) return byteArrayOf()
                 buildAlarmSpeedCommand(
                     alarm1 = speeds[0].coerceIn(0, 100),
@@ -985,40 +980,40 @@ class KingsongSyncProtocol(
             CommandType.REQUEST_BMS_SERIAL -> buildBmsQuery(type = 0xE1)
 
             CommandType.SET_LED_STROBE -> {
-                val mode = (value as? Int)?.and(0xFF) ?: return byteArrayOf()
+                val mode = (value as? CommandValue.Integer)?.value?.and(0xFF) ?: return byteArrayOf()
                 buildLegacyCommand(command = 0x53, payload2 = mode)
             }
 
             CommandType.SET_CHARGE_LIMIT -> {
                 // Charge cutoff percentage 0..100.
                 // Wire: opcode 0x8A, sub-byte 0x09 at offset 2, value u16 LE at offsets 4..5.
-                val pct = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                val pct = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildWheelParamCommand(subByte = 0x09, value16 = pct)
             }
 
             CommandType.SET_STANDBY_DELAY -> {
                 // Idle auto-poweroff delay in seconds.
                 // Wire: opcode 0x3F, sub-byte 0x01 at offset 2, value u16 LE at offsets 4..5.
-                val seconds = (value as? Int)?.coerceIn(0, 65535) ?: return byteArrayOf()
+                val seconds = (value as? CommandValue.Integer)?.value?.coerceIn(0, 65535) ?: return byteArrayOf()
                 buildStandbyCommand(seconds = seconds)
             }
 
             CommandType.SET_PEDAL_CUTOFF_ANGLE -> {
                 // Pedal cutoff lean angle in tenths of a degree (unsigned).
                 // Wire: opcode 0x8A, sub-byte 0x03 at offset 2, value u16 LE at offsets 4..5.
-                val tenths = (value as? Int)?.coerceIn(0, 65535) ?: return byteArrayOf()
+                val tenths = (value as? CommandValue.Integer)?.value?.coerceIn(0, 65535) ?: return byteArrayOf()
                 buildWheelParamCommand(subByte = 0x03, value16 = tenths)
             }
 
             CommandType.SET_PEDAL_PITCH_TRIM -> {
                 // Pedal pitch trim in tenths of a degree (signed, two's complement).
                 // Wire: opcode 0x8A, sub-byte 0x01 at offset 2, value u16 LE at offsets 4..5.
-                val tenths = (value as? Int)?.coerceIn(-32768, 32767) ?: return byteArrayOf()
+                val tenths = (value as? CommandValue.Integer)?.value?.coerceIn(-32768, 32767) ?: return byteArrayOf()
                 val raw = if (tenths < 0) tenths + 0x10000 else tenths
                 buildWheelParamCommand(subByte = 0x01, value16 = raw)
             }
 
-            CommandType.CUSTOM -> (value as? ByteArray)?.copyOf() ?: byteArrayOf()
+            CommandType.CUSTOM -> (value as? CommandValue.Bytes)?.copyBytes() ?: byteArrayOf()
 
             else -> byteArrayOf()
         }
@@ -1136,7 +1131,7 @@ class KingsongSyncProtocol(
                 ProtocolQuerySpec(
                     QUERY_ID_REQUEST_ALARMS,
                     CommandType.CUSTOM,
-                    buildLegacyCommand(command = 0x98),
+                    CommandValue.Bytes(buildLegacyCommand(command = 0x98)),
                     initialDelayMs = 400L,
                     maxRetries = 2
                 ),
@@ -1156,7 +1151,7 @@ class KingsongSyncProtocol(
                 ProtocolQuerySpec(
                     "ks.keep-alive",
                     CommandType.CUSTOM,
-                    buildLegacyCommand(command = 0x00),
+                    CommandValue.Bytes(buildLegacyCommand(command = 0x00)),
                     intervalMs = 1_000L,
                     responseTimeoutMs = 500L,
                     maxRetries = 0

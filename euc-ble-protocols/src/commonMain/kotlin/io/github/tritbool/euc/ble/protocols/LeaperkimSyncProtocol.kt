@@ -439,7 +439,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         return ((nowMs - start) / 1000L).coerceAtLeast(0L)
     }
 
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray {
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray {
         return when (commandType) {
             CommandType.LIGHT_ON -> "SetLightON".encodeToByteArray()
             CommandType.LIGHT_OFF -> "SetLightOFF".encodeToByteArray()
@@ -449,7 +449,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
                 // Two vendor frames must be written back-to-back: the LkAp frame followed
                 // immediately by the LdAp companion. We concatenate them here; the BLE
                 // layer splits at the 20-byte ATT boundary before writing.
-                val on = value as? Boolean ?: return byteArrayOf()
+                val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
                 buildVendorFrame(LKAP, 13, byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte()), (if (on) 0x01 else 0x00).toByte()) +
                         buildVendorFrame(LDAP, 13, byteArrayOf(0x01, 0x00, 0x80.toByte()), (if (on) 0x01 else 0x00).toByte())
             }
@@ -470,7 +470,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
             CommandType.UNLOCK -> buildLockFrame(locked = false)
 
             CommandType.SET_PEDALS_MODE -> {
-                when ((value as? Int)?.coerceIn(0, 2)) {
+                when ((value as? CommandValue.Integer)?.value?.coerceIn(0, 2)) {
                     0 -> "SETh".encodeToByteArray()
                     1 -> "SETm".encodeToByteArray()
                     2 -> "SETs".encodeToByteArray()
@@ -481,7 +481,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
             CommandType.SET_PEDAL_ANGLE -> {
                 // Signed tenths-of-a-degree, encoded as a signed i8.
                 // Example: -36 → 0xDC (confirmed from Lynx S capture, slider -3.6°).
-                val tenths = (value as? Int) ?: return byteArrayOf()
+                val tenths = (value as? CommandValue.Integer)?.value ?: return byteArrayOf()
                 val clamped = tenths.coerceIn(-128, 127)
                 buildVendorFrame(
                     LKAP, 16,
@@ -492,7 +492,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
 
             CommandType.SET_RIDE_MODE -> {
                 // Ride-mode scalar 0..100.
-                val scalar = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                val scalar = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildVendorFrame(
                     LDAP, 15,
                     byteArrayOf(0x01, 0x02, 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
@@ -502,7 +502,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
 
             CommandType.SET_PWM_LIMIT -> {
                 // PWM percentage 0..100.
-                val percent = (value as? Int)?.coerceIn(0, 100) ?: return byteArrayOf()
+                val percent = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100) ?: return byteArrayOf()
                 buildVendorFrame(
                     LDAP, 18,
                     byteArrayOf(
@@ -516,8 +516,8 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
             CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
             CommandType.CUSTOM -> {
                 when (value) {
-                    is ByteArray -> value.copyOf()
-                    is String -> value.encodeToByteArray()
+                    is CommandValue.Bytes -> value.copyBytes()
+                    is CommandValue.Text -> value.value.encodeToByteArray()
                     else -> byteArrayOf()
                 }
             }
