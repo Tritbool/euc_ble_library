@@ -174,6 +174,8 @@ class EucBleClientSecurityTest {
         assertTrue(results.isEmpty())
         acknowledgeWrite(client, gatt)
         runCurrent()
+        acknowledgeWrite(client, gatt)
+        runCurrent()
         assertEquals(2, errors.size)
         assertTrue(errors.all { it == "Command blocked by protocol security state or pending operation" })
         assertEquals(1, traffic.count {
