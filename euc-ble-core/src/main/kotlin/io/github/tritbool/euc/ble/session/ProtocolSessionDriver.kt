@@ -38,8 +38,7 @@ import io.github.tritbool.euc.ble.core.EucUuid
 import io.github.tritbool.euc.ble.protocols.toCommandValue
 
 /**
- * Session-layer bridge exposing a synchronous [SyncEucProtocol] through the coroutine-based
- * [EUCProtocol] contract.
+ * Coroutine/Flow driver for a pure [ProtocolSession], preserving the public [EUCProtocol] API.
  *
  * - Every call into [protocol] is serialized, so the protocol itself needs no synchronization.
  * - After each call, pending [ProtocolOutput]s are drained: telemetry goes to [dataFlow], writes
@@ -47,24 +46,32 @@ import io.github.tritbool.euc.ble.protocols.toCommandValue
  *   requests are scheduled on the coroutine scope.
  * - [decode] returns the last telemetry produced by that notification, synchronously.
  *
- * When no scope is given the adapter owns one and cancels it in [close]; a caller-provided scope
- * is never cancelled (only this adapter's timer jobs are).
+ * When no scope is given the driver owns one and cancels it in [close]; a caller-provided scope
+ * is never cancelled (only this driver's timer jobs are).
  */
-class FlowProtocolAdapter(
+class ProtocolSessionDriver(
     val protocol: SyncEucProtocol,
     scope: CoroutineScope? = null,
     private val logger: Logger = NoOpLogger(),
+    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : EUCProtocol {
     private val ownsScope = scope == null
     private val scope: CoroutineScope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Any()
-    private val timers = HashMap<String, Job>()
+    private val session = ProtocolSession(protocol)
+    private var sessionTime = now()
+    private var timerJob: Job? = null
+    private var scheduledDeadline: Long? = null
+    private var timerGeneration = 0L
     private var lastTelemetry: EUCData? = null
 
-    private val dataChannel = Channel<EUCData>(capacity = Channel.UNLIMITED)
+    private val dataChannel = Channel<EUCData>(
+        capacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val dataFlow: Flow<EUCData> = dataChannel.receiveAsFlow()
 
-    private val writeChannel = Channel<ByteArray>(capacity = Channel.UNLIMITED)
+    private val writeChannel = Channel<ByteArray>(capacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY)
     override val writeFlow: Flow<ByteArray> = writeChannel.receiveAsFlow()
 
     private val _rawFrameFlow = MutableSharedFlow<ByteArray>(
@@ -87,13 +94,14 @@ class FlowProtocolAdapter(
     override val securityEventFlow: Flow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
 
     /** Number of currently armed timers (for diagnostics and tests). */
-    val armedTimerCount: Int get() = synchronized(lock) { timers.size }
+    val armedTimerCount: Int get() = synchronized(lock) { session.armedTimerCount }
 
     override fun decode(data: ByteArray): EUCData? {
         _rawFrameFlow.tryEmit(data.copyOf())
         return synchronized(lock) {
             lastTelemetry = null
-            protocol.onNotification(data)
+            sessionTime = maxOf(sessionTime, now())
+            session.onNotification(data, sessionTime)
             dispatchOutputs()
             lastTelemetry.also { lastTelemetry = null }
         }
@@ -104,7 +112,8 @@ class FlowProtocolAdapter(
             cancelAllTimers()
             while (writeChannel.tryReceive().isSuccess) Unit
             while (dataChannel.tryReceive().isSuccess) Unit
-            protocol.resetSession()
+            sessionTime = maxOf(sessionTime, now())
+            session.reset(sessionTime)
             dispatchOutputs()
             val state = protocol.getSecurityState()
             _securityState.value = state
@@ -115,6 +124,7 @@ class FlowProtocolAdapter(
     override fun close() {
         synchronized(lock) {
             cancelAllTimers()
+            session.close()
         }
         if (ownsScope) scope.cancel()
     }
@@ -155,6 +165,8 @@ class FlowProtocolAdapter(
 
     private inline fun <T> call(block: () -> T): T = synchronized(lock) {
         val result = block()
+        sessionTime = maxOf(sessionTime, now())
+        session.afterInput(sessionTime)
         dispatchOutputs()
         result
     }
@@ -164,7 +176,7 @@ class FlowProtocolAdapter(
     /** Must be called while holding [lock]. */
     private fun dispatchOutputs() {
         while (true) {
-            when (val output = protocol.pollOutput() ?: return) {
+            when (val output = session.pollOutput() ?: break) {
                 is ProtocolOutput.DebugLog -> logger.debug(output.tag, output.message)
                 is ProtocolOutput.Telemetry -> {
                     lastTelemetry = output.data
@@ -175,43 +187,54 @@ class FlowProtocolAdapter(
                     _nonNullSecurityState.value = output.state
                 }
                 is ProtocolOutput.SecurityEvent -> _securityEventFlow.tryEmit(output.event)
-                is ProtocolOutput.Write -> if (output.payload.isNotEmpty()) writeChannel.trySend(output.payload)
-                is ProtocolOutput.StartTimer -> startTimer(output.id, output.delayMs)
-                is ProtocolOutput.CancelTimer -> timers.remove(output.id)?.cancel()
+                is ProtocolOutput.Write -> if (output.payload.isNotEmpty()) {
+                    check(writeChannel.trySend(output.payload).isSuccess) {
+                        "Legacy write flow queue is full; control write was rejected"
+                    }
+                }
+                is ProtocolOutput.StartTimer, is ProtocolOutput.CancelTimer ->
+                    error("Timer bookkeeping belongs to ProtocolSession")
             }
         }
+        scheduleTimer()
     }
 
     /** Must be called while holding [lock]. */
-    private fun startTimer(id: String, delayMs: Long) {
-        timers.remove(id)?.cancel()
-        lateinit var job: Job
-        job = scope.launch(start = CoroutineStart.LAZY) {
+    private fun scheduleTimer() {
+        val deadline = session.nextDeadline
+        if (deadline == scheduledDeadline) return
+        timerJob?.cancel()
+        scheduledDeadline = deadline
+        val generation = ++timerGeneration
+        if (deadline == null) return
+        val delayMs = (deadline - sessionTime).coerceAtLeast(0)
+        timerJob = scope.launch(start = CoroutineStart.LAZY) {
             delay(delayMs)
             synchronized(lock) {
-                // A reset, cancel or re-arm since scheduling makes this expiry stale.
-                if (timers[id] !== job) return@launch
-                timers.remove(id)
+                if (generation != timerGeneration) return@launch
+                scheduledDeadline = null
                 try {
-                    protocol.onTimer(id)
+                    sessionTime = maxOf(deadline, now())
+                    session.advance(sessionTime)
                 } catch (e: Exception) {
-                    logger.error(TAG, "Timer '$id' failed in ${protocol.manufacturer} protocol", e)
+                    logger.error(TAG, "Timer failed in ${protocol.manufacturer} protocol", e)
                 }
                 dispatchOutputs()
             }
         }
-        timers[id] = job
-        job.start()
+        timerJob?.start()
     }
 
     /** Must be called while holding [lock]. */
     private fun cancelAllTimers() {
-        timers.values.forEach { it.cancel() }
-        timers.clear()
+        timerGeneration++
+        timerJob?.cancel()
+        timerJob = null
+        scheduledDeadline = null
     }
 
     private companion object {
-        const val TAG = "FlowProtocolAdapter"
+        const val TAG = "ProtocolSessionDriver"
         const val SECURITY_EVENT_BUFFER = 16
     }
 }

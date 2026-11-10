@@ -6,7 +6,7 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.CommandType
 
 /**
- * Scan-related callbacks exposed by the BLE manager.
+ * Scan-related callbacks exposed by platform connectors.
  *
  * Threading contract:
  * - These callbacks are invoked from background execution contexts.

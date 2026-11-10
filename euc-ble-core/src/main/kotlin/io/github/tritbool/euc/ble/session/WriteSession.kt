@@ -1,29 +1,40 @@
 package io.github.tritbool.euc.ble.session
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Serializes transport writes and retries only stack-rejected submissions, never accepted writes. */
+/** Serializes transport writes, owns write generations, and retries only stack rejections. */
 class WriteSession(
     private val scope: CoroutineScope,
+    maxQueuedWrites: Int = DEFAULT_MAX_QUEUED_WRITES,
+    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
     private val onError: (Exception) -> Unit
 ) {
     private class Write(
-        val bytes: ByteArray, val valid: () -> Boolean, val submit: (ByteArray) -> Boolean,
+        val valid: () -> Boolean, val submit: (ByteArray) -> Boolean,
         val retryable: (ByteArray) -> Boolean, val accepted: (ByteArray) -> Unit,
         val failed: (Int) -> Unit
     )
 
     private val lock = Any()
-    private val queue = Channel<Write>(Channel.UNLIMITED)
+    private val queue = WriteQueue<Write>(maxQueuedWrites)
+    private val wake = Channel<Unit>(Channel.CONFLATED)
     private var worker: Job? = null
-    private var acknowledgment: CompletableDeferred<Unit>? = null
+
+    val generation: Long
+        get() = synchronized(lock) { queue.generation }
+
+    init {
+        require(maxQueuedWrites > 0) { "Write queue capacity must be positive" }
+    }
 
     fun enqueue(
         bytes: ByteArray,
@@ -32,68 +43,84 @@ class WriteSession(
         retryable: (ByteArray) -> Boolean,
         accepted: (ByteArray) -> Unit,
         failed: (Int) -> Unit
-    ) {
-        val write = Write(bytes.copyOf(), valid, submit, retryable, accepted, failed)
-        synchronized(lock) {
-            check(queue.trySend(write).isSuccess) { "Write session queue unavailable" }
-            if (worker?.isActive != true) {
-                worker = scope.launch {
-                    for (item in queue) {
-                        try {
-                            perform(item)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            item.failed(0)
-                            onError(e)
-                        } finally {
-                            item.bytes.fill(0)
+    ): WriteEnqueueResult {
+        val write = Write(valid, submit, retryable, accepted, failed)
+        var start: Job? = null
+        val result = synchronized(lock) {
+            if (!scope.isActive) return WriteEnqueueResult.SESSION_CLOSED
+            val result = queue.enqueue(bytes, write)
+            if (result != WriteEnqueueResult.ENQUEUED) return result
+            if (worker == null || worker?.isCompleted == true) {
+                worker = scope.launch(start = CoroutineStart.LAZY) {
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val attempt = synchronized(lock) {
+                            if (!queue.hasPending) {
+                                worker = null
+                                return@launch
+                            }
+                            queue.next(now())?.let { it to it.bytes.copyOf() }
                         }
+                        attempt?.let { (submission, bytes) -> perform(submission, bytes) }
+                        val wait = synchronized(lock) { queue.delayUntilNext(now()) }
+                        if (wait > 0) withTimeoutOrNull(wait) { wake.receive() }
                     }
-                }
+                }.also { start = it }
             }
+            WriteEnqueueResult.ENQUEUED
         }
+        wake.trySend(Unit)
+        start?.start()
+        return result
     }
 
     fun onAcknowledgment() {
-        val ack = synchronized(lock) { acknowledgment }
-        ack?.complete(Unit)
+        synchronized(lock) { queue.onAcknowledgment() }
+        wake.trySend(Unit)
     }
 
     /** Clears only this session's jobs and byte snapshots, not the caller's scope. */
     fun reset() = synchronized(lock) {
         worker?.cancel()
         worker = null
-        acknowledgment?.cancel()
-        acknowledgment = null
-        while (true) {
-            val write = queue.tryReceive().getOrNull() ?: break
-            write.bytes.fill(0)
+        queue.reset()
+        while (wake.tryReceive().isSuccess) Unit
+    }
+
+    private fun perform(submission: WriteQueue.Submission<Write>, bytes: ByteArray) {
+        val write = submission.attachment
+        try {
+            if (!write.valid() || !synchronized(lock) { queue.isCurrent(submission.token) }) {
+                synchronized(lock) { queue.discard(submission.token) }
+                return
+            }
+            val accepted = write.submit(bytes)
+            if (!accepted && !write.valid()) {
+                synchronized(lock) { queue.discard(submission.token) }
+                return
+            }
+            val retryable = !accepted && write.retryable(bytes)
+            val outcome = synchronized(lock) {
+                if (!queue.isCurrent(submission.token)) null
+                else queue.onSubmitted(submission.token, accepted, retryable, now())
+            }
+            if (outcome != null) {
+                if (accepted) write.accepted(bytes)
+                else if (outcome) write.failed(submission.attempt)
+            }
+        } catch (e: CancellationException) {
+            synchronized(lock) { queue.discard(submission.token) }
+            throw e
+        } catch (e: Exception) {
+            synchronized(lock) { queue.discard(submission.token) }
+            write.failed(submission.attempt)
+            onError(e)
+        } finally {
+            bytes.fill(0)
         }
     }
 
-    private suspend fun perform(write: Write) {
-        var attempts = 0
-        for (attempt in 1..5) {
-            if (!write.valid()) return
-            val ack = CompletableDeferred<Unit>()
-            synchronized(lock) { acknowledgment = ack }
-            attempts = attempt
-            try {
-                if (write.submit(write.bytes)) {
-                    write.accepted(write.bytes)
-                    withTimeoutOrNull(300L) { ack.await() }
-                    return
-                }
-            } finally {
-                synchronized(lock) {
-                    if (acknowledgment === ack) acknowledgment = null
-                }
-            }
-            if (!write.valid()) return
-            if (!write.retryable(write.bytes)) break
-            if (attempt < 5) delay(30L * attempt)
-        }
-        write.failed(attempts)
+    private companion object {
+        const val DEFAULT_MAX_QUEUED_WRITES = 64
     }
 }

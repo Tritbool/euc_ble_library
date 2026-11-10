@@ -6,19 +6,19 @@ import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
-import io.github.tritbool.euc.ble.session.FlowProtocolAdapter
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriver
 import kotlinx.coroutines.flow.StateFlow
 
 /** Coroutine-compatible facade for the synchronous InMotion state machine. */
 class InMotionProtocol private constructor(
     private val engine: InMotionSyncProtocol,
-    private val adapter: FlowProtocolAdapter
+    private val adapter: ProtocolSessionDriver
 ) : EUCProtocol by adapter {
     constructor(logger: Logger = NoOpLogger(), clock: EucClock = SystemEucClock) :
         this(InMotionSyncProtocol(clock), logger)
 
     private constructor(engine: InMotionSyncProtocol, logger: Logger) :
-        this(engine, FlowProtocolAdapter(engine, logger = logger))
+        this(engine, ProtocolSessionDriver(engine, logger = logger))
 
     override val securityStateFlow: StateFlow<WheelSecurityState> = adapter.nonNullSecurityState
     override fun getSecurityState(): WheelSecurityState = adapter.withProtocol { engine.getSecurityState() }

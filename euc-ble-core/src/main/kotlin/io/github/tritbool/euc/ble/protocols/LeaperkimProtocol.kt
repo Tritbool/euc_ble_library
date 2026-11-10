@@ -5,7 +5,7 @@ import io.github.tritbool.euc.ble.core.EucDateTime
 import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.session.FlowProtocolAdapter
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriver
 import kotlinx.coroutines.CoroutineScope
 
 private class LegacyLeaperkimEngine(clock: EucClock) : LeaperkimSyncProtocol(clock) {
@@ -30,13 +30,13 @@ private class LegacyLeaperkimEngine(clock: EucClock) : LeaperkimSyncProtocol(clo
 /** Flow-compatible wrapper for the synchronous Leaperkim state machine. */
 open class LeaperkimProtocol protected constructor(
     private val engine: LeaperkimSyncProtocol,
-    private val adapter: FlowProtocolAdapter
+    private val adapter: ProtocolSessionDriver
 ) : EUCProtocol by adapter {
     constructor(scope: CoroutineScope? = null, clock: EucClock = SystemEucClock) :
         this(LegacyLeaperkimEngine(clock), scope)
 
     protected constructor(engine: LeaperkimSyncProtocol, scope: CoroutineScope?) :
-        this(engine, FlowProtocolAdapter(engine, scope))
+        this(engine, ProtocolSessionDriver(engine, scope))
 
     init {
         if (engine is LegacyLeaperkimEngine) engine.owner = this

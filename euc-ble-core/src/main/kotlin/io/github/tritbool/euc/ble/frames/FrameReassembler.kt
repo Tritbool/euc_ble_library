@@ -17,7 +17,7 @@ class FrameReassembler(
 ) {
     private val lock = Any()
 
-    private val _frames = Channel<ByteArray>(capacity = Channel.UNLIMITED)
+    private val _frames = Channel<ByteArray>(capacity = FRAME_BUFFER_CAPACITY)
     val frames: Flow<ByteArray> get() = _frames.receiveAsFlow()
     fun observeFrames(): Flow<ByteArray> = frames
 
@@ -38,7 +38,13 @@ class FrameReassembler(
             ready = parser.appendAndExtract(data)
         }
         for (frame in ready) {
-            _frames.trySend(frame)
+            check(_frames.trySend(frame).isSuccess) {
+                "Frame reassembly output queue is full (capacity=$FRAME_BUFFER_CAPACITY)"
+            }
         }
+    }
+
+    private companion object {
+        const val FRAME_BUFFER_CAPACITY = 256
     }
 }

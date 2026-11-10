@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -44,7 +44,9 @@ jobs:
 
       - name: Publish to Maven Central
         run: >
-          ./gradlew :euc-ble-core:publishAllPublicationsToMavenCentralRepository
+          ./gradlew :euc-ble-protocols:publishAllPublicationsToMavenCentralRepository
+          :euc-ble-session:publishAllPublicationsToMavenCentralRepository
+          :euc-ble-core:publishAllPublicationsToMavenCentralRepository
           :euc-ble-android:publishAllPublicationsToMavenCentralRepository
           --no-daemon
           --stacktrace

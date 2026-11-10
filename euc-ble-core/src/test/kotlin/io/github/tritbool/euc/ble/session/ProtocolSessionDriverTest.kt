@@ -12,10 +12,12 @@ import io.github.tritbool.euc.ble.protocols.ProtocolOutput
 import io.github.tritbool.euc.ble.protocols.SyncEucProtocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
@@ -32,7 +34,8 @@ import org.junit.jupiter.api.Test
 import io.github.tritbool.euc.ble.core.EucUuid as UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-class FlowProtocolAdapterTest {
+@OptIn(ExperimentalCoroutinesApi::class)
+class ProtocolSessionDriverTest {
 
     /**
      * Notification opcodes (first byte):
@@ -106,7 +109,7 @@ class FlowProtocolAdapterTest {
     }
 
     private fun TestScope.adapter(protocol: SyncEucProtocol) =
-        FlowProtocolAdapter(protocol, backgroundScope)
+        ProtocolSessionDriver(protocol, backgroundScope, now = { testScheduler.currentTime })
 
     @Test
     fun `decode returns telemetry synchronously and emits it on dataFlow`() = runTest {
@@ -126,6 +129,25 @@ class FlowProtocolAdapterTest {
             assertEquals(1.0, awaitItem().speed)
             assertEquals(2.0, awaitItem().speed)
         }
+    }
+
+    @Test
+    fun `bounded telemetry flow drops oldest when no collector is ready`() = runTest {
+        val adapter = adapter(FakeSyncProtocol())
+        repeat(257) { adapter.decode(byteArrayOf(1, it.toByte())) }
+
+        assertEquals(1.0, adapter.dataFlow.first().speed)
+    }
+
+    @Test
+    fun `bounded compatibility write flow rejects overflow explicitly`() = runTest {
+        val adapter = adapter(FakeSyncProtocol())
+        repeat(256) { adapter.decode(byteArrayOf(2)) }
+
+        val error = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) {
+            adapter.decode(byteArrayOf(2))
+        }
+        assertTrue(error.message!!.contains("control write was rejected"))
     }
 
     @Test
@@ -270,7 +292,7 @@ class FlowProtocolAdapterTest {
     fun `close never cancels a caller-provided scope`() {
         val callerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
-            val adapter = FlowProtocolAdapter(FakeSyncProtocol(), callerScope)
+            val adapter = ProtocolSessionDriver(FakeSyncProtocol(), callerScope)
             adapter.decode(byteArrayOf(2))
             adapter.close()
             assertEquals(0, adapter.armedTimerCount)
@@ -283,7 +305,7 @@ class FlowProtocolAdapterTest {
     @Test
     fun `concurrent callers are serialized`() = runBlocking {
         val protocol = FakeSyncProtocol()
-        val adapter = FlowProtocolAdapter(protocol)
+        val adapter = ProtocolSessionDriver(protocol)
         try {
             (1..8).map {
                 async(Dispatchers.Default) { repeat(2_000) { adapter.decode(byteArrayOf(1, 1)) } }

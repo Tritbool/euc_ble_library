@@ -43,6 +43,7 @@ val includeAndroid = providers.gradleProperty("euc.includeAndroid").getOrElse("t
 
 dependencies {
     dokka(project(":euc-ble-protocols"))
+    dokka(project(":euc-ble-session"))
     dokka(project(":euc-ble-core"))
     if (includeAndroid) {
         dokka(project(":euc-ble-android"))

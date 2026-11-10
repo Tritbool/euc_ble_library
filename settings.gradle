@@ -34,7 +34,10 @@ rootProject.name = "EUC BLE Library"
 // Portable synchronous engines: no Android, JVM APIs or coroutine dependency.
 include ":euc-ble-protocols"
 
-// JVM compatibility API and asynchronous session drivers.
+// Shared session policies and state machines.
+include ":euc-ble-session"
+
+// JVM compatibility API and asynchronous drivers.
 include ":euc-ble-core"
 
 // Android connector (BLEManager, EucBleClient). Opt out with -Peuc.includeAndroid=false

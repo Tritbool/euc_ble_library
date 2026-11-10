@@ -7,14 +7,14 @@ import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
-import io.github.tritbool.euc.ble.session.FlowProtocolAdapter
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 
 /** Flow-compatible wrapper for the synchronous KingSong state machine. */
 class KingsongProtocol private constructor(
     private val engine: KingsongSyncProtocol,
-    private val adapter: FlowProtocolAdapter
+    private val adapter: ProtocolSessionDriver
 ) : EUCProtocol by adapter {
     constructor(
         scope: CoroutineScope? = null,
@@ -23,7 +23,7 @@ class KingsongProtocol private constructor(
     ) : this(KingsongSyncProtocol(clock, random), scope)
 
     private constructor(engine: KingsongSyncProtocol, scope: CoroutineScope?) :
-        this(engine, FlowProtocolAdapter(engine, scope))
+        this(engine, ProtocolSessionDriver(engine, scope))
 
     companion object {
         internal const val PASSWORD_OPERATION_TIMEOUT_MS = KingsongSyncProtocol.PASSWORD_OPERATION_TIMEOUT_MS

@@ -46,10 +46,11 @@ jobs:
       - name: Test quality reporting
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v
 
-      - name: Verify coroutine-free protocols on JVM and JavaScript
+      - name: Verify coroutine-free protocols and sessions on JVM and JavaScript
         run: >
           ./gradlew -Peuc.includeAndroid=false
           :euc-ble-protocols:check
+          :euc-ble-session:check
           --no-daemon --stacktrace
 
       - name: Run unit tests + coverage reports
@@ -242,6 +243,7 @@ jobs:
           name: test-and-coverage-reports
           path: |
             euc-ble-protocols/build/reports/tests/
+            euc-ble-session/build/reports/tests/
             euc-ble-core/build/reports/tests/
             euc-ble-core/build/reports/jacoco/
             euc-ble-android/build/reports/tests/

@@ -1,0 +1,16 @@
+# scenario<TAB>input<TAB>argument<TAB>monotonic ms<TAB>expected actions/events (semicolon-separated)
+rejection	connect	wheel	0	StateChanged:CONNECTING;Connect:wheel
+rejection	rejected	busy	1	Close;StateChanged:DISCONNECTED;Error:true:busy
+timeout	connect	wheel	0	StateChanged:CONNECTING;Connect:wheel
+timeout	advance		49	
+timeout	advance		50	Close;StateChanged:DISCONNECTED;Error:true:Connection timeout
+reconnect	connect	wheel	0	StateChanged:CONNECTING;Connect:wheel
+reconnect	connected		1	StateChanged:CONNECTED;DiscoverServices
+reconnect	disconnected		2	Close;StateChanged:DISCONNECTED
+reconnect	advance		101	
+reconnect	advance		102	StateChanged:CONNECTING;Connect:wheel
+reconnect	rejected	busy	103	Close;StateChanged:DISCONNECTED;Error:false:busy;Error:true:Reconnection failed after 1 attempts
+manual	connect	wheel	0	StateChanged:CONNECTING;Connect:wheel
+manual	disconnect		1	Close;StateChanged:DISCONNECTED
+manual	connected		2	
+manual	advance		10000	

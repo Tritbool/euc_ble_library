@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Coroutine-compatible protocol facade. New protocol logic belongs in [SyncEucProtocol];
- * [io.github.tritbool.euc.ble.session.FlowProtocolAdapter] owns serialization and timers.
+ * [io.github.tritbool.euc.ble.session.ProtocolSessionDriver] owns serialization and timers.
  */
 interface EUCProtocol : EucProtocolSpec {
     /** Legacy extension point. Built-in facades check and convert values at the JVM boundary. */

@@ -4,8 +4,6 @@ import io.github.tritbool.euc.ble.core.*
 import io.github.tritbool.euc.ble.models.PasswordOperationStatus
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.*
-import io.github.tritbool.euc.ble.session.PollingEngine
-import io.github.tritbool.euc.ble.session.ProtocolSelector
 import kotlin.test.*
 
 class PortableReplayTest {
@@ -31,6 +29,10 @@ class PortableReplayTest {
             val input = when (kind) {
                 "unit" -> CommandValue.None
                 "hex" -> CommandValue.Bytes(ByteUtils.hexToBytes(value))
+                "int" -> CommandValue.Integer(value.toInt())
+                "bool" -> CommandValue.Toggle(value.toBooleanStrict())
+                "ints" -> CommandValue.Integers(value.split(',').map(String::toInt))
+                "password-change" -> value.split(',').let { PasswordChangeRequest(it[0], it[1]) }
                 else -> error("Unknown fixture value kind: $kind")
             }
             val engine = engines.getValue(protocol)
@@ -38,6 +40,48 @@ class PortableReplayTest {
                 engine.createCommand(CommandType.valueOf(command), input), row)
             engine.resetSession()
             assertNull(engine.pollOutput())
+        }
+    }
+
+    @Test
+    fun languageNeutralNotificationVectorsMatchTelemetryAndProtocolWrites() {
+        val engines = engines().associateBy { it.protocolId }
+        for (row in telemetryFixtures) {
+            val (protocolId, chunks, expected) = row.split('\t')
+            val engine = engines.getValue(protocolId)
+            for (chunk in chunks.split(';')) {
+                engine.onNotification(ByteUtils.hexToBytes(chunk))
+            }
+            val actual = engine.drainOutputs().mapNotNull { output ->
+                when (output) {
+                    is ProtocolOutput.Write -> "W|${output.payload.hex()}"
+                    is ProtocolOutput.Telemetry -> {
+                        val data = output.data
+                        when (protocolId) {
+                            "GotwayProtocol", "ExtremeBullProtocol" ->
+                                "T|${data.speed}|${data.voltage}|${data.current}|${data.temperature}|" +
+                                    "${data.distance}|${data.pwm}|${data.timestamp}"
+                            "LeaperkimProtocol", "NosfetProtocol", "NinebotProtocol", "NinebotZProtocol",
+                            "KingsongProtocol" -> "T|${data.speed}|${data.timestamp}"
+                            "InMotionProtocol" -> "T|${data.voltage}|${data.timestamp}"
+                            else -> error("No telemetry projection for $protocolId")
+                        }
+                    }
+                    else -> null
+                }
+            }
+            val expectedEvents = expected.split(';')
+            assertEquals(expectedEvents.size, actual.size, row)
+            expectedEvents.zip(actual).forEach { (expectedEvent, actualEvent) ->
+                val expectedFields = expectedEvent.split('|')
+                val actualFields = actualEvent.split('|')
+                assertEquals(expectedFields.size, actualFields.size, row)
+                expectedFields.zip(actualFields).forEach { (expectedField, actualField) ->
+                    val number = expectedField.toDoubleOrNull()
+                    if (number == null) assertEquals(expectedField, actualField, row)
+                    else assertEquals(number, actualField.toDouble(), 1e-9, row)
+                }
+            }
         }
     }
 
@@ -89,37 +133,6 @@ class PortableReplayTest {
     }
 
     @Test
-    fun selectionUsesExplicitIdentityWithoutRuntimeReflection() {
-        val protocols = engines()
-        val selector = ProtocolSelector(protocols, NoOpLogger())
-        val base = protocols.single { it.protocolId == "GotwayProtocol" }
-        assertEquals("ExtremeBullProtocol", selector.subclass(base, "Extreme Bull")?.protocolId)
-        assertNull(selector.subclass(base, "Gotway"))
-        val service = EucUuid.parse(BLEConstants.GOTWAY_SERVICE_UUID)
-        val selected = selector.byFingerprint(listOf(ProtocolSelector.Service(service, emptySet()))) {
-            if (it == base.protocolId) listOf(listOf(GattServiceSpec(service))) else emptyList()
-        }
-        assertSame(base, selected.first)
-    }
-
-    @Test
-    fun pollingUsesSuppliedTimeAndIgnoresUnacceptedResponses() {
-        val engine = PollingEngine("Replay")
-        val plan = ProtocolPollingPlan(true,
-            startupQueries = listOf(ProtocolQuerySpec("serial", CommandType.REQUEST_SERIAL)))
-        engine.start(plan, 0)
-        engine.tick(plan, 0)
-        val query = assertIs<PollingEngine.Output.Query>(engine.pollOutput())
-        engine.onResponse(10_000) { true }
-        assertNull(engine.pollOutput())
-        engine.onAccepted(query.token, 10_000)
-        assertEquals(QueryTracePhase.SENT,
-            assertIs<PollingEngine.Output.Trace>(engine.pollOutput()).event.phase)
-        engine.onResponse(10_123) { true }
-        assertEquals(123L, assertIs<PollingEngine.Output.Trace>(engine.pollOutput()).event.latencyMs)
-    }
-
-    @Test
     fun portableUtilitiesPreserveSignedValuesAndCrc() {
         assertEquals(0xCBF43926L, EucCrc32.calculate("123456789".encodeToByteArray()))
         for (value in listOf(Int.MIN_VALUE, -1, 0, 1, Int.MAX_VALUE)) {
@@ -129,6 +142,26 @@ class PortableReplayTest {
         assertEquals(EucUuid.parse("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"),
             EucUuid.parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e"))
         assertFailsWith<IllegalArgumentException> { EucUuid.parse("not-a-uuid") }
+    }
+
+    @Test
+    fun uuidStoresAll128BitsAndFormatsCanonicalBytes() {
+        val uuid = EucUuid.parse("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
+        assertEquals(ULong.MAX_VALUE, uuid.mostSignificantBits)
+        assertEquals(ULong.MAX_VALUE, uuid.leastSignificantBits)
+        assertEquals("ffffffff-ffff-ffff-ffff-ffffffffffff", uuid.value)
+        assertEquals(uuid, EucUuid.parse(uuid.value))
+    }
+
+    @Test
+    fun protocolOutboxFailsExplicitlyAtItsCapacity() {
+        val outbox = ProtocolOutbox(capacity = 1)
+        outbox.push(ProtocolOutput.DebugLog("test", "first"))
+
+        assertFailsWith<IllegalStateException> {
+            outbox.push(ProtocolOutput.DebugLog("test", "overflow"))
+        }
+        assertEquals(1, outbox.size)
     }
 
     @Test
@@ -181,4 +214,7 @@ class PortableReplayTest {
         assertFalse(change.toString().contains("0012"))
         assertFalse(change.toString().contains("0034"))
     }
+
+    private fun ByteArray.hex(): String =
+        joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
 }

@@ -2,15 +2,15 @@ package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.SystemEucClock
-import io.github.tritbool.euc.ble.session.FlowProtocolAdapter
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriver
 
 /** Coroutine-compatible facade for the synchronous Ninebot state machine. */
 class NinebotProtocol private constructor(
     private val engine: NinebotSyncProtocol,
-    private val adapter: FlowProtocolAdapter
+    private val adapter: ProtocolSessionDriver
 ) : EUCProtocol by adapter {
     constructor(clock: EucClock = SystemEucClock) : this(NinebotSyncProtocol(clock))
-    private constructor(engine: NinebotSyncProtocol) : this(engine, FlowProtocolAdapter(engine))
+    private constructor(engine: NinebotSyncProtocol) : this(engine, ProtocolSessionDriver(engine))
 
     data class ZSettingsSnapshot(
         val bleVersion: String? = null,

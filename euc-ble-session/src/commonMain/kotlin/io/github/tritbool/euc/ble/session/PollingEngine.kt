@@ -5,8 +5,11 @@ import io.github.tritbool.euc.ble.core.QueryTracePhase
 import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 
-/** Synchronous polling state. The driver supplies monotonic milliseconds and performs writes. */
-class PollingEngine(private val manufacturer: String) {
+/** Synchronous polling state owned by the session module. The driver supplies monotonic time and writes. */
+class PollingEngine(
+    private val manufacturer: String,
+    private val outputCapacity: Int = DEFAULT_OUTPUT_CAPACITY
+) {
     sealed interface Output {
         data class Query(val token: Long, val spec: ProtocolQuerySpec, val attempt: Int) : Output
         data class Trace(val event: QueryTraceEvent) : Output
@@ -24,6 +27,10 @@ class PollingEngine(private val manufacturer: String) {
     private val entries = mutableListOf<Entry>()
     private val outputs = ArrayDeque<Output>()
     private var nextToken = 1L
+
+    init {
+        require(outputCapacity > 0) { "Polling output capacity must be positive" }
+    }
 
     fun start(plan: ProtocolPollingPlan, now: Long) {
         reset()
@@ -85,7 +92,7 @@ class PollingEngine(private val manufacturer: String) {
             ) {
                 entry.phase = Phase.QUEUED
                 entry.token = nextToken++
-                outputs += Output.Query(entry.token, entry.spec, entry.attempt)
+                emit(Output.Query(entry.token, entry.spec, entry.attempt))
             }
         }
     }
@@ -126,7 +133,18 @@ class PollingEngine(private val manufacturer: String) {
     }
 
     private fun trace(entry: Entry, phase: QueryTracePhase, now: Long, message: String? = null, latency: Long? = null) {
-        outputs += Output.Trace(QueryTraceEvent(now, manufacturer, entry.spec.id, entry.spec.commandType,
-            phase, entry.attempt, latency, message))
+        emit(Output.Trace(QueryTraceEvent(now, manufacturer, entry.spec.id, entry.spec.commandType,
+            phase, entry.attempt, latency, message)))
+    }
+
+    private fun emit(output: Output) {
+        check(outputs.size < outputCapacity) {
+            "Polling output queue overflow (capacity=$outputCapacity)"
+        }
+        outputs.addLast(output)
+    }
+
+    private companion object {
+        const val DEFAULT_OUTPUT_CAPACITY = 256
     }
 }

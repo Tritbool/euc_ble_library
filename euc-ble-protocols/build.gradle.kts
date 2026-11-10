@@ -23,18 +23,24 @@ dokka {
 }
 
 val generateReplayFixtures by tasks.registering {
-    val fixtures = layout.projectDirectory.file("fixtures/commands.tsv")
+    val commandFile = layout.projectDirectory.file("fixtures/commands.tsv")
+    val telemetryFile = layout.projectDirectory.file("fixtures/telemetry.tsv")
     val output = layout.buildDirectory.dir("generated/replay")
-    inputs.file(fixtures)
+    inputs.files(commandFile, telemetryFile)
     outputs.dir(output)
     doLast {
-        val rows = fixtures.asFile.readLines().filter { it.isNotBlank() && !it.startsWith("#") }
-        val literals = rows.joinToString(",\n") {
+        fun literals(file: java.io.File): String = file.readLines()
+            .filter { it.isNotBlank() && !it.startsWith("#") }
+            .joinToString(",\n") {
             "    \"" + it.replace("\\", "\\\\").replace("\"", "\\\"").replace("\t", "\\t").replace("$", "\\$") + "\""
         }
         output.get().file("ReplayFixtures.kt").asFile.apply {
             parentFile.mkdirs()
-            writeText("package io.github.tritbool.euc.ble.replay\n\ninternal val commandFixtures = listOf(\n$literals\n)\n")
+            writeText(
+                "package io.github.tritbool.euc.ble.replay\n\n" +
+                    "internal val commandFixtures = listOf(\n${literals(commandFile.asFile)}\n)\n\n" +
+                    "internal val telemetryFixtures = listOf(\n${literals(telemetryFile.asFile)}\n)\n"
+            )
         }
     }
 }

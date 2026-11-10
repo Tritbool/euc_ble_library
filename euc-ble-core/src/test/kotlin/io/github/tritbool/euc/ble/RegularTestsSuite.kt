@@ -28,7 +28,7 @@ import io.github.tritbool.euc.ble.protocols.WheelLogNinebotTest
 import io.github.tritbool.euc.ble.protocols.WheelLogNosfetTest
 import io.github.tritbool.euc.ble.frames.SyncFrameParsingTest
 import io.github.tritbool.euc.ble.protocols.ProtocolOutboxTest
-import io.github.tritbool.euc.ble.session.FlowProtocolAdapterTest
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriverTest
 import org.junit.platform.suite.api.SelectClasses
 import org.junit.platform.suite.api.Suite
 import io.github.tritbool.euc.ble.session.PollingEngineTest
@@ -46,7 +46,7 @@ import io.github.tritbool.euc.ble.core.EucCrc32Test
     ReconnectPolicyTest::class,
     EucUuidTest::class,
     EucCrc32Test::class,
-    FlowProtocolAdapterTest::class,
+    ProtocolSessionDriverTest::class,
     ProtocolOutboxTest::class,
     SyncFrameParsingTest::class,
     FrameReassemblerStaticFlowTest::class,

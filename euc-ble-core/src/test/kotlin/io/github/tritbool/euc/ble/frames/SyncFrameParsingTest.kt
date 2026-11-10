@@ -47,4 +47,15 @@ class SyncFrameParsingTest {
         assertArrayEquals(byteArrayOf(1, 2, 0x5A), frames[0])
         assertArrayEquals(byteArrayOf(3, 4, 0x5A), frames[1])
     }
+
+    @Test
+    fun `flow output queue reports overflow instead of silently dropping frames`() {
+        val reassembler = FrameReassembler(FixedSizeFrameParser(1))
+
+        val error = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) {
+            reassembler.processIncomingBytes(ByteArray(257) { it.toByte() })
+        }
+
+        assertTrue(error.message!!.contains("capacity=256"))
+    }
 }

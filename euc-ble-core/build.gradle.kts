@@ -33,6 +33,7 @@ jacoco {
 
 dependencies {
     api(project(":euc-ble-protocols"))
+    api(project(":euc-ble-session"))
     // Compatibility facades and async session drivers deliberately stay outside the engines.
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
@@ -49,6 +50,12 @@ dependencies {
 }
 
 tasks.test {
+    systemProperty("replay.captureRoot", file("src/test/resources/ble_frames"))
+    systemProperty("replay.goldenRoot", rootProject.file("euc-ble-protocols/fixtures/captures"))
+    systemProperty("replay.updateGoldens", providers.gradleProperty("updateReplayGoldens").isPresent)
+    if (!providers.gradleProperty("updateReplayGoldens").isPresent) {
+        inputs.dir(rootProject.file("euc-ble-protocols/fixtures/captures"))
+    }
     useJUnitPlatform()
     val isCi = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
     maxParallelForks =

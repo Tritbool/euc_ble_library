@@ -37,8 +37,10 @@ import io.github.tritbool.euc.ble.protocols.NosfetFrameDetector
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import io.github.tritbool.euc.ble.session.PollingSession
 import io.github.tritbool.euc.ble.session.ProtocolSelector
-import io.github.tritbool.euc.ble.session.ReconnectPolicy
+import io.github.tritbool.euc.ble.session.BleTransport
+import io.github.tritbool.euc.ble.session.ConnectionSessionDriver
 import io.github.tritbool.euc.ble.session.WriteSession
+import io.github.tritbool.euc.ble.session.WriteEnqueueResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -124,8 +126,6 @@ class BLEManager internal constructor(
     private val sessionScope = CoroutineScope(
         parentScope?.coroutineContext?.plus(sessionJob) ?: Dispatchers.IO + sessionJob
     )
-    private val reconnectPolicy = ReconnectPolicy()
-    private val reconnectRandom = reconnectRandom
 
     companion object {
         private const val TAG = "BLEManager"
@@ -148,10 +148,61 @@ class BLEManager internal constructor(
     private var bluetoothGatt: BluetoothGatt? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
 
-    // Reconnection state fields
-    private var reconnectRetryCount: Int = 0
-    private var reconnectJob: Job? = null
-    private var manualDisconnect: Boolean = false
+    private val transport = object : BleTransport {
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        override fun connect(address: String): Boolean {
+            val device = bluetoothDevicesByAddress[address] ?: return false
+            bluetoothGatt = device.connectGatt(context, false, this@BLEManager)
+            return bluetoothGatt != null
+        }
+
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        override fun disconnect() {
+            val gatt = bluetoothGatt
+            bluetoothGatt = null
+            gatt?.disconnect()
+            gatt?.close()
+        }
+
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        override fun discoverServices() = bluetoothGatt?.discoverServices() == true
+        override fun hasCharacteristic(uuid: EucUuid) = getCharacteristic(uuid.toAndroidUuid()) != null
+
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        override fun subscribe(uuid: EucUuid) = subscribeCharacteristic(uuid.toAndroidUuid())
+
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        override fun write(uuid: EucUuid, bytes: ByteArray, preferredType: ProtocolWriteType): Boolean =
+            getCharacteristic(uuid.toAndroidUuid())?.let {
+                writeCharacteristicNow(it, bytes, preferredType)
+            } ?: false
+    }
+
+    private val connectionSession = ConnectionSessionDriver(
+        transport, sessionScope, reconnectRandom, monotonicMillis,
+        stateChanged = { state ->
+            connectionState = state
+            when (state) {
+                BLEConstants.ConnectionState.CONNECTING -> connectionCallback?.onConnecting()
+                BLEConstants.ConnectionState.CONNECTED -> connectionCallback?.onConnected()
+                BLEConstants.ConnectionState.DISCONNECTED -> {
+                    cancelPollingOrchestration()
+                    cancelDataFlowCollection()
+                    resetProtocolSession()
+                    currentProtocol = null
+                    awaitingManualProtocolSelection = false
+                    connectionCallback?.onDisconnected()
+                }
+                BLEConstants.ConnectionState.DISCONNECTING -> Unit
+            }
+        },
+        error = { message, terminal ->
+            val error = BLEException(message)
+            if (terminal) currentDevice = null
+            errorCallback?.onError(error)
+            if (terminal) connectionCallback?.onConnectionFailed(error)
+        }
+    )
 
     // Protocol management
     @VisibleForTesting(otherwise = PRIVATE)
@@ -180,11 +231,10 @@ class BLEManager internal constructor(
     val securityEventFlow: SharedFlow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
 
     // Serialized GATT write queue (see sendCommand)
-    private val writeSession = WriteSession(sessionScope) {
+    private val writeSession = WriteSession(sessionScope, now = monotonicMillis) {
         errorCallback?.onError(BLEException("Write session failed: ${it.message}"))
     }
-    @Volatile
-    private var writeGeneration = 0L
+    private val writeGeneration: Long get() = writeSession.generation
 
     // Callbacks
     private var platformScanCallback: AndroidScanCallback? = null
@@ -256,9 +306,7 @@ class BLEManager internal constructor(
 
     // Coroutine management
     private var scanJob: Job? = null
-    private var connectionJob: Job? = null
     private var scanTimeoutJob: Job? = null
-    private var connectionTimeoutJob: Job? = null
     private var cleanedUp = false
 
     // Device cache
@@ -418,18 +466,9 @@ class BLEManager internal constructor(
             return
         }
 
-        manualDisconnect = false
-        reconnectRetryCount = 0
         currentDevice = device
-        connectionState = BLEConstants.ConnectionState.CONNECTING
-        connectionCallback?.onConnecting()
-
-        // Main connection job
-        connectionJob = sessionScope.launch {
-            connectToDevice(androidDevice)
-        }
-
-        startConnectionTimeout(isReconnectAttempt = false)
+        configureConnectionSession()
+        connectionSession.connect(device.address)
     }
 
     /**
@@ -437,74 +476,18 @@ class BLEManager internal constructor(
      */
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun disconnect() {
-        manualDisconnect = true
-        reconnectJob?.cancel()
-        reconnectJob = null
-        connectionTimeoutJob?.cancel()
-        connectionTimeoutJob = null
-        reconnectRetryCount = 0
         cancelPollingOrchestration()
         cancelDataFlowCollection()
         resetProtocolSession()
 
-        connectionJob?.cancel()
-        bluetoothGatt?.disconnect()
-        bluetoothGatt?.close()
-        bluetoothGatt = null
         currentDevice = null
         currentProtocol = null
         awaitingManualProtocolSelection = false
-        connectionState = BLEConstants.ConnectionState.DISCONNECTED
-        connectionCallback?.onDisconnected()
+        connectionSession.disconnect()
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun failConnection(error: BLEException) {
-        manualDisconnect = true
-        reconnectJob?.cancel()
-        reconnectJob = null
-        connectionTimeoutJob?.cancel()
-        connectionTimeoutJob = null
-        reconnectRetryCount = 0
-        cancelPollingOrchestration()
-        cancelDataFlowCollection()
-        resetProtocolSession()
-        connectionJob?.cancel()
-        connectionJob = null
-        bluetoothGatt?.let {
-            it.disconnect()
-            it.close()
-        }
-        bluetoothGatt = null
-        currentDevice = null
-        currentProtocol = null
-        awaitingManualProtocolSelection = false
-        connectionState = BLEConstants.ConnectionState.DISCONNECTED
-        errorCallback?.onError(error)
-        connectionCallback?.onConnectionFailed(error)
-    }
-
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun startConnectionTimeout(isReconnectAttempt: Boolean) {
-        connectionTimeoutJob?.cancel()
-        connectionTimeoutJob = sessionScope.launch {
-            delay(connectionTimeout.milliseconds)
-            if (connectionState != BLEConstants.ConnectionState.CONNECTING) return@launch
-            val error = BLEException("Connection timeout")
-            if (!isReconnectAttempt) {
-                failConnection(error)
-                return@launch
-            }
-            connectionTimeoutJob = null
-            connectionJob?.cancel()
-            connectionJob = null
-            bluetoothGatt?.close()
-            bluetoothGatt = null
-            connectionState = BLEConstants.ConnectionState.DISCONNECTED
-            errorCallback?.onError(error)
-            scheduleReconnect()
-        }
-    }
+    private fun configureConnectionSession() =
+        connectionSession.configure(connectionTimeout, autoReconnect, maxRetries)
 
     /**
      * Send a command to the connected device
@@ -599,7 +582,7 @@ class BLEManager internal constructor(
         val protocol = currentProtocol
         val payloadSize = command.size
         var blocked = false
-        writeSession.enqueue(command,
+        val enqueueResult = writeSession.enqueue(command,
             valid = { !blocked && generation == writeGeneration &&
                 connectionState == BLEConstants.ConnectionState.CONNECTED && valid() },
             submit = { bytes ->
@@ -615,7 +598,8 @@ class BLEManager internal constructor(
                         errorCallback?.onError(BLEException("Characteristic not found: $characteristicUuid"))
                         failed()
                         false
-                    } else writeCharacteristicNow(target, bytes)
+                    } else transport.write(characteristicUuid.toEucUuid(), bytes,
+                        protocol?.preferredWriteType ?: ProtocolWriteType.AUTO)
                 }
             },
             retryable = { protocol?.canRetryCommand(it) != false },
@@ -630,12 +614,21 @@ class BLEManager internal constructor(
                 errorCallback?.onError(BLEException("BLE stack rejected write after $attempts attempts ($payloadSize bytes)"))
                 failed()
             })
+        if (enqueueResult != WriteEnqueueResult.ENQUEUED) {
+            errorCallback?.onError(BLEException(
+                if (enqueueResult == WriteEnqueueResult.QUEUE_FULL) "BLE write queue is full; command was rejected"
+                else "BLE write session is closed; command was rejected"
+            ))
+            failed()
+        }
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun writeCharacteristicNow(char: BluetoothGattCharacteristic, payload: ByteArray): Boolean {
+    private fun writeCharacteristicNow(
+        char: BluetoothGattCharacteristic, payload: ByteArray, preferredType: ProtocolWriteType
+    ): Boolean {
         val gatt = bluetoothGatt ?: return false
-        val writeType = resolveWriteType(char)
+        val writeType = resolveWriteType(char, preferredType)
         char.writeType = writeType
 
         return try {
@@ -664,13 +657,16 @@ class BLEManager internal constructor(
      * (Gotway/Begode FFE1) that only expose PROPERTY_WRITE_NO_RESPONSE and reject
      * write-with-response.
      */
-    internal fun resolveWriteType(characteristic: BluetoothGattCharacteristic): Int {
+    internal fun resolveWriteType(
+        characteristic: BluetoothGattCharacteristic,
+        preferredType: ProtocolWriteType = currentProtocol?.preferredWriteType ?: ProtocolWriteType.AUTO
+    ): Int {
         val properties = characteristic.properties
         val supportsWithResponse = properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0
         val supportsNoResponse =
             properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
 
-        return when (currentProtocol?.preferredWriteType ?: ProtocolWriteType.AUTO) {
+        return when (preferredType) {
             ProtocolWriteType.NO_RESPONSE ->
                 if (supportsNoResponse || !supportsWithResponse) {
                     BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
@@ -718,14 +714,17 @@ class BLEManager internal constructor(
 
     fun setConnectionTimeout(timeout: Long) {
         this.connectionTimeout = timeout
+        configureConnectionSession()
     }
 
     fun setAutoReconnect(enabled: Boolean) {
         this.autoReconnect = enabled
+        configureConnectionSession()
     }
 
     fun setMaxRetries(retries: Int) {
         this.maxRetries = retries
+        configureConnectionSession()
     }
 
     /**
@@ -796,16 +795,6 @@ class BLEManager internal constructor(
         connectionCallback?.onDeviceDiscovered(eucDevice)
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun connectToDevice(device: BluetoothDevice) {
-        try {
-            bluetoothGatt = device.connectGatt(context, false, this)
-                ?: throw IllegalStateException("Android returned no GATT connection")
-        } catch (e: Exception) {
-            failConnection(BLEException("Failed to connect to device: ${e.message}"))
-        }
-    }
-
     private fun getCharacteristic(uuid: UUID): BluetoothGattCharacteristic? {
         return bluetoothGatt?.services?.flatMap { service ->
             service.characteristics
@@ -821,107 +810,22 @@ class BLEManager internal constructor(
 
         when (newState) {
             BluetoothProfile.STATE_CONNECTED -> {
-                // reset des compteurs de reconnexion
-                reconnectRetryCount = 0
-                reconnectJob?.cancel()
-                reconnectJob = null
-                connectionState = BLEConstants.ConnectionState.CONNECTED
-                connectionTimeoutJob?.cancel()
-                connectionTimeoutJob = null
-                connectionCallback?.onConnected()
-                // Discover services
-                if (bluetoothGatt === gatt && connectionState == BLEConstants.ConnectionState.CONNECTED) {
-                    gatt.discoverServices()
-                }
+                connectionSession.onConnected()
             }
 
             BluetoothProfile.STATE_DISCONNECTED -> {
-                val disconnectedDevice = currentDevice
-                cancelPollingOrchestration()
-                cancelDataFlowCollection()
-                resetProtocolSession()
-                currentProtocol = null
-                connectionState = BLEConstants.ConnectionState.DISCONNECTED
-                connectionTimeoutJob?.cancel()
-                connectionTimeoutJob = null
-                bluetoothGatt = null
-                gatt.close()
-                connectionCallback?.onDisconnected()
-
-                if (!manualDisconnect && autoReconnect && currentDevice === disconnectedDevice &&
-                    connectionState == BLEConstants.ConnectionState.DISCONNECTED
-                ) {
-                    scheduleReconnect()
-                } else if (currentDevice === disconnectedDevice) {
-                    // if we don't want to reconnect, reset the counter
-                    reconnectRetryCount = 0
-                }
+                configureConnectionSession()
+                connectionSession.onDisconnected()
             }
 
             BluetoothProfile.STATE_CONNECTING -> {
-                connectionState = BLEConstants.ConnectionState.CONNECTING
-                connectionCallback?.onConnecting()
+                connectionSession.onConnecting()
             }
 
             BluetoothProfile.STATE_DISCONNECTING -> {
-                connectionState = BLEConstants.ConnectionState.DISCONNECTING
+                connectionSession.onDisconnecting()
             }
         }
-    }
-
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun scheduleReconnect() {
-        // If already in progress or max retries reached, do not reschedule
-        if (reconnectJob != null) return
-        // calculate delay with backoff and jitter
-        val delayMs = reconnectPolicy.delayForRetry(reconnectRetryCount, maxRetries, reconnectRandom)
-        if (delayMs == null) {
-            connectionCallback?.onConnectionFailed(
-                BLEException("Reconnection failed after $reconnectRetryCount attempts")
-            )
-            reconnectRetryCount = 0
-            return
-        }
-
-        reconnectJob = sessionScope.launch {
-
-            kotlinx.coroutines.delay(delayMs)
-            // double-check conditions avant tentative
-            if (manualDisconnect) {
-                reconnectJob = null
-                return@launch
-            }
-            if (connectionState == BLEConstants.ConnectionState.CONNECTED) {
-                reconnectJob = null
-                reconnectRetryCount = 0
-                return@launch
-            }
-            reconnectRetryCount++
-            connectionState = BLEConstants.ConnectionState.CONNECTING
-            reconnectJob = null
-            connectionCallback?.onConnecting()
-            if (manualDisconnect) return@launch
-            try {
-                val androidDevice = currentDevice?.let { bluetoothDevicesByAddress[it.address] }
-                if (androidDevice != null) {
-                    connectionJob = sessionScope.launch { connectToDevice(androidDevice) }
-                    startConnectionTimeout(isReconnectAttempt = true)
-                } else {
-                    failConnection(BLEException("No device to reconnect"))
-                }
-            } catch (e: Exception) {
-                // in case of immediate failure, let the next onConnectionStateChange trigger a new attempt
-                reconnectJob = null
-            }
-
-        }
-    }
-
-    // Optional: helper to explicitly cancel reconnection (used by cleanup if needed)
-    private fun cancelReconnectAttempts() {
-        reconnectJob?.cancel()
-        reconnectJob = null
-        reconnectRetryCount = 0
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -941,138 +845,37 @@ class BLEManager internal constructor(
             return
         }
 
-        // Handle forced protocol mode
-        if (protocolSelectionMode == ProtocolSelectionMode.FORCED) {
-            val forced = forcedProtocol
-            if (forced == null) {
-                errorCallback?.onError(BLEException("Forced protocol is not registered"))
-                disconnect()
-                return
-            }
-            forced.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
-                .forEach { enableNotifications(it) }
-            connectionCallback?.onServicesDiscovered(gatt.services)
-            if (!activateProtocolIfReady(
-                    forced,
-                    ProtocolSelectionReason.FORCED,
-                    "forced override"
-                )
-            ) {
-                disconnect()
-            }
-            return
-        }
-
-        // Nosfet shares the Veteran serial bridge; its explicit name takes precedence over GATT.
-        if (device.name.contains("nosfet", ignoreCase = true)) {
-            val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
-            if (nosfet != null) {
-                nosfet.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
-                    .forEach { enableNotifications(it) }
-                connectionCallback?.onServicesDiscovered(gatt.services)
-                if (!activateProtocolIfReady(
-                        nosfet,
-                        ProtocolSelectionReason.AUTO_DEVICE_NAME,
-                        "explicit Nosfet device name"
-                    )
-                ) {
-                    disconnect()
-                }
-                return
-            }
-        }
-
-        // Try GATT fingerprint matching for other device names.
-        logger.debug(TAG + ":onServicesDiscovered", "NB Found services: ${gatt.services.size}")
-        logger.debug(TAG + ":onServicesDiscovered", "Services: ${gatt.services}")
-
-
-        gatt.services.forEach { service ->
-            logger.debug(TAG + ":onServicesDiscovered", "Service UUID: ${service.uuid}")
-            // Optional: Log characteristics count
-            logger.debug(
-                TAG + ":onServicesDiscovered",
-                "  -> ${service.characteristics.size} characteristics"
-            )
-            service.characteristics.forEach { characteristic ->
-                logger.debug(
-                    TAG + ":onServicesDiscovered",
-                    "  -> ${characteristic.uuid}"
-                )
-            }
-        }
-        val fingerprintMatchRaw = selectByGattFingerprint(gatt.services)
-        val fingerprintMatch = fingerprintMatchRaw.first
-        val fingerprintMatchVersion = fingerprintMatchRaw.second
-
-        logger.info(
-            TAG,
-            "FOUND protocol ${fingerprintMatch?.javaClass?.simpleName ?: "NONE"} with version $fingerprintMatchVersion"
+        val decision = ProtocolSelector(protocols, logger).select(
+            device.name, serviceSnapshots(gatt.services), protocolSelectionMode, forcedProtocol,
+            EucFingerprintDatabase::getSignatures
         )
-
+        val selected = decision.protocol
+        if (selected != null) {
+            selected.getCandidateDataCharacteristicUUIDs().distinct()
+                .forEach { enableNotifications(it.toAndroidUuid()) }
+        }
         connectionCallback?.onServicesDiscovered(gatt.services)
-
-
-
-        if (fingerprintMatch != null) {
-            // Refine with device name when a more-specific sub-protocol is registered
-
-            logger.info(
-                TAG,
-                "Checking subclasses for protocol $fingerprintMatch with device name ${device.name}"
-            )
-            val subclassOverride = selectSubclassByDeviceName(fingerprintMatch, device.name)
-            val selected = subclassOverride ?: fingerprintMatch
-
-            val reason = if (subclassOverride != null) ProtocolSelectionReason.AUTO_DEVICE_NAME
-            else ProtocolSelectionReason.AUTO_GATT_FINGERPRINT
-            val logReason = if (subclassOverride != null) "GATT fingerprint + device name"
-            else "GATT fingerprint"
-            selected.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
-                .forEach { enableNotifications(it) }
-            if (!activateProtocolIfReady(selected, reason, logReason, fingerprintMatchVersion)) {
-                disconnect()
+        when {
+            selected != null -> {
+                val reason = checkNotNull(decision.reason)
+                if (!activateProtocolIfReady(selected, reason, reason.name, decision.dialect)) disconnect()
             }
-        } else {
-            // No fingerprint match — try device name matching before falling back to manual
-            logger.info(TAG, "Trying to get protocol for device ${device.name}")
-            val deviceNameMatch = selectByDeviceName(device.name)
-            if (deviceNameMatch != null) {
-                deviceNameMatch.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
-                    .forEach { enableNotifications(it) }
-                if (!activateProtocolIfReady(
-                        deviceNameMatch,
-                        ProtocolSelectionReason.AUTO_DEVICE_NAME,
-                        "device name"
-                    )
-                ) {
-                    disconnect()
-                }
-            } else {
-                // No automatic match — caller must choose manually
-                when (protocolSelectionMode) {
-                    ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK -> {
-                        protocols.forEach { proto ->
-                            proto.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
-                                .forEach { enableNotifications(it) }
-                        }
-                        notifyProtocolSelectionRequired()
-                    }
-
-                    else -> {
-                        val nosfet = protocols.filterIsInstance<NosfetProtocol>().singleOrNull()
-                        if (nosfet != null && nosfet.getCandidateDataCharacteristicUUIDs().any {
-                                getCharacteristic(it.toAndroidUuid()) != null
-                            }
-                        ) {
-                            nosfet.getCandidateDataCharacteristicUUIDs().map { it.toAndroidUuid() }.distinct()
-                                .forEach { enableNotifications(it) }
-                            return
-                        }
-                        errorCallback?.onError(BLEException("No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"))
-                        disconnect()
-                    }
-                }
+            decision.manual -> {
+                protocols.flatMap { it.getCandidateDataCharacteristicUUIDs() }.distinct()
+                    .forEach { enableNotifications(it.toAndroidUuid()) }
+                notifyProtocolSelectionRequired()
+            }
+            decision.waitForTelemetry -> {
+                protocols.filter { it.protocolId == "NosfetProtocol" }
+                    .flatMap { it.getCandidateDataCharacteristicUUIDs() }.distinct()
+                    .forEach { enableNotifications(it.toAndroidUuid()) }
+            }
+            else -> {
+                errorCallback?.onError(BLEException(
+                    if (protocolSelectionMode == ProtocolSelectionMode.FORCED) "Forced protocol is not registered"
+                    else "No protocol found for this device; register its fingerprint or use AUTO_WITH_MANUAL_FALLBACK mode"
+                ))
+                disconnect()
             }
         }
     }
@@ -1149,28 +952,29 @@ class BLEManager internal constructor(
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    private fun enableNotifications(characteristicUuid: UUID) {
-        val characteristic = getCharacteristic(characteristicUuid)
-        characteristic?.let { char ->
-            val cccdUuid = UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)
-            val descriptor = char.getDescriptor(cccdUuid) ?: return@let
-            val enableValue =
-                ENABLE_NOTIFICATION_VALUE_COMPAT.clone() // defensive copy
+    private fun enableNotifications(characteristicUuid: UUID): Boolean {
+        val accepted = transport.subscribe(characteristicUuid.toEucUuid())
+        if (!accepted) logger.warn(TAG, "Notification subscription was not accepted: $characteristicUuid")
+        return accepted
+    }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Use new API 33+ overload
-                bluetoothGatt?.writeDescriptor(descriptor, enableValue)
-            } else {
-                // Fallback for older APIs (setValue + writeDescriptor)
-                @Suppress("DEPRECATION") run {
-                    descriptor.value = enableValue
-                    bluetoothGatt?.writeDescriptor(descriptor)
-                }
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun subscribeCharacteristic(characteristicUuid: UUID): Boolean {
+        val gatt = bluetoothGatt ?: return false
+        val char = getCharacteristic(characteristicUuid) ?: return false
+        val descriptor = char.getDescriptor(UUID.fromString(BLEConstants.CCCD_DESCRIPTOR)) ?: return false
+        val enableValue = ENABLE_NOTIFICATION_VALUE_COMPAT.copyOf()
+        val accepted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeDescriptor(descriptor, enableValue) == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            run {
+                descriptor.value = enableValue
+                gatt.writeDescriptor(descriptor)
             }
-
-            // Enable notifications locally
-            bluetoothGatt?.setCharacteristicNotification(char, true)
         }
+        val localAccepted = gatt.setCharacteristicNotification(char, true)
+        return accepted && localAccepted
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -1243,7 +1047,6 @@ class BLEManager internal constructor(
     private fun resetProtocolSession() {
         nosfetFrameDetector.reset()
         currentSelectionReason = null
-        writeGeneration++
         writeSession.reset()
         currentProtocol?.resetSession()
         _securityStateFlow.value = null
@@ -1292,12 +1095,12 @@ class BLEManager internal constructor(
         signaturesProvider: (String) -> List<GattSignature> = EucFingerprintDatabase::getSignatures
     ): Pair<EUCProtocol?, Int> {
         return ProtocolSelector(protocols, logger).byFingerprint(
-            discoveredServices.map { service ->
-                ProtocolSelector.Service(
-                    service.uuid.toEucUuid(),
-                    service.characteristics.map { it.uuid.toEucUuid() }.toSet()
-                )
-            }, signaturesProvider)
+            serviceSnapshots(discoveredServices), signaturesProvider)
+    }
+
+    private fun serviceSnapshots(services: List<BluetoothGattService>) = services.map { service ->
+        ProtocolSelector.Service(service.uuid.toEucUuid(),
+            service.characteristics.map { it.uuid.toEucUuid() }.toSet())
     }
 
     /**
@@ -1375,7 +1178,7 @@ class BLEManager internal constructor(
         }
         val hasReadableCharacteristic =
             protocol.getCandidateDataCharacteristicUUIDs().any { uuid ->
-                getCharacteristic(uuid.toAndroidUuid()) != null
+                transport.hasCharacteristic(uuid)
             }
         if (!hasReadableCharacteristic) {
             errorCallback?.onError(
@@ -1383,7 +1186,7 @@ class BLEManager internal constructor(
             )
             return false
         }
-        if (getCharacteristic(protocol.getWriteCharacteristicUUID().toAndroidUuid()) == null) {
+        if (!transport.hasCharacteristic(protocol.getWriteCharacteristicUUID())) {
             errorCallback?.onError(
                 BLEException("Protocol ${protocolIdentifier(protocol)} write characteristic is unavailable on this device")
             )
@@ -1430,9 +1233,7 @@ class BLEManager internal constructor(
     fun cleanup() {
         if (cleanedUp) return
         cleanedUp = true
-        cancelReconnectAttempts()
         scanTimeoutJob?.cancel()
-        connectionTimeoutJob?.cancel()
         try {
             if (platformScanCallback != null) stopScan()
         } finally {
@@ -1440,7 +1241,6 @@ class BLEManager internal constructor(
                 disconnect()
             } finally {
                 scanJob?.cancel()
-                connectionJob?.cancel()
                 sessionJob.cancel()
             }
         }

@@ -41,15 +41,23 @@ sealed class ProtocolOutput {
 }
 
 /**
- * FIFO queue of [ProtocolOutput] owned by a [SyncEucProtocol]. Not thread-safe: the session layer
+ * FIFO queue of [ProtocolOutput] owned by a [SyncEucProtocol]. The default capacity is 256;
+ * overflow throws instead of dropping protocol outputs. Not thread-safe: the session layer
  * serializes all calls into a protocol.
  */
-class ProtocolOutbox {
+class ProtocolOutbox(private val capacity: Int = DEFAULT_CAPACITY) {
     private val queue = ArrayDeque<ProtocolOutput>()
+
+    init {
+        require(capacity > 0) { "Protocol output capacity must be positive" }
+    }
 
     val size: Int get() = queue.size
 
     fun push(output: ProtocolOutput) {
+        check(queue.size < capacity) {
+            "Protocol output queue overflow (capacity=$capacity)"
+        }
         queue.addLast(output)
     }
 
@@ -57,5 +65,9 @@ class ProtocolOutbox {
 
     fun clear() {
         queue.clear()
+    }
+
+    private companion object {
+        const val DEFAULT_CAPACITY = 256
     }
 }

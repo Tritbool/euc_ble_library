@@ -135,9 +135,11 @@ java -jar plantuml.jar class_diagram.puml
 ### Portable synchronous engines and JVM session layer
 
 The module boundary is enforced by Gradle: `euc-ble-protocols` is Kotlin Multiplatform with all
-production sources in `commonMain` and no coroutine dependency. `euc-ble-core` depends on it and
-provides JVM compatibility facades and async drivers; `euc-ble-android` depends on core and owns GATT.
-Dependencies never point from the portable engines back to either connector or coroutine runtime.
+production sources in `commonMain` and no coroutine dependency. `euc-ble-session` is a separate
+Kotlin Multiplatform module for selection, polling, reconnect policies and session-facing types.
+`euc-ble-core` depends on both modules and still provides JVM compatibility facades and coroutine
+drivers; `euc-ble-android` depends on core and owns GATT. Dependencies never point from the
+portable engines or session policies back to the Android connector.
 
 | Layer | Package | Responsibility |
 |---|---|---|
@@ -145,17 +147,24 @@ Dependencies never point from the portable engines back to either connector or c
 | Sync protocol | `protocols.SyncEucProtocol` | `onNotification` / `onTimer` / `onCommandSubmitted` inputs; outputs via `pollOutput()` |
 | Outputs | `protocols.ProtocolOutput` | Telemetry, security updates, writes, timer actions and diagnostic logs |
 | Platform inputs | `core.EucClock`, `core.EucRandom` | Required engine inputs; JVM facade defaults remain in `euc-ble-core/core/JvmPlatform.kt` |
-| Session bridge | `session.FlowProtocolAdapter` | Serializes calls, drains outputs into the `EUCProtocol` flows, runs timers |
-| Selection policy | `session.ProtocolSelector` | Matches plain GATT snapshots and device names; rejects ambiguous matches |
-| Polling state | `session.PollingEngine` | Synchronous startup/periodic scheduling, response matching and retries |
-| Polling driver | `session.PollingSession` | Supplies monotonic time and transport callbacks to the polling state machine |
-| Write driver | `session.WriteSession` | Serializes writes, retries stack rejections, owns acknowledgment waits and wipes byte snapshots |
-| Reconnect policy | `session.ReconnectPolicy` | Computes bounded exponential backoff and jitter without scheduling or platform APIs |
+| Protocol session | `euc-ble-session/session.ProtocolSession` | Pure timer bookkeeping and ordered protocol output delivery |
+| Coroutine facade driver | `euc-ble-core/session.ProtocolSessionDriver` | Serializes callers, exposes compatibility flows and schedules pure-session deadlines; replaces the temporary bridge |
+| Selection policy | `euc-ble-session/session.ProtocolSelector` | Matches plain GATT snapshots and device names; rejects ambiguous matches |
+| Polling state | `euc-ble-session/session.PollingEngine` | Synchronous startup/periodic scheduling, response matching and retries |
+| Polling driver | `euc-ble-core/session.PollingSession` | Supplies monotonic time and transport callbacks to the polling state machine |
+| Write policy | `euc-ble-session/session.WriteQueue` | Bounded queue, generations, acceptance/ack deadlines, stack-rejection backoff and byte wiping |
+| Write driver | `euc-ble-core/session.WriteSession` | Supplies stack results and acknowledgments to the pure write policy |
+| Reconnect policy | `euc-ble-session/session.ReconnectPolicy` | Computes bounded exponential backoff and jitter without scheduling or platform APIs |
+| Connection lifecycle | `euc-ble-session/session.ConnectionSession` | Connect failure/timeout, discovery actions, reconnect deadlines and manual cancellation |
+| Connection driver | `euc-ble-core/session.ConnectionSessionDriver` | Executes lifecycle actions through `BleTransport` and schedules deadlines |
+| Transport port | `euc-ble-session/session.BleTransport` | Connect/disconnect, discovery, subscriptions, characteristic availability and accepted writes; Android handles stay in the connector |
 
 Sync protocols must not use coroutines, threads, locks, timers or direct clock reads, and need not be
 thread-safe. The migrated implementations use synchronous parsing and flow-compatible facades.
 All built-in protocol families now have synchronous state machines. Gotway and Leaperkim/Nosfet
-process incoming chunks in order instead of launching one coroutine per chunk. KingSong's password
+intentionally process incoming chunks in wire order instead of launching one coroutine per chunk;
+the previous scheduling-dependent reordering could associate state carried by one frame with a
+later frame. KingSong's password
 timeout starts only after write acceptance and expires as unconfirmed, not as proof of a bad password.
 UUID handling and protocol byte/CRC operations now use portable core implementations; conversion to
 `java.util.UUID` is confined to the Android connector. The engine sources compile for JVM and
@@ -216,33 +225,42 @@ allocation-free firmware constraints. KMP does not imply Kotlin can target ESP32
 The common command vectors in `euc-ble-protocols/fixtures/commands.tsv` and replay tests are
 behavioral regression evidence, not proof of a complete architecture or a complete future sister library.
 
-The protocol/session separation is enforced for engines, but the complete session is **not yet
-multiplatform or independently reusable with another BLE stack**. The intended dependency direction is:
+Execution order for finishing phases 0-6: freeze capture outputs; enforce module boundaries;
+extract write/timer/lifecycle policies; wire the transport port; run cross-target and compatibility
+checks; then audit against the original completion criteria. Rust code remains out of scope.
+
+The current dependency direction is:
 
 ```text
 Kotlin application
-  -> KMP async session -> synchronous protocol core
+  -> JVM coroutine drivers -> KMP synchronous sessions -> KMP synchronous protocols
            |
            v
      BLE transport interface <- platform BLE connector
 ```
 
-This is the target architecture, not the current module graph. Coroutines are appropriate in the
-session layer and do not need to be removed for KMP. Platform APIs are appropriate in connectors
-and platform providers, not in common session or protocol logic.
+Both portable modules enforce coroutine-free runtime dependencies and compile/test on JVM and JS.
+The portable sessions are synchronous state machines, not a portable async runtime. JVM locks, jobs
+and flows deliberately remain in `euc-ble-core`; a different host drives the same policies with its
+own serialization and scheduling. Android permission checks and GATT handles remain in Android.
 
-| Priority | Remaining gap | Next evolution and completion criterion |
+| Phase | Implementation and evidence | Completion check |
 |---|---|---|
-| 1 | No interchangeable BLE-stack port | Define transport operations/events consumed by the session: connect/disconnect, discovery snapshots, subscription, RX, submission acceptance, write completion and failures. Include endpoint identity, connection generation and capabilities/limits; keep Android permission checks and native handles in the connector. Wire Android to this port and exercise the same session through an in-memory connector. `integration/BleBackend.kt` currently defines outward events/listeners, not such a transport interface. |
-| 2 | Async session implementation remains JVM-only | Extract shared orchestration into a KMP session artifact, moving polling/reconnect policies out of the protocol artifact with it. Replace JVM synchronization/volatile assumptions with a tested serialization model; keep existing JVM facades as compatibility wrappers. Run shared session tests on JVM and JS before claiming this layer is portable. |
-| 3 | Lifecycle and write policy remain partly connector-owned | Move connection activation, subscription sequencing, reconnect orchestration and write retry/timeout decisions into the session. `WriteSession` still embeds these latter decisions in its coroutine loop. Distinguish stack acceptance, GATT completion, wheel confirmation and timeout, reject stale callbacks, and preserve the no-replay rule for accepted writes. |
-| 4 | Resource and ownership contracts remain incomplete | Specify command backpressure and telemetry overflow separately, define byte lifetimes at every handoff, and test shutdown/reset while queues and writes are active. `ProtocolOutbox` grows and the async drivers use unbounded channels. Do not silently drop control commands or introduce arbitrary capacity limits. |
-| 5 | Time semantics and target validation remain incomplete | Separate monotonic elapsed time from wall-clock telemetry/vendor timestamps; audit ride-duration calculations. Add a supported Kotlin/Native target and shared core/session tests. Test real connectors on their supported platforms; JVM/JS success alone is not Native or BLE-stack validation. |
+| 0 Safety net | All 58 corpus files are accounted for: 52 raw CSVs and 2 HCI captures replay synchronously; 4 decoded/example CSVs are explicitly classified. Compressed JSON goldens preserve complete telemetry, security events, write bytes, timer actions and BMS snapshots. | JVM replay compares every ordered output and input hash; regeneration is opt-in. CI includes this test. |
+| 1 Module split | Separate protocol, session, JVM-driver and Android modules; both KMP modules reject coroutine dependencies. | Protocol/session checks run without Android on JVM and JS. |
+| 2 Contracts/bridge | Synchronous contracts remain; the temporary `FlowProtocolAdapter` is removed. Permanent public facades use a driver over the pure `ProtocolSession`. | Compatibility tests exercise the same public facades. |
+| 3 Migration | All eight engines reassemble synchronously; clocks/randomness are injected. | Portable vectors and existing protocol suites exercise the migrated behavior. |
+| 4 Session extraction | Pure selection, polling, write queue/generation, protocol timers, connection lifecycle and reconnect deadlines are in `euc-ble-session`. | Common tests use supplied time without transports or real delays; JVM drivers have fake-transport tests. |
+| 5 Android boundary | `BLEManager` translates GATT callbacks, snapshots, permissions and public flows; the consumed `BleTransport` port executes connection/discovery/write actions. Public client API and child-scope cleanup remain. | Android source/test compilation is checked against API 36; standard AGP tests and lint require the Android SDK and Google Maven access. Do not equate source compilation with a full Android quality gate. |
+| 6 Portable behavior | UUIDs use two 64-bit halves; byte/CRC helpers are common code. TSV vectors cover commands and notifications for all engines, and connection lifecycle inputs/actions. Capture goldens are JSON, not Kotlin serialization. | JVM/JS shared tests plus full synchronous capture replay; no Rust toolchain or interop added. |
 
-These are cohesive follow-up stages, not work completed by the typed-input change. In particular,
-copying `BLEManager` to another OS would duplicate session behavior rather than fulfill the target.
-The first transport extraction must move real call paths and have connector-contract tests; adding
-an unused interface or merely renaming modules would not close the gap.
+Local checks pass for both portable targets and the complete core suite. The updated CI workflow
+has not yet run against these changes. Android compilation used an API-36 JVM harness, not AGP.
+
+This is not a claim of Kotlin/Native, real-radio, or every-model compatibility. Additional platform
+connectors, Native targets, full transport capability negotiation and serialized CCCD subscription
+operations are follow-up work. The standard Android quality gate must pass before calling phase 5
+fully verified.
 
 Polling response deadlines and `SENT` traces start at transport acceptance, never at enqueue time.
 Response latency uses monotonic milliseconds; Android translates trace timestamps to wall-clock
@@ -251,14 +269,19 @@ Model-dependent periodic plans are refreshed without restarting completed one-sh
 Stopping a session invalidates queued requests and callbacks without cancelling the caller's scope.
 Accepted writes are never automatically retried: a missing GATT callback only releases the queue
 after its guard timeout, and is not evidence of a wheel acknowledgment.
+Transport write callbacks run outside the write-queue lock. Connection outputs carry generations
+so reentrant application callbacks cannot apply stale failures to a replacement connection.
 
-`BLEManager` now supplies Android service snapshots, transport submission and callback notifications.
-Connection/reconnection lifecycle, notification setup, forced/manual activation and public flow wiring
-remain in the Android connector. The reconnect delay policy itself is pure and independently tested.
+`BLEManager` supplies Android service snapshots, transport submission and callback notifications.
+Protocol-selection precedence, connection/reconnection decisions, timeout state and write-queue
+mechanics live in portable sessions. Notification setup, forced/manual activation wiring and public
+flow collection remain in the connector/driver boundary.
 Each manager and client owns a child coroutine job: cleanup cancels its own work without cancelling
 the caller's scope. GATT callbacks are accepted only from the currently owned connection, and failed
-device resolution leaves the connection state disconnected. The session drivers still use coroutines;
-the protocol engines and polling/reconnect policies do not.
+device resolution, stack rejection or initial timeout leaves the connection state disconnected.
+Protocol timers are bounded to 32 entries; lifecycle outputs to 32; writes to 64 queued entries;
+protocol/polling/frame outputs to 256. Control overflow is explicit. Compatibility telemetry alone
+uses bounded drop-oldest delivery; it is not the lossless golden replay path.
 
 ### Key Design Principles
 

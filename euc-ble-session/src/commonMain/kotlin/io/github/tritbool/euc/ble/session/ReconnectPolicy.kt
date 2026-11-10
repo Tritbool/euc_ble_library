@@ -3,7 +3,7 @@ package io.github.tritbool.euc.ble.session
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.EucRandom
 
-/** Pure exponential-backoff policy; the connector owns retry scheduling and connection I/O. */
+/** Session reconnect policy; the connector performs connection I/O. */
 class ReconnectPolicy(
     private val baseDelayMs: Long = BLEConstants.RECONNECT_BASE_DELAY_MS,
     private val maxDelayMs: Long = BLEConstants.MAX_RECONNECT_DELAY_MS,

@@ -6,7 +6,7 @@ import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.core.SystemEucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.session.FlowProtocolAdapter
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriver
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
@@ -153,7 +153,7 @@ class EUCProtocolContractTest {
         val logger = object : Logger by NoOpLogger() {
             override fun warn(tag: String, message: String) { warnings += message }
         }
-        val adapter = FlowProtocolAdapter(
+        val adapter = ProtocolSessionDriver(
             KingsongSyncProtocol(SystemEucClock, EucRandom { 0 }), logger = logger
         )
         try {
