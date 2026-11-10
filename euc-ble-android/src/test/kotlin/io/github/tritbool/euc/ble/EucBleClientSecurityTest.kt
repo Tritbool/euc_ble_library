@@ -110,7 +110,7 @@ class EucBleClientSecurityTest {
 
     @Test
     fun acceptedPasswordWritesForwardResultsWithoutChangingAuthenticationOrLock() = runTest {
-        val (client, protocol, _) = connectedClient()
+        val (client, protocol, gatt) = connectedClient()
         val events = mutableListOf<WheelSecurityEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             client.securityEventFlow.collect { events.add(it) }
@@ -133,6 +133,8 @@ class EucBleClientSecurityTest {
             call()
             runCurrent()
             assertTrue(events.isEmpty())
+            acknowledgeWrite(client, gatt)
+            runCurrent()
             val reply = notification(0x43, 0).also {
                 target.copyInto(it, 2)
                 it[6] = 1
@@ -151,7 +153,7 @@ class EucBleClientSecurityTest {
 
     @Test
     fun passwordTimeoutStartsAtAcceptedQueuedWriteAndOverlapIsNotAnAuthenticationError() = runTest {
-        val (client, _, _) = connectedClient()
+        val (client, _, gatt) = connectedClient()
         val traffic = collectTraffic(client)
         val results = mutableListOf<WheelSecurityEvent>()
         val errors = mutableListOf<String>()
@@ -170,16 +172,14 @@ class EucBleClientSecurityTest {
         runCurrent()
         assertTrue(traffic.none { it.direction == TrafficDirection.TX && it.bytes[16] == 0x41.toByte() })
         assertTrue(results.isEmpty())
-        advanceTimeBy(1)
-        runCurrent()
-        advanceTimeBy(300)
+        acknowledgeWrite(client, gatt)
         runCurrent()
         assertEquals(2, errors.size)
         assertTrue(errors.all { it == "Command blocked by protocol security state or pending operation" })
         assertEquals(1, traffic.count {
             it.direction == TrafficDirection.TX && it.bytes[16].toInt() in 0x41..0x42
         })
-        advanceTimeBy(2699)
+        advanceTimeBy(2999)
         runCurrent()
         assertTrue(results.isEmpty())
         advanceTimeBy(1)
@@ -244,7 +244,7 @@ class EucBleClientSecurityTest {
 
     @Test
     fun publicApiReportsSupportValidatesPinAndPublishesNotificationState() = runTest {
-        val (client, protocol, _) = connectedClient()
+        val (client, protocol, gatt) = connectedClient()
         assertEquals(CommandSupport.SUPPORTED, client.getCommandSupport(CommandType.AUTHENTICATE))
         assertEquals(CommandSupport.SUPPORTED, client.getCommandSupport(CommandType.LOCK))
         assertEquals(WheelSecurityState(), client.securityStateFlow.value)
@@ -284,6 +284,8 @@ class EucBleClientSecurityTest {
         })
         assertTrue(client.securityEventFlow.replayCache.isEmpty())
         protocol.decode(notification(0x46, 0))
+        runCurrent()
+        acknowledgeWrite(client, gatt)
         runCurrent()
         advanceTimeBy(300)
         client.unlock()
@@ -422,6 +424,14 @@ class EucBleClientSecurityTest {
             client.trafficFlow.collect { events.add(it) }
         }
         return events
+    }
+
+    private fun acknowledgeWrite(client: EucBleClient, gatt: BluetoothGatt) {
+        client.bleManager.onCharacteristicWrite(
+            gatt,
+            gatt.services.single().characteristics.single(),
+            BluetoothGatt.GATT_SUCCESS
+        )
     }
 
     private fun attachGatt(manager: BLEManager, protocol: KingsongProtocol): BluetoothGatt {

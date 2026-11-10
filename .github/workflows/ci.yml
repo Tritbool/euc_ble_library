@@ -262,7 +262,7 @@ jobs:
       - name: Collect website reports
         if: ${{ !cancelled() }}
         run: |
-          mkdir -p quality/reports
+          mkdir -p quality/reports/tests
           if [ -d euc-ble-core/build/reports/tests/test ]; then
             cp -r euc-ble-core/build/reports/tests/test quality/reports/tests
           fi

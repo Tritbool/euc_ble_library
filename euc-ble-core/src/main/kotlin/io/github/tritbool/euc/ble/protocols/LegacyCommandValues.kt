@@ -13,6 +13,7 @@ internal fun Any.toCommandValue(): CommandValue = when (this) {
         require(it is Int) { "Command integer lists must contain only Int values" }
         it
     })
+    is PasswordChangeRequest -> this
     else -> throw IllegalArgumentException("Unsupported command value type")
 }
 
