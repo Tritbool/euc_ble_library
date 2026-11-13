@@ -97,7 +97,8 @@ android {
     sourceSets {
         // Replay fixtures (WheelLog CSV / btsnoop captures) live with the pure core tests.
         getByName("test").resources.srcDir("../euc-ble-core/src/test/resources")
-        getByName("test").java.srcDir("../euc-ble-core/src/testFixtures/kotlin")
+        // AGP's built-in Kotlin compiler does not compile Kotlin from custom Java source directories.
+        getByName("test").kotlin.directories.add(file("../euc-ble-core/src/testFixtures/kotlin"))
     }
 
     testOptions {
