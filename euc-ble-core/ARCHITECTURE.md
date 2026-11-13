@@ -1,7 +1,9 @@
 # EUC BLE Core Library Architecture
 
-This document provides an overview of the library architecture using PlantUML diagrams.
-The older diagrams below describe the Android-facing API. The
+Start with the [high-level architecture overview](../docs/architecture.md) for the current
+module, protocol-adapter and session flows. This document contains detailed notes and historical
+PlantUML diagrams. The older diagrams below describe the Android-facing API, not the current
+module boundaries. The
 [portable engines and session section](#portable-synchronous-engines-and-jvm-session-layer)
 defines the current module boundaries and the remaining architecture work.
 
@@ -92,7 +94,10 @@ java -jar plantuml.jar class_diagram.puml
 
 ## Architecture Overview
 
-### Layered Architecture
+### Historical layered diagram
+
+This predates the module split. Use the [current module diagram](../docs/architecture.md#modules-and-dependencies)
+for dependency direction and ownership.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -421,23 +426,11 @@ class CustomLogger : Logger {
 
 ### Adding New Manufacturers
 
-1. Implement `EUCProtocol`
-2. Register the new protocol inside `EucBleClient` alongside the existing ones
-3. Add a WheelLog capture test (see [README_TESTS.md](README_TESTS.md))
-
-```kotlin
-class NewManufacturerProtocol : EUCProtocol {
-    override val manufacturer: String = "NewManufacturer"
-    override val supportedModels: List<String> = listOf("Model1", "Model2")
-
-    override fun canHandle(device: EUCDevice): Boolean { /* device detection logic */ }
-    override fun decode(data: ByteArray): EUCData? { /* frame parsing logic */ }
-    override fun createCommand(commandType: CommandType, value: Any): ByteArray { /* ... */ }
-    override fun getServiceUUID(): UUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
-    override fun getDataCharacteristicUUID(): UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
-    override fun isDeviceReady(data: EUCData): Boolean { /* ... */ }
-}
-```
+1. Implement the synchronous `SyncEucProtocol` engine in `euc-ble-protocols`, including
+   identification, framing, command encoding and any polling plan.
+2. Add a JVM `EUCProtocol` facade backed by `ProtocolSessionDriver`, following an existing
+   facade such as `GotwayProtocol`, and register it in `EucBleClient`.
+3. Add focused protocol and capture tests (see [README_TESTS.md](README_TESTS.md)).
 
 ## Performance Considerations
 
@@ -451,7 +444,7 @@ class NewManufacturerProtocol : EUCProtocol {
 ### Common Issues
 
 1. **Bluetooth Not Enabled** — check `client.isBluetoothEnabled()` and request Bluetooth enable if needed
-2. **Device Not Detected** — verify device is in range and powered on; check manufacturer ID and name patterns in the protocol's `canHandle()`
+2. **Device Not Detected** — verify device is in range and powered on; check GATT signatures and device-name matching
 3. **Connection Failures** — check for proper Android permissions; handle connection timeouts
 4. **Data Decoding Errors** — validate data packet structure; check for correct protocol implementation
 

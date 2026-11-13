@@ -43,7 +43,8 @@ Repository administrators must configure:
 | Module | Artifact | Content |
 |---|---|---|
 | `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | KMP synchronous engines, parsers, models and pure policies (`commonMain`; JVM and JavaScript targets). No Android or coroutine dependency. |
-| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | JVM compatibility facades, platform providers and async session drivers. Exposes `euc-ble-protocols` through `api`. |
+| `euc-ble-session` | `io.github.tritbool:euc-ble-session` | KMP coroutine-free session policies and BLE transport contract. Depends on protocols. |
+| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | JVM compatibility facades, platform providers and async session drivers. Exposes protocols and session through `api`. |
 | `euc-ble-android` | `io.github.tritbool:euc-ble-library` | Android BLE connector (`BLEManager`) and the `EucBleClient` entry point. Depends on `euc-ble-core` (`api`). |
 
 Android applications keep depending on `euc-ble-library`; package names are unchanged.
@@ -64,8 +65,8 @@ The portable engines can be tested without an Android SDK (Node.js and npm must 
 ./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
 ```
 
-See [`euc-ble-core/ARCHITECTURE.md`](euc-ble-core/ARCHITECTURE.md) for the sync-core / session split
-and remaining KMP session / interchangeable BLE-connector work. This library stays Kotlin/KMP;
+See the [architecture overview](docs/architecture.md) for diagrams and how synchronous protocols
+are adapted and driven by sessions. This library stays Kotlin/KMP;
 a future sister Rust library will be a separate implementation using the architecture as a model.
 
 ## Client application
