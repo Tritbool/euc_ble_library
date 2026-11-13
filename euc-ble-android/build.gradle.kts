@@ -96,9 +96,9 @@ android {
 
     sourceSets {
         // Replay fixtures (WheelLog CSV / btsnoop captures) live with the pure core tests.
-        getByName("test").resources.srcDir("../euc-ble-core/src/test/resources")
+        getByName("test").resources.directories.add("../euc-ble-core/src/test/resources")
         // AGP's built-in Kotlin compiler does not compile Kotlin from custom Java source directories.
-        getByName("test").kotlin.directories.add(file("../euc-ble-core/src/testFixtures/kotlin"))
+        getByName("test").kotlin.directories.add("../euc-ble-core/src/testFixtures/kotlin")
     }
 
     testOptions {
@@ -223,7 +223,7 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates("io.github.tritbool", "euc-ble-library", "0.1.3")
+    coordinates("io.github.tritbool", "euc-ble-library", "1.0.0")
 
     pom {
         name.set("EUC BLE Library")
