@@ -65,6 +65,37 @@ The portable engines can be tested without an Android SDK (Node.js and npm must 
 ./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
 ```
 
+### Updating dependency locks
+
+The build has two independent lock formats. Commit lock changes with the dependency or
+Kotlin plugin upgrade.
+
+- Gradle dependencies use each module's `gradle.lockfile`. Run the affected build/test
+  tasks with `--write-locks` after changing their versions. Only resolved configurations
+  are updated, so include JVM, JavaScript, Android and iOS tasks affected by the upgrade
+  (iOS tasks require macOS). Currently, `settings.gradle` temporarily enables Gradle
+  lock writing for every invocation via `setWriteDependencyLocks(true)`. This does not
+  update npm locks. Remove that override once all affected configurations have been
+  refreshed to restore normal Gradle lock verification.
+- Kotlin/JS npm dependencies use `kotlin-js-store/package-lock.json`. After a Kotlin
+  plugin upgrade or npm dependency change, use JDK 21 and Node.js 22 (including its npm),
+  matching CI, and run:
+
+  ```bash
+  ./gradlew -Peuc.includeAndroid=false kotlinUpgradePackageLock
+  ```
+
+  Review and commit the generated lockfile. `--write-locks` does not update this file.
+  Do not run `kotlinUpgradePackageLock` automatically in CI or disable lock mismatch
+  checks: that would accept unreviewed changes instead of checking reproducibility.
+
+After updating locks, rerun the portable CI checks without either update option:
+
+```bash
+./gradlew -Peuc.includeAndroid=false \
+  :euc-ble-protocols:check :euc-ble-session:check :euc-ble-core:jsNodeTest
+```
+
 See the [architecture overview](docs/architecture.md) for diagrams and how synchronous protocols
 are adapted and driven by sessions. This library stays Kotlin/KMP;
 a future sister Rust library will be a separate implementation using the architecture as a model.
