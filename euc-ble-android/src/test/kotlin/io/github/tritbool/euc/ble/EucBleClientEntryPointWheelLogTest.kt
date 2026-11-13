@@ -15,6 +15,7 @@ import io.github.tritbool.euc.ble.protocols.LeaperkimProtocol
 import io.github.tritbool.euc.ble.protocols.NinebotZProtocol
 import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import io.github.tritbool.euc.ble.test.WheelLogCsvLoader
+import io.github.tritbool.euc.ble.test.WheelLogFrame
 import io.github.tritbool.euc.ble.test.WheelLogResources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -248,6 +249,6 @@ class EucBleClientEntryPointWheelLogTest {
     private fun loadFrames(resourcePath: String, maxFrames: Int): List<ByteArray> {
         val result = WheelLogCsvLoader.load(resourcePath, maxFrames)
         WheelLogCsvLoader.assertHealthyParse(resourcePath, result)
-        return result.frames.map { it.bleData }
+        return result.frames.map { frame: WheelLogFrame -> frame.bleData }
     }
 }
