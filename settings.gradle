@@ -46,4 +46,4 @@ def includeAndroid = providers.gradleProperty("euc.includeAndroid").getOrElse("t
 if (includeAndroid) {
     include ":euc-ble-android"
 }
-// gradle.startParameter.setWriteDependencyLocks(true)
+gradle.startParameter.setWriteDependencyLocks(true)
