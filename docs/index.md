@@ -1,3 +1,8 @@
+---
+layout: default
+title: EUC BLE Library
+---
+
 <p align="right">
   <strong>FR</strong> | <a href="./en/">EN</a>
 </p>
@@ -8,7 +13,7 @@ Bibliothèque Bluetooth Low Energy pour monocycles électriques (EUC), avec une 
 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
-> Modules: `euc-ble-core` (pure Kotlin/JVM core, artifact `euc-ble-core`), `euc-ble-android` (Android connector)<br>
+> Modules : `euc-ble-protocols` + `euc-ble-session` (KMP), `euc-ble-core` (runtime JVM), `euc-ble-android` (connecteur Android)<br>
 > Version de développement actuelle : `0.1.0`
 
 > **Projet en cours de développement.** La version 0.1.0 est expérimentale et ne garantit pas la
@@ -27,7 +32,7 @@ Le projet propose :
 - Des protocoles et tests sur captures pour KingSong, Gotway/Begode, InMotion, Ninebot
   (dont la série Z), Leaperkim/Veteran et Nosfet. ExtremeBull réutilise actuellement le protocole Gotway.
 - Des API callbacks et Kotlin `Flow` pour la télémétrie et les événements de connexion.
-- Une couche d'intégration de backend BLE abstraite, utile pour une migration progressive et les tests.
+- Des moteurs de protocole et des politiques de session portables, séparés du BLE Android.
 
 Les tests sur captures restent partiels et ne couvrent pas tous les modèles, firmwares ou commandes.
 
@@ -48,9 +53,9 @@ avec cette bibliothèque. Elle est disponible en pré-version ; sa publication s
 - **API client simple**  
   Entrée unique `EucBleClient` avec callbacks `ConnectionCallback`, `DataCallback`, `ErrorCallback` côté app.
 
-- **Backend BLE extensible**
-    - `BLEManager` : cœur BLE.
-    - `BleBackend` + `FrameworkBleBackend` + `LegacyBleBackend` + `SwitchableBleBackend` : intégration et migration entre backends.
+- **Transport BLE séparé**
+  `BleTransport` délimite la pile BLE ; `BLEManager` fournit son implémentation GATT Android.
+  Une autre plateforme nécessite son connecteur et son orchestration asynchrone.
 
 - **Modèle de données riche**  
   `EUCData` expose vitesse, tension, courant, température, niveau de batterie, distance, puissance, état de charge, temps de ride, etc.
@@ -59,41 +64,25 @@ avec cette bibliothèque. Elle est disponible en pré-version ; sa publication s
 
 ## Architecture en un coup d’œil
 
-```mermaid
-flowchart LR
-    App[Android App / UI] -->|scan, connect, commands| EucBleClient
+![Modules actuels et extension iOS proposée]({{ '/diagrams/modules.svg' | relative_url }})
 
-    subgraph Core BLE
-        EucBleClient --> BLEManager
-        BLEManager --> BleBackend
-        BleBackend --> FrameworkBleBackend
-        BleBackend --> LegacyBleBackend
-    end
+**Les sessions décident quand agir ; les protocoles décodent et encodent ; le connecteur exécute les opérations BLE.**
 
-    subgraph Protocols
-        BLEManager --> KingsongProtocol
-        BLEManager --> GotwayProtocol
-        BLEManager --> InMotionProtocol
-        BLEManager --> NinebotProtocol
-        BLEManager --> NinebotZProtocol
-        BLEManager --> LeaperkimProtocol
-        BLEManager --> NosfetProtocol
-    end
+![Interactions client, sessions et protocoles, avec points d’extension plateforme et BLE]({{ '/diagrams/runtime.svg' | relative_url }})
 
-    Protocols -->|decoded frames| EUCData[(EUCData)]
-    EUCData --> App
-```
-
-- **App** parle uniquement à `EucBleClient` ou au backend abstrait.
-- **Core BLE** gère scan, connexion, reconnection, erreurs et dispatch vers les protocoles.
-- **Protocoles** convertissent des trames brutes en `EUCData` et exposent les commandes supportées.
+**Ajouter iOS :** un module proposé `euc-ble-ios` fournirait une API client, l’orchestration
+asynchrone des sessions et un `BleTransport` CoreBluetooth. Il réutiliserait les moteurs et
+politiques KMP, pas `euc-ble-core` qui reste JVM. Il faut d’abord ajouter les cibles iOS aux
+deux modules KMP (actuellement JVM/JavaScript uniquement).
+Les annotations dorées désignent des points d’extension, pas une prise en charge existante.
+Voir la [vue d’ensemble de l’architecture]({{ '/architecture.html' | relative_url }}) pour les détails et sources des diagrammes.
 
 ---
 
 ## Asynchronicité & Flux de données
 
 - Les callbacks de `EucBleClient` sont invoqués depuis des contextes de fond, jamais garantis sur le main thread – à toi de `Dispatchers.Main` pour l’UI.
-- Le cœur protocole expose :
+- Le client Android et les adaptateurs JVM exposent des flux, contrairement aux moteurs KMP synchrones :
     - `Flow<EUCData>` pour la télémétrie décodée.
     - `Flow<ByteArray>` (`rawFrameFlow`) pour les trames brutes (utile pour logger / debug).
 - `client.getBMSData()` renvoie le dernier instantané BMS (tensions de cellules, températures,

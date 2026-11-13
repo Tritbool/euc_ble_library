@@ -1,3 +1,8 @@
+---
+layout: default
+title: EUC BLE Library
+---
+
 <p align="right">
   <a href="../">FR</a> | <strong>EN</strong>
 </p>
@@ -8,7 +13,7 @@ Bluetooth Low Energy library for Electric Unicycles (EUC), providing an Android 
 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
-> Modules: `euc-ble-core` (pure Kotlin/JVM core, artifact `euc-ble-core`), `euc-ble-android` (Android connector)<br>
+> Modules: `euc-ble-protocols` + `euc-ble-session` (KMP), `euc-ble-core` (JVM runtime), `euc-ble-android` (Android connector)<br>
 > Current development version: `0.1.0`
 
 > **Work in progress.** Version 0.1.0 is experimental, not a stability guarantee. Protocol support is
@@ -27,7 +32,7 @@ The project provides:
   Ninebot (including Z-series), Leaperkim/Veteran, and Nosfet. ExtremeBull currently reuses the
   Gotway protocol implementation.
 - Kotlin `Flow` and callback APIs for telemetry and connection events.
-- An abstract BLE backend integration layer for incremental migration and testing.
+- Portable protocol engines and session policies, separated from Android BLE.
 
 Captured-frame tests are partial and do not imply complete model, firmware, or command coverage.
 
@@ -48,9 +53,9 @@ It is available as a pre-release, with publication on F-Droid planned.
 - **Simple client API**  
   Single entrypoint `EucBleClient` with `ConnectionCallback`, `DataCallback`, and `ErrorCallback` on the app side.
 
-- **Extensible BLE backend**
-    - `BLEManager`: BLE core.
-    - `BleBackend` + `FrameworkBleBackend` + `LegacyBleBackend` + `SwitchableBleBackend`: backend integration and migration support.
+- **Separated BLE transport**
+  `BleTransport` is the stack boundary; Android's `BLEManager` supplies its GATT implementation.
+  Other platforms need their own connector and async orchestration.
 
 - **Rich data model**  
   `EUCData` exposes speed, voltage, current, temperature, battery level, distance, power, charging state, ride time, and more.
@@ -59,41 +64,24 @@ It is available as a pre-release, with publication on F-Droid planned.
 
 ## Architecture at a glance
 
-```mermaid
-flowchart LR
-    App[Android App / UI] -->|scan, connect, commands| EucBleClient
+![Current modules and proposed iOS extension]({{ '/diagrams/modules.svg' | relative_url }})
 
-    subgraph Core BLE
-        EucBleClient --> BLEManager
-        BLEManager --> BleBackend
-        BleBackend --> FrameworkBleBackend
-        BleBackend --> LegacyBleBackend
-    end
+**Sessions decide when; protocols decode and encode; the connector performs BLE I/O.**
 
-    subgraph Protocols
-        BLEManager --> KingsongProtocol
-        BLEManager --> GotwayProtocol
-        BLEManager --> InMotionProtocol
-        BLEManager --> NinebotProtocol
-        BLEManager --> NinebotZProtocol
-        BLEManager --> LeaperkimProtocol
-        BLEManager --> NosfetProtocol
-    end
+![Client, session and protocol interactions, with platform and BLE extension points]({{ '/diagrams/runtime.svg' | relative_url }})
 
-    Protocols -->|decoded frames| EUCData[(EUCData)]
-    EUCData --> App
-```
-
-- The **app** only talks to `EucBleClient` or the abstract backend.
-- The **BLE core** handles scan, connect, reconnect, errors, and dispatches to protocols.
-- **Protocols** turn raw frames into `EUCData` and expose command support.
+**Adding iOS:** a proposed `euc-ble-ios` would provide a client API, async session orchestration
+and a CoreBluetooth `BleTransport`. It would reuse the KMP engines and policies, not JVM-only
+`euc-ble-core`. First add iOS targets to both KMP modules (currently JVM/JavaScript only).
+Gold annotations show extension points, not implemented support.
+See the [architecture overview]({{ '/architecture.html' | relative_url }}) for details and diagram sources.
 
 ---
 
 ## Asynchrony & data flows
 
 - `EucBleClient` callbacks are invoked from background contexts, never guaranteed to run on the main thread – it’s up to you to switch to `Dispatchers.Main` for UI work.
-- The protocol core exposes:
+- The Android client and JVM adapters expose flows; the synchronous KMP engines do not:
     - `Flow<EUCData>` for decoded telemetry.
     - `Flow<ByteArray>` (`rawFrameFlow`) for raw frames (useful for logging / debugging).
 - `client.getBMSData()` returns the latest BMS snapshot (cell voltages, temperatures, pack

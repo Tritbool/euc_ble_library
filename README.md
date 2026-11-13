@@ -65,9 +65,8 @@ The portable engines can be tested without an Android SDK (Node.js and npm must 
 ./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
 ```
 
-See the [architecture overview](docs/architecture.md) for diagrams and how synchronous protocols
-are adapted and driven by sessions. This library stays Kotlin/KMP;
-a future sister Rust library will be a separate implementation using the architecture as a model.
+See the [architecture overview](docs/architecture.md): module dependencies and the
+client / session / protocol / BLE transport boundaries, in two diagrams.
 
 ## Client application
 

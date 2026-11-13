@@ -1,0 +1,66 @@
+@startuml
+!pragma layout smetana
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam ArrowColor #475569
+skinparam componentBorderColor #475569
+skinparam componentBackgroundColor #F1F5F9
+skinparam packageBorderColor #94A3B8
+skinparam nodesep 30
+skinparam ranksep 30
+
+actor "Client app" as app
+
+package "Android API + orchestration" #EFF6FF {
+    component "EucBleClient" as client
+    component "BLEManager" as manager
+}
+
+package "Session layer" #EFF6FF {
+    component "Connection / polling / writes\n<size:11>JVM drivers + KMP policies</size>" as lifecycle
+    component "Protocol adapter\n<size:11>EUCProtocol facade (JVM)</size>\n<size:11>ProtocolSessionDriver (JVM)</size>\n<size:11>ProtocolSession (KMP)</size>" as adapter
+}
+
+package "Protocol layer (KMP)" #F0FDF4 {
+    rectangle "SyncEucProtocol\n<size:11>extends EucProtocolSpec</size>" as protocol <<interface>>
+    component "Manufacturer engines\n<size:11>KingSong, Gotway, InMotion, ...</size>" as engines #DCFCE7
+}
+
+rectangle "BleTransport\n<size:11>KMP contract</size>" as transport <<interface>>
+component "Android connector\n<size:11>Inside BLEManager</size>" as connector #DBEAFE
+component "Android GATT\n+ wheel" as gatt
+
+app <--> client : scan / connect / commands\ntelemetry / events
+client --> manager
+manager --> lifecycle : coordinates
+manager <--> adapter : notifications / commands\ntelemetry / write requests
+adapter <--> protocol : notifications / timers / encoding\noutputs / command bytes
+engines .up.|> protocol : implements
+lifecycle --> transport : connect / subscribe / queued writes
+connector .up.|> transport : implements
+connector <--> gatt : BLE operations / callbacks
+connector .up.> manager : GATT callbacks
+
+note bottom of engines
+  No BLE I/O, coroutines or scheduling.
+  Returns data, write and timer requests.
+end note
+
+note right of adapter #FEF3C7
+  NEW PLATFORM: client API + async runtime
+  e.g. proposed euc-ble-ios.
+  Replace JVM facades/drivers; reuse
+  ProtocolSession + other KMP policies.
+end note
+
+note left of transport #FEF3C7
+  NEW BLE STACK: implement BleTransport.
+  e.g. CoreBluetooth for iOS.
+  Feed callbacks into the platform runtime.
+end note
+@enduml

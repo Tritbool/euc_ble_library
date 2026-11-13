@@ -1,0 +1,32 @@
+@startuml
+!pragma layout smetana
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 14
+skinparam componentStyle rectangle
+skinparam ArrowColor #475569
+skinparam componentBorderColor #475569
+skinparam componentBackgroundColor #F1F5F9
+skinparam nodesep 40
+skinparam ranksep 35
+
+component "euc-ble-android\n<size:12>Android client API + GATT connector</size>" as android #DBEAFE
+component "euc-ble-core\n<size:12>JVM facades + coroutine session drivers</size>" as core #DBEAFE
+component "euc-ble-session\n<size:12>KMP session policies + BleTransport contract</size>" as session #DCFCE7
+component "euc-ble-protocols\n<size:12>KMP synchronous engines + shared models</size>" as protocols #DCFCE7
+component "euc-ble-ios (proposed)\n<size:12>iOS client + async runtime + CoreBluetooth</size>" as ios #FEF3C7
+
+android --> core : api
+core --> session : api
+session --> protocols : api
+core --> protocols : api
+ios ..> session
+ios ..> protocols
+
+note top of ios #FEF3C7
+  Extension example, not implemented.
+  Add iOS targets to both KMP modules.
+  Does not depend on JVM core.
+end note
+@enduml
