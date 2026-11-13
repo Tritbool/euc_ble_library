@@ -5,11 +5,9 @@ import io.github.tritbool.euc.ble.models.BMSData
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import io.github.tritbool.euc.ble.test.BtsnoopCapture
 
 class InMotionP6BmsTest {
-    private data class Notification(val bytes: ByteArray, val aclFragments: Int)
     private data class Response(val pack: Int, val payload: ByteArray, val wire: ByteArray)
 
     @Test
@@ -32,8 +30,9 @@ class InMotionP6BmsTest {
             assertEquals(listOf("Z100E5A00319", "Z100E5A00092"), packs.map { it.serialNumber })
             for (pack in packs) {
                 assertEquals("2.2.76", pack.firmwareVersion)
-                assertEquals(56, pack.cellVoltages!!.size)
-                assertTrue(pack.cellVoltages.all { it in 3.7..4.1 })
+                val cells = requireNotNull(pack.cellVoltages)
+                assertEquals(56, cells.size)
+                assertTrue(cells.all { it in 3.7..4.1 })
                 assertEquals(false, pack.isCharging) // Both captures end with zero charge.
                 assertEquals(0.0, pack.chargeCurrent)
                 assertEquals(0.0, pack.dischargeCurrent)
@@ -134,9 +133,10 @@ class InMotionP6BmsTest {
         protocol.decode(notification.bytes)
         val pack = protocol.getBMSData()!!.single()
         assertEquals(2, pack.bmsIndex)
-        assertEquals(56, pack.cellVoltages!!.size)
-        assertEquals(3.858, pack.cellVoltages.first())
-        assertEquals(3.853, pack.cellVoltages.last())
+        val cells = requireNotNull(pack.cellVoltages)
+        assertEquals(56, cells.size)
+        assertEquals(3.858, cells.first())
+        assertEquals(3.853, cells.last())
         assertNull(pack.current)
         assertNull(pack.voltage)
         assertNull(pack.isCharging)
@@ -181,7 +181,7 @@ class InMotionP6BmsTest {
             ByteUtils.bytesToHex(protocol.createCommand(it.commandType, it.value), "").lowercase()
         })
         assertEquals(listOf(0L, 0L), packQueries(protocol).filter {
-            (it.value as ByteArray)[6] == 4.toByte()
+            (it.value as CommandValue.Bytes).copyBytes()[6] == 4.toByte()
         }.map { it.intervalMs })
     }
 
@@ -195,7 +195,7 @@ class InMotionP6BmsTest {
         }) {
             val matches = queries.filter { protocol.matchesQueryResponse(it, r.wire) }
             assertEquals(1, matches.size)
-            val request = matches.single().value as ByteArray
+            val request = (matches.single().value as CommandValue.Bytes).copyBytes()
             assertEquals(r.pack, request[5].toInt() and 0xFF)
             assertEquals(subtype(r), request[6].toInt() and 0xFF)
         }
@@ -241,9 +241,10 @@ class InMotionP6BmsTest {
             protocol.decode(second)
             val pack = protocol.getBMSData()!!.single()
             assertEquals(2, pack.bmsIndex)
-            assertEquals(56, pack.cellVoltages!!.size)
-            assertEquals(4.010, pack.cellVoltages[0])
-            assertEquals(4.005, pack.cellVoltages[1])
+            val cells = requireNotNull(pack.cellVoltages)
+            assertEquals(56, cells.size)
+            assertEquals(4.010, cells[0])
+            assertEquals(4.005, cells[1])
         }
         val protocol = p6()
         val queries = packQueries(protocol)
@@ -394,60 +395,5 @@ class InMotionP6BmsTest {
         }.toByteArray()
     }
 
-    /**
-     * btsnoop records contain H4 packets, not standalone ATT values. Reassemble each
-     * connection/direction's L2CAP SDU across ACL continuation packets BEFORE reading
-     * the ATT notification handle. In particular idle pack 2 cells span ACL packets.
-     */
-    private fun notifications(capture: String): List<Notification> {
-        val bytes = javaClass.getResourceAsStream("/ble_frames/$capture")!!.bufferedReader().useLines { lines ->
-            lines.flatMap { line ->
-                ByteUtils.hexToBytes(line.substringAfter(':').take(40)).asSequence()
-            }.toList().toByteArray()
-        }
-        val records = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
-        assertEquals("btsnoop\u0000", String(bytes.copyOfRange(0, 8), Charsets.US_ASCII))
-        records.position(16)
-        data class Partial(val data: ByteArrayOutputStream, var fragments: Int)
-        val partials = mutableMapOf<Pair<Int, Int>, Partial>()
-        val output = mutableListOf<Notification>()
-        while (records.remaining() >= 24) {
-            records.int // Original packet length.
-            val included = records.int
-            val direction = records.int and 1
-            records.int // Drops.
-            records.long // Timestamp.
-            assertTrue(included in 0..records.remaining())
-            val packet = ByteArray(included).also { records.get(it) }
-            if (packet.size < 5 || packet[0] != 0x02.toByte()) continue
-            val handleAndBoundary = ByteUtils.getUnsignedShortLE(packet, 1)
-            val aclLength = ByteUtils.getUnsignedShortLE(packet, 3)
-            assertEquals(aclLength + 5, packet.size)
-            val key = (handleAndBoundary and 0x0FFF) to direction
-            when ((handleAndBoundary shr 12) and 3) {
-                0, 2 -> partials[key] = Partial(ByteArrayOutputStream().apply {
-                    write(packet, 5, aclLength)
-                }, 1)
-                1 -> {
-                    val partial = partials[key] ?: continue
-                    partial.data.write(packet, 5, aclLength)
-                    partial.fragments++
-                }
-                else -> continue
-            }
-            val partial = partials.getValue(key)
-            val l2cap = partial.data.toByteArray()
-            if (l2cap.size < 4) continue
-            val length = ByteUtils.getUnsignedShortLE(l2cap, 0)
-            if (l2cap.size < length + 4) continue
-            assertEquals(length + 4, l2cap.size)
-            partials.remove(key)
-            if (ByteUtils.getUnsignedShortLE(l2cap, 2) != 0x0004 || length < 3) continue
-            val opcode = l2cap[4].toInt() and 0xFF
-            if (opcode == 0x1B || opcode == 0x1D) {
-                output += Notification(l2cap.copyOfRange(7, l2cap.size), partial.fragments)
-            }
-        }
-        return output
-    }
+    private fun notifications(capture: String) = BtsnoopCapture.notifications("/ble_frames/$capture")
 }

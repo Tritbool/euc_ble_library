@@ -264,7 +264,7 @@ class InMotionProtocolTest {
         assertEquals(CommandType.CUSTOM, query.commandType)
 
         assertArrayEquals(
-            query.value as ByteArray,
+            (query.value as CommandValue.Bytes).copyBytes(),
             protocol.createCommand(query.commandType, query.value)
         )
     }
@@ -947,9 +947,10 @@ class InMotionProtocolTest {
         val packs = protocol.getBMSData()!!
         assertEquals(1, packs.size)
         val pack = packs.single()
-        assertEquals(20, pack.cellVoltages!!.size)
-        assertEquals(3.847, pack.cellVoltages.first(), 0.001)
-        assertEquals(3.841, pack.cellVoltages.last(), 0.001)
+        val cells = requireNotNull(pack.cellVoltages)
+        assertEquals(20, cells.size)
+        assertEquals(3.847, cells.first(), 0.001)
+        assertEquals(3.841, cells.last(), 0.001)
         assertEquals(76.88, pack.voltage!!, 0.01)
         assertEquals("BW268Y00720S103A624", pack.serialNumber)
         assertEquals("0.0.14", pack.firmwareVersion)

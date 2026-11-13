@@ -23,6 +23,52 @@ Each CSV row contains the exact byte sequence received from the wheel over BLE. 
 
 ---
 
+## Portable engine tests
+
+Run `./gradlew -Peuc.includeAndroid=false :euc-ble-protocols:check` with Node.js/npm on `PATH`.
+This compiles the engines without JVM APIs and runs common tests on JVM and JavaScript.
+`PortableReplayTest` covers golden commands and notification vectors for all eight engines,
+fragmented InMotion authentication, acceptance-aware
+timers, reset and byte/CRC utilities. The separate `euc-ble-session:check` also tests portable
+selection, polling deadlines, bounded writes/generations, protocol timers and connection/reconnect
+state. Shared lifecycle inputs/actions are in `euc-ble-session/fixtures/connection.tsv`.
+`BMSDataTest` now lives in `euc-ble-protocols/src/commonTest` and runs on both targets.
+Command and telemetry fixtures are in `euc-ble-protocols/fixtures/commands.tsv` and
+`euc-ble-protocols/fixtures/telemetry.tsv`.
+
+`CaptureGoldenTest` (in core's `AllTests`) replays the synchronous engines directly, draining outputs
+after every input without flows, jobs or real time. Its manifest accounts for all 58 corpus files:
+52 raw CSVs and both HCI captures are replayed; 4 decoded/example CSVs are explicitly excluded from
+byte decoding. HCI ACL continuations are reassembled before extracting ATT notifications. Two raw
+KingSong noise-only captures intentionally have no decoded outputs.
+
+Full expected outputs are checked in under `euc-ble-protocols/fixtures/captures/` as gzip-compressed
+UTF-8 JSON Lines. Each row has `line` (CSV source line or HCI record index) and `event`; `type`
+discriminates event/action objects. Telemetry includes every model field, byte arrays are lowercase
+hex, enums are strings, and unavailable values are JSON null. Changed BMS pull snapshots are included.
+Diagnostic logs are excluded. Inputs remain in the original corpus; `manifest.tsv` records their
+SHA-256 hashes, classifications, and input/output counts. A foreign-language runner can pair these
+inputs and outputs without loading Kotlin objects; compare floating-point measurements numerically.
+The replay clock is fixed at epoch millisecond 100000 with local date 2026-01-01 00:00:00, and
+randomness returns zero. Command/lifecycle TSV headers describe their input/value/action columns.
+
+Regenerate only after reviewing an intentional behavior change, then run again without the flag:
+
+```bash
+./gradlew -Peuc.includeAndroid=false -PupdateReplayGoldens \
+  :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
+./gradlew -Peuc.includeAndroid=false \
+  :euc-ble-protocols:check :euc-ble-session:check \
+  :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
+```
+
+Golden fixtures freeze observed behavior, including existing limitations; they do not prove every
+captured field is semantically correct. Gotway's intentional wire-order change is documented in
+`ARCHITECTURE.md` and tested with ordered coalesced frames.
+
+The JVM `AllTests` suite below covers compatibility/session behavior and existing capture replays;
+it is not a replacement for the portable module's `check` task.
+
 ## Test inventory
 
 ### WheelLog integration tests (real captures)
@@ -85,7 +131,7 @@ Exercise decoded-data delivery from each protocol under concurrent load.
 
 | Suite | Contents |
 |---|---|
-| `AllTests` | Entry point for CI – runs everything |
+| `AllTests` | JVM compatibility/session and capture replay suite |
 | `RegularTestsSuite` | Selected protocol, capture, and utility tests |
 | `NoDropTestsSuite` | No-drop tests plus client entry-point capture integration |
 
@@ -99,19 +145,22 @@ Exercise decoded-data delivery from each protocol under concurrent load.
 ## Running tests
 
 ```bash
-# Full suite (used in CI)
-./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.AllTests
+# Core suite (used in CI; no Android SDK required with -Peuc.includeAndroid=false)
+./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
 
-# Full suite + JaCoCo coverage reports
-./gradlew :euc-ble-core:testDebugUnitTest \
+# Core suite + JaCoCo coverage reports
+./gradlew :euc-ble-core:test \
   :euc-ble-core:jacocoTestReport \
   :euc-ble-core:jacocoFocusedReport
 
+# Android connector suite (BLEManager, EucBleClient)
+./gradlew :euc-ble-android:testDebugUnitTest --tests io.github.tritbool.euc.ble.AndroidTests
+
 # Single test class
-./gradlew :euc-ble-core:testDebugUnitTest --tests io.github.tritbool.euc.ble.protocols.KingsongProtocolTest
+./gradlew :euc-ble-core:test --tests io.github.tritbool.euc.ble.protocols.KingsongProtocolTest
 
 # Single test method
-./gradlew :euc-ble-core:testDebugUnitTest \
+./gradlew :euc-ble-core:test \
   --tests "io.github.tritbool.euc.ble.protocols.KingsongProtocolTest.decodeA4ThenA9IncludesAlarmSpeeds"
 ```
 
@@ -129,14 +178,16 @@ euc-ble-core/build/reports/jacoco/focused/html/index.html   # protocols + models
 1. Record a BLE session with WheelLog on the target wheel.
 2. Export the raw CSV and drop it in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/`.
 3. Create a `WheelLog<Brand>Test` that loads the file and feeds frames through the protocol decoder.
-4. Add edge-case unit tests for any branching not covered by the capture.
-5. Add a `<Brand>NoDropTest` extending `ProtocolNoDropTestBase`.
+4. Regenerate and review the synchronous goldens and manifest using the opt-in command above,
+   then verify without the update flag.
+5. Add edge-case unit tests for any branching not covered by the capture.
+6. Add a `<Brand>NoDropTest` extending `ProtocolNoDropTestBase`.
 
 ---
 
 ## Test environment
 
-- **JVM**: Java 17
+- **Gradle daemon**: JDK 21; published JVM bytecode targets Java 17
 - **Test framework**: JUnit 5 (Jupiter) + Platform Suite
 - **Async utilities**: kotlinx-coroutines-test, Turbine
 - **Mocking**: Mockito Kotlin

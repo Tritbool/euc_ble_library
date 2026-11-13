@@ -53,6 +53,16 @@ class SnapshotTests(FixtureTest):
         self.assertEqual(result["passed"], 1)
         self.assertEqual(result["status"], "failed")
 
+    def test_results_are_aggregated_across_modules(self):
+        self.write("euc-ble-core/build/test-results/test/TEST-Core.xml",
+                   '<testsuite><testcase classname="Core" name="a"/></testsuite>')
+        self.write("euc-ble-android/build/test-results/testDebugUnitTest/TEST-Android.xml",
+                   '<testsuite><testcase classname="Android" name="a"/></testsuite>')
+        result = quality_report.tests(
+            [self.build, self.root / "euc-ble-android/build"], "success")
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["passed"], 2)
+
     def test_junit_errors(self):
         self.write("euc-ble-core/build/test-results/testDebugUnitTest/TEST-A.xml",
                    '<testsuites><testsuite><testcase classname="A" name="a">'

@@ -1,274 +1,31 @@
 package io.github.tritbool.euc.ble.protocols
 
-import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.EUCData
-import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
+import io.github.tritbool.euc.ble.models.WheelSecurityState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-import java.io.Closeable
-import java.util.UUID
 
 /**
- * Specifies a single GATT service requirement within a [GattSignature].
- *
- * A service spec matches when:
- * - The service UUID is present in the discovered GATT services.
- * - All [requiredCharacteristicUUIDs] are present as characteristics of that service.
- * - None of the [excludedCharacteristicUUIDs] are present as characteristics of that service.
- *
- * @param uuid The service UUID that must be present.
- * @param requiredCharacteristicUUIDs Characteristic UUIDs that must ALL be present in the service.
- * @param excludedCharacteristicUUIDs Characteristic UUIDs that must NOT be present in the service.
+ * Coroutine-compatible protocol facade. New protocol logic belongs in [SyncEucProtocol];
+ * [io.github.tritbool.euc.ble.session.ProtocolSessionDriver] owns serialization and timers.
  */
-data class GattServiceSpec(
-    val uuid: UUID,
-    val version:Int = 1,
-    val requiredCharacteristicUUIDs: Set<UUID> = emptySet(),
-    val excludedCharacteristicUUIDs: Set<UUID> = emptySet(),
-)
-
-/**
- * A GATT signature is a list of [GattServiceSpec] entries that all must match for a protocol to
- * be identified by GATT fingerprinting. All specs use AND semantics (every spec must hold).
- *
- * A protocol can declare multiple alternative signatures (OR semantics between signatures):
- * the protocol matches if at least one signature matches.
- */
-typealias GattSignature = List<GattServiceSpec>
-
-/**
- * Base interface for EUC manufacturer protocols.
- *
- * Protocol selection is performed by GATT fingerprint matching using [EucFingerprintDatabase].
- * If no fingerprint match is found, the caller is responsible for selecting a protocol manually.
- */
-interface EUCProtocol : Closeable {
-    /**
-     * Manufacturer name (used for display and logging).
-     */
-    val manufacturer: String
-
-    val dataFlow: Flow<EUCData>
-
-    /**
-     * Flow that emits every raw BLE characteristic notification received by this protocol,
-     * as a defensive copy of the original byte array. Collectors can use this to write raw
-     * logs or perform any custom processing on the unmodified BLE data.
-     *
-     * The default implementation emits nothing; concrete protocols override this to provide
-     * a live stream of incoming bytes.
-     */
-    val rawFrameFlow: Flow<ByteArray> get() = emptyFlow()
-
-    /**
-     * Flow of commands or raw bytes that the protocol needs to write to the device automatically.
-     */
-    val writeFlow: Flow<ByteArray> get() = emptyFlow()
-
-    /** Notification-confirmed security state, if supported by this protocol. */
-    val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
-    /** Individual valid security notifications, including unchanged status reports. */
-    val securityEventFlow: Flow<WheelSecurityEvent> get() = emptyFlow()
-    fun getSecurityState(): WheelSecurityState? = null
-
-    /** Clears connection-specific state without closing this reusable protocol. */
-    fun resetSession() {}
-
-    /** Rechecked by the BLE write queue immediately before submission. */
-    fun canSendCommand(payload: ByteArray): Boolean = true
-
-    /** Called only after the BLE stack accepts a queued write, not when it is encoded. */
-    fun onCommandSubmitted(payload: ByteArray) {}
-
-    /** Whether a BLE-stack rejection may be retried. Accepted writes are never replayed. */
-    fun canRetryCommand(payload: ByteArray): Boolean = true
-
-    /**
-     * Decode raw BLE data into EUCData
-     */
-    fun decode(data: ByteArray): EUCData?
-
-    /**
-     * Returns the candidate data characteristic UUIDs for this protocol.
-     *
-     * Most protocols expose a single data characteristic. Protocols that dynamically detect their
-     * dialect (such as InMotion V1/V2) should override this to return all possible candidates so
-     * that BLE notifications are enabled for each characteristic at connection time.
-     */
-    fun getCandidateDataCharacteristicUUIDs(): List<UUID> = listOf(getDataCharacteristicUUID())
-
-    /**
-     * Get the UUID for the data characteristic
-     */
-    fun getDataCharacteristicUUID(): UUID
-
-    /**
-     * Get the UUID for the service
-     */
-    fun getServiceUUID(): UUID
-
-    /**
-     * Create a command for the EUC
-     */
+interface EUCProtocol : EucProtocolSpec {
+    /** Legacy extension point. Built-in facades check and convert values at the JVM boundary. */
     fun createCommand(commandType: CommandType, value: Any): ByteArray
 
-    /**
-     * Explicit command support matrix for this protocol.
-     * Commands outside this set are considered unsupported by design.
-     */
-    val supportedCommandTypes: Set<CommandType>
-        get() = emptySet()
+    /** Keeps legacy custom implementations working when polling supplies typed values. */
+    override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray =
+        createCommand(commandType, value.toLegacyValue())
 
-    /**
-     * API-level command support check (used by framework and clients).
-     */
-    fun getCommandSupport(commandType: CommandType): CommandSupport {
-        return if (supportedCommandTypes.contains(commandType)) {
-            CommandSupport.SUPPORTED
-        } else {
-            CommandSupport.UNSUPPORTED
-        }
-    }
+    fun close()
+    val dataFlow: Flow<EUCData>
 
-    /**
-     * Returns true if the given BLE device advertisement name suggests this protocol.
-     *
-     * Used as a secondary selection signal when GATT fingerprinting is ambiguous or
-     * unavailable (e.g. protocols that share a common service UUID). The default
-     * implementation returns false; protocols with a recognizable device-name pattern
-     * should override this and match their known advertised names or model keywords.
-     */
-    fun matchesDeviceName(deviceName: String): Boolean = false
+    /** Defensive copies of incoming notification chunks. */
+    val rawFrameFlow: Flow<ByteArray> get() = emptyFlow()
+    val writeFlow: Flow<ByteArray> get() = emptyFlow()
+    val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
+    val securityEventFlow: Flow<WheelSecurityEvent> get() = emptyFlow()
 
-    /**
-     * Optional polling/query plan consumed by BLEManager orchestration.
-     */
-    fun getPollingPlan(): ProtocolPollingPlan = ProtocolPollingPlan.disabled()
-
-    /**
-     * Optional query/response matcher used by BLEManager observability and retry loop.
-     */
-    fun matchesQueryResponse(query: ProtocolQuerySpec, data: ByteArray): Boolean = false
-
-    /**
-     * Get the UUID for the write characteristic (if different from data characteristic)
-     */
-    fun getWriteCharacteristicUUID(): UUID = getDataCharacteristicUUID()
-
-    /**
-     * Preferred GATT write type for commands sent by this protocol.
-     *
-     * The default [ProtocolWriteType.AUTO] lets the BLE layer derive the write type from the
-     * properties advertised by the write characteristic. Protocols whose wheels require a specific
-     * write type (for example Gotway/Begode serial-to-BLE bridges, which only accept
-     * write-without-response on FFE1) should override this.
-     */
-    val preferredWriteType: ProtocolWriteType get() = ProtocolWriteType.AUTO
-
-    /**
-     * Check if the device is ready for operation
-     */
-    fun isDeviceReady(data: EUCData): Boolean
-
-    /**
-     * Get BMS (Battery Management System) data for this protocol.
-     * Returns null if this protocol does not support BMS data extraction.
-     * Protocols that support BMS data should override this method to return
-     * a list of BMSData objects representing the current state of all battery packs.
-     */
-    fun getBMSData(): List<BMSData>? = null
-}
-
-/**
- * Preferred GATT write type declared by a protocol for its command writes.
- */
-enum class ProtocolWriteType {
-    /** Derive the write type from the GATT properties advertised by the characteristic. */
-    AUTO,
-
-    /** Prefer write-with-response (WRITE_TYPE_DEFAULT). */
-    WITH_RESPONSE,
-
-    /** Prefer write-without-response (WRITE_TYPE_NO_RESPONSE). */
-    NO_RESPONSE
-}
-
-/**
- * Standard command types for EUCs
- */
-enum class CommandType {
-    LIGHT_ON,
-    LIGHT_OFF,
-    SET_LIGHT_MODE,
-    LIGHT_BRIGHTNESS,
-    /** Set the high beam independently from the low beam (LeaperKim two-frame binary command). */
-    SET_HIGH_BEAM,
-    SPEAKER_VOLUME,
-    BEEP,
-    POWER_OFF,
-    LOCK,
-    UNLOCK,
-    SET_PEDALS_MODE,
-    SET_LED_MODE,
-    SET_LED_STROBE,
-    SET_SPEED_LIMIT,
-    SET_ALARM_SPEED,
-    CALIBRATE,
-    REQUEST_SERIAL,
-    REQUEST_FIRMWARE,
-    REQUEST_BATTERY_INFO,
-    REQUEST_BMS_SERIAL,
-    RESET_TRIP,
-    /** LeaperKim: pedal zero-point tilt offset, value = tenths of a degree (signed Int). */
-    SET_PEDAL_ANGLE,
-    /** LeaperKim: ride-mode scalar 0..100, value = Int. */
-    SET_RIDE_MODE,
-    /** LeaperKim: maximum PWM percentage 0..100, value = Int. */
-    SET_PWM_LIMIT,
-    /** KingSong: charge cutoff percentage 0..100, value = Int. */
-    SET_CHARGE_LIMIT,
-    /** KingSong: idle auto-poweroff delay in seconds, value = Int. */
-    SET_STANDBY_DELAY,
-    /** KingSong: pedal cutoff lean angle in tenths of a degree, value = Int. */
-    SET_PEDAL_CUTOFF_ANGLE,
-    /** KingSong: pedal pitch trim in tenths of a degree (signed), value = Int. */
-    SET_PEDAL_PITCH_TRIM,
-    /** KingSong: exactly four ASCII digits as a String, preserving leading zeros. */
-    AUTHENTICATE,
-    /** KingSong: new password as exactly four ASCII digits (String). */
-    SET_PASSWORD,
-    /** KingSong: [PasswordChangeRequest] with old and new four-ASCII-digit passwords. */
-    CHANGE_PASSWORD,
-    /** KingSong: current password as exactly four ASCII digits (String). */
-    REMOVE_PASSWORD,
-    /** KingSong: request notification-confirmed lock status (0x5E -> 0x5F). */
-    REQUEST_LOCK_STATE,
-    CUSTOM
-}
-
-enum class CommandSupport {
-    SUPPORTED,
-    UNSUPPORTED
-}
-
-data class ProtocolQuerySpec(
-    val id: String,
-    val commandType: CommandType,
-    val value: Any = Unit,
-    val initialDelayMs: Long = 0L,
-    val intervalMs: Long = 0L,
-    val responseTimeoutMs: Long = 1500L,
-    val maxRetries: Int = 2,
-    val retryBackoffMs: Long = 500L
-)
-
-data class ProtocolPollingPlan(
-    val enabled: Boolean,
-    val startupQueries: List<ProtocolQuerySpec> = emptyList(),
-    val periodicQueries: List<ProtocolQuerySpec> = emptyList()
-) {
-    companion object {
-        fun disabled() = ProtocolPollingPlan(enabled = false)
-    }
+    fun decode(data: ByteArray): EUCData?
 }

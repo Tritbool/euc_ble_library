@@ -1,17 +1,10 @@
 package io.github.tritbool.euc.ble
 
 import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
-import io.github.tritbool.euc.ble.core.BLEManagerCallbackContractTest
-import io.github.tritbool.euc.ble.core.BLEManagerDeviceNameSelectionTest
-import io.github.tritbool.euc.ble.core.BLEManagerGattFingerprintTest
-import io.github.tritbool.euc.ble.core.BLEManagerProtocolSelectionTest
-import io.github.tritbool.euc.ble.core.BLEManagerTrafficTest
-import io.github.tritbool.euc.ble.core.BLEManagerWriteTypeTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.core.LoggerTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
-import io.github.tritbool.euc.ble.models.BMSDataTest
 import io.github.tritbool.euc.ble.models.EUCDataTest
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.EUCProtocolContractTest
@@ -19,15 +12,20 @@ import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
+import io.github.tritbool.euc.ble.protocols.InMotionSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionP6BmsTest
 import io.github.tritbool.euc.ble.protocols.InmotionNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongNoDropTest
 import io.github.tritbool.euc.ble.protocols.KingsongProtocolAsyncTest
 import io.github.tritbool.euc.ble.protocols.KingsongSecurityTest
+import io.github.tritbool.euc.ble.protocols.KingsongPasswordTest
+import io.github.tritbool.euc.ble.protocols.SyncTimerProtocolsTest
 import io.github.tritbool.euc.ble.protocols.LeaperkimNoDropTest
 import io.github.tritbool.euc.ble.protocols.LeaperkimProtocolTest
+import io.github.tritbool.euc.ble.protocols.LeaperkimSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.NinebotNoDropTest
 import io.github.tritbool.euc.ble.protocols.NinebotProtocolTest
+import io.github.tritbool.euc.ble.protocols.NinebotSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.NinebotZProtocolTest
 import io.github.tritbool.euc.ble.protocols.NosfetNoDropTest
 import io.github.tritbool.euc.ble.protocols.NosfetProtocolTest
@@ -39,32 +37,47 @@ import io.github.tritbool.euc.ble.protocols.WheelLogKingsongTest
 import io.github.tritbool.euc.ble.protocols.WheelLogLeaperkimTest
 import io.github.tritbool.euc.ble.protocols.WheelLogNinebotTest
 import io.github.tritbool.euc.ble.protocols.WheelLogNosfetTest
+import io.github.tritbool.euc.ble.frames.SyncFrameParsingTest
+import io.github.tritbool.euc.ble.protocols.ProtocolOutboxTest
+import io.github.tritbool.euc.ble.session.ProtocolSessionDriverTest
 import org.junit.platform.suite.api.SelectClasses
 import org.junit.platform.suite.api.Suite
+import io.github.tritbool.euc.ble.session.PollingEngineTest
+import io.github.tritbool.euc.ble.session.SessionDriversTest
+import io.github.tritbool.euc.ble.session.ProtocolSelectorTest
+import io.github.tritbool.euc.ble.session.ReconnectPolicyTest
+import io.github.tritbool.euc.ble.core.EucUuidTest
+import io.github.tritbool.euc.ble.core.EucCrc32Test
+import io.github.tritbool.euc.ble.replay.CaptureGoldenTest
 
 @Suite
 @SelectClasses(
+    CaptureGoldenTest::class,
+    PollingEngineTest::class,
+    SessionDriversTest::class,
+    ProtocolSelectorTest::class,
+    ReconnectPolicyTest::class,
+    EucUuidTest::class,
+    EucCrc32Test::class,
+    ProtocolSessionDriverTest::class,
+    ProtocolOutboxTest::class,
+    SyncFrameParsingTest::class,
     FrameReassemblerStaticFlowTest::class,
     ByteUtilsTest::class,
     ByteUtilsSafeAccessTest::class,
-    BMSDataTest::class,
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,
+    InMotionSyncProtocolTest::class,
     InMotionP6BmsTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,
     KingsongProtocolTest::class,
     KingsongSecurityTest::class,
-    EucBleClientSecurityTest::class,
+    KingsongPasswordTest::class,
+    SyncTimerProtocolsTest::class,
     ProtocolParityContractTest::class,
     BleFrequencyAnalysisTest::class,
-    BLEManagerGattFingerprintTest::class,
-    BLEManagerDeviceNameSelectionTest::class,
-    BLEManagerProtocolSelectionTest::class,
-    BLEManagerWriteTypeTest::class,
-    BLEManagerTrafficTest::class,
-    BLEManagerCallbackContractTest::class,
     WheelLogGotwayTest::class,
     WheelLogInMotionTest::class,
     WheelLogNinebotTest::class,
@@ -72,8 +85,10 @@ import org.junit.platform.suite.api.Suite
     WheelLogNosfetTest::class,
     WheelLogKingsongTest::class,
     LeaperkimProtocolTest::class,
+    LeaperkimSyncProtocolTest::class,
     NosfetProtocolTest::class,
     NinebotProtocolTest::class,
+    NinebotSyncProtocolTest::class,
     NinebotZProtocolTest::class,
     ExtremeBullProtocolTest::class,
     GotwayNoDropTest::class,
@@ -82,7 +97,6 @@ import org.junit.platform.suite.api.Suite
     LeaperkimNoDropTest::class,
     NosfetNoDropTest::class,
     NinebotNoDropTest::class,
-    EucBleClientEntryPointWheelLogTest::class,
     LoggerTest::class,
     EUCProtocolContractTest::class,
 )

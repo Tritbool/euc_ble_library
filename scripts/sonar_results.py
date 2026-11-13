@@ -186,6 +186,7 @@ def main(root=Path("."), environ=None):
         if not env.get("GITHUB_SHA"):
             raise CollectionError("GITHUB_SHA is missing; analysis cannot be verified.")
         candidates = [
+            root / "build/sonar/report-task.txt",
             root / "euc-ble-core/build/sonar/report-task.txt",
             root / "euc-ble-core/.scannerwork/report-task.txt",
             root / ".scannerwork/report-task.txt",

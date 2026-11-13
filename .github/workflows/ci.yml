@@ -32,6 +32,11 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Set up Node for non-JVM protocol tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
@@ -41,15 +46,26 @@ jobs:
       - name: Test quality reporting
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v
 
+      - name: Verify coroutine-free protocols and sessions on JVM and JavaScript
+        run: >
+          ./gradlew -Peuc.includeAndroid=false
+          :euc-ble-protocols:check
+          :euc-ble-session:check
+          --no-daemon --stacktrace
+
       - name: Run unit tests + coverage reports
         id: tests
         if: ${{ !cancelled() }}
         run: >
-          ./gradlew :euc-ble-core:testDebugUnitTest
+          ./gradlew :euc-ble-core:test
           --tests
           io.github.tritbool.euc.ble.AllTests
           :euc-ble-core:jacocoTestReport
           :euc-ble-core:jacocoFocusedReport
+          :euc-ble-android:testDebugUnitTest
+          --tests
+          io.github.tritbool.euc.ble.AndroidTests
+          :euc-ble-android:jacocoTestReport
           -PmaxParallelForks=1
           --no-daemon
           --stacktrace
@@ -61,7 +77,7 @@ jobs:
       - name: Android Lint
         id: lint
         if: ${{ !cancelled() }}
-        run: ./gradlew :euc-ble-core:lintDebug --no-daemon --stacktrace
+        run: ./gradlew :euc-ble-android:lintDebug --no-daemon --stacktrace
         env:
           CI: "true"
 
@@ -76,7 +92,7 @@ jobs:
             echo "::error::SonarCloud requires SONAR_TOKEN; fork changes need a reviewed trusted-branch PR."
             exit 1
           fi
-          ./gradlew :euc-ble-core:sonar --no-daemon \
+          ./gradlew sonar --no-daemon \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.scm.revision="$GITHUB_SHA"
 
@@ -177,7 +193,7 @@ jobs:
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
-          reports_dir = Path("euc-ble-core/build/test-results/testDebugUnitTest")
+          reports_dir = Path("euc-ble-core/build/test-results/test")
           out_file = Path(".wheellog-summary.md")
           files = sorted(reports_dir.glob("TEST-io.github.tritbool.euc.ble.protocols.WheelLog*.xml"))
 
@@ -226,8 +242,12 @@ jobs:
         with:
           name: test-and-coverage-reports
           path: |
+            euc-ble-protocols/build/reports/tests/
+            euc-ble-session/build/reports/tests/
             euc-ble-core/build/reports/tests/
             euc-ble-core/build/reports/jacoco/
+            euc-ble-android/build/reports/tests/
+            euc-ble-android/build/reports/jacoco/
           retention-days: 7
 
       - name: Generate website quality snapshot
@@ -242,13 +262,16 @@ jobs:
       - name: Collect website reports
         if: ${{ !cancelled() }}
         run: |
-          mkdir -p quality/reports
-          if [ -d euc-ble-core/build/reports/tests/testDebugUnitTest ]; then
-            cp -r euc-ble-core/build/reports/tests/testDebugUnitTest quality/reports/tests
+          mkdir -p quality/reports/tests
+          if [ -d euc-ble-core/build/reports/tests/test ]; then
+            cp -r euc-ble-core/build/reports/tests/test quality/reports/tests
           fi
-          if [ -f euc-ble-core/build/reports/lint-results-debug.html ]; then
+          if [ -d euc-ble-android/build/reports/tests/testDebugUnitTest ]; then
+            cp -r euc-ble-android/build/reports/tests/testDebugUnitTest quality/reports/tests/android
+          fi
+          if [ -f euc-ble-android/build/reports/lint-results-debug.html ]; then
             mkdir -p quality/reports/lint
-            cp euc-ble-core/build/reports/lint-results-debug.html quality/reports/lint/index.html
+            cp euc-ble-android/build/reports/lint-results-debug.html quality/reports/lint/index.html
           fi
           for scope in full focused; do
             if [ -d "euc-ble-core/build/reports/jacoco/$scope/html" ]; then

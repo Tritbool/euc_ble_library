@@ -16,8 +16,11 @@ def section(outcome, available=False, **values):
             "outcome": outcome or "unknown", **values}
 
 
-def tests(build, outcome):
-    files = sorted((build / "test-results/testDebugUnitTest").glob("TEST-*.xml"))
+def tests(builds, outcome):
+    # Accepts one module build directory or several (pure core + Android connector).
+    builds = [builds] if isinstance(builds, Path) else list(builds)
+    files = sorted(path for build in builds
+                   for path in build.glob("test-results/*/TEST-*.xml"))
     if not files:
         return section(outcome, reason="Test XML reports are missing.")
     cases = {}
@@ -126,7 +129,8 @@ def sonar(root, outcome, sha):
 
 def main(root=Path("."), environ=None):
     env = os.environ if environ is None else environ
-    build = root / "euc-ble-core/build"
+    core_build = root / "euc-ble-core/build"
+    android_build = root / "euc-ble-android/build"
     test_outcome = env.get("TEST_OUTCOME")
     sha = env.get("GITHUB_SHA")
     result = {
@@ -134,9 +138,9 @@ def main(root=Path("."), environ=None):
         "sha": sha, "run_id": env.get("GITHUB_RUN_ID"),
         "repository": env.get("GITHUB_REPOSITORY"),
         "check_outcome": env.get("CHECK_OUTCOME", "unknown"),
-        "tests": tests(build, test_outcome),
-        "lint": lint(build, env.get("LINT_OUTCOME")),
-        "coverage": {kind: coverage(build, kind, test_outcome)
+        "tests": tests([core_build, android_build], test_outcome),
+        "lint": lint(android_build, env.get("LINT_OUTCOME")),
+        "coverage": {kind: coverage(core_build, kind, test_outcome)
                      for kind in ("full", "focused")},
         "sonar": sonar(root, env.get("SONAR_OUTCOME"), sha),
     }

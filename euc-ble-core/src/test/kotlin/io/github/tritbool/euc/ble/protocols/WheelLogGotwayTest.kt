@@ -78,7 +78,7 @@ class WheelLogGotwayTest {
                         bms.current != null &&
                             bms.voltage != null &&
                             bms.temperatures?.size == 2 &&
-                            bms.temperatures.all { it in -40.0..125.0 } &&
+                            bms.temperatures?.all { it in -40.0..125.0 } == true &&
                             bms.cellVoltages?.size == 16
                     }
                 ) {

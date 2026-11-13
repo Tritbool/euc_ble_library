@@ -283,13 +283,8 @@ class LeaperkimProtocolTest {
 
     @Test
     fun createCommandLockUsesCorrectTimestamp() {
-        val cal = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.DAY_OF_MONTH, 17)
-            set(java.util.Calendar.HOUR_OF_DAY, 15)
-            set(java.util.Calendar.MINUTE, 10)
-            set(java.util.Calendar.SECOND, 9)
-        }
-        val lockCmd = protocol.buildLockFrame(locked = true, now = cal)
+        val now = io.github.tritbool.euc.ble.core.EucDateTime(2024, 5, 17, 15, 10, 9)
+        val lockCmd = protocol.buildLockFrame(locked = true, now = now)
         assertEquals(25, lockCmd.size)
         // Magic LdAp
         assertArrayEquals(byteArrayOf(0x4c, 0x64, 0x41, 0x70), lockCmd.copyOfRange(0, 4))
@@ -314,13 +309,8 @@ class LeaperkimProtocolTest {
 
     @Test
     fun createCommandUnlockBytesMatchCapture() {
-        val cal = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.DAY_OF_MONTH, 17)
-            set(java.util.Calendar.HOUR_OF_DAY, 15)
-            set(java.util.Calendar.MINUTE, 10)
-            set(java.util.Calendar.SECOND, 9)
-        }
-        val unlockCmd = protocol.buildLockFrame(locked = false, now = cal)
+        val now = io.github.tritbool.euc.ble.core.EucDateTime(2024, 5, 17, 15, 10, 9)
+        val unlockCmd = protocol.buildLockFrame(locked = false, now = now)
         assertEquals(0x00.toByte(), unlockCmd[17])
         assertArrayEquals(
             byteArrayOf(

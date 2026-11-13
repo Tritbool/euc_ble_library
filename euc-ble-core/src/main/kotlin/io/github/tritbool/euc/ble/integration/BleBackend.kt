@@ -5,7 +5,7 @@ import io.github.tritbool.euc.ble.exceptions.BLEException
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
-import java.util.UUID
+import io.github.tritbool.euc.ble.core.EucUuid
 
 sealed interface BleBackendEvent {
     data object ScanStarted : BleBackendEvent
@@ -14,7 +14,7 @@ sealed interface BleBackendEvent {
     data class Connected(val device: EUCDevice?) : BleBackendEvent
     data object Connecting : BleBackendEvent
     data object Disconnected : BleBackendEvent
-    data class ServicesDiscovered(val serviceUuids: List<UUID>) : BleBackendEvent
+    data class ServicesDiscovered(val serviceUuids: List<EucUuid>) : BleBackendEvent
     data class MtuChanged(val mtu: Int) : BleBackendEvent
     data class ProtocolSelectionRequired(val protocols: List<EUCProtocol>) : BleBackendEvent
     data class ProtocolSelected(val selection: ProtocolSelection) : BleBackendEvent
@@ -25,7 +25,7 @@ sealed interface BleBackendEvent {
      */
     class RawFrameReceived(payload: ByteArray) : BleBackendEvent {
         // Defensive copy keeps event payload immutable for consumers.
-        val payload: ByteArray = payload.clone()
+        val payload: ByteArray = payload.copyOf()
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -52,4 +52,3 @@ fun interface BleBackendListener {
      */
     fun onEvent(event: BleBackendEvent)
 }
-

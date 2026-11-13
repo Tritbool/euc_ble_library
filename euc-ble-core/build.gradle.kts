@@ -1,139 +1,83 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.KotlinJvm
 import com.vanniktech.maven.publish.SourcesJar
-import org.gradle.process.CommandLineArgumentProvider
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    id("com.android.library") version "9.1.0"
-    id("jacoco")
-    id("org.jetbrains.dokka") version "2.2.0"
-    id("com.vanniktech.maven.publish") version "0.36.0"
-    id("org.sonarqube") version "7.5.0.8588"
+    kotlin("jvm")
+    `java-test-fixtures`
+    jacoco
+    id("org.jetbrains.dokka")
+    id("com.vanniktech.maven.publish")
 }
 
 dependencyLocking {
     lockAllConfigurations()
 }
 
-sonar {
-  properties {
-    property("sonar.projectKey", "tritbool-github_euc-ble-library")
-    property("sonar.organization", "tritbool-github")
-    property("sonar.host.url", "https://sonarcloud.io")
-    property("sonar.coverage.jacoco.xmlReportPaths",
-        layout.buildDirectory.file("reports/jacoco/full/jacoco.xml").get().asFile.absolutePath)
-    property("sonar.androidLint.reportPaths",
-        layout.buildDirectory.file("reports/lint-results-debug.xml").get().asFile.absolutePath)
-  }
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+        optIn.add("io.github.tritbool.euc.ble.core.InternalEucBleApi")
+    }
 }
 
 jacoco {
     toolVersion = "0.8.14"
 }
 
-val mockitoAgent = configurations.create("mockitoAgent") {
-    isTransitive = false
+dependencies {
+    api(project(":euc-ble-protocols"))
+    api(project(":euc-ble-session"))
+    // Compatibility facades and async session drivers deliberately stay outside the engines.
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+
+    testFixturesApi(platform("org.junit:junit-bom:5.10.2"))
+    testFixturesApi("org.junit.jupiter:junit-jupiter-api")
+
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.junit.platform:junit-platform-suite-api")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly("org.junit.platform:junit-platform-suite-engine")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("app.cash.turbine:turbine:1.1.0")
 }
 
-abstract class MockitoAgentArgumentProvider : CommandLineArgumentProvider {
-    @get:Classpath
-    abstract val agentClasspath: ConfigurableFileCollection
-
-    override fun asArguments(): Iterable<String> =
-        listOf("-javaagent:${agentClasspath.singleFile.absolutePath}")
+tasks.test {
+    systemProperty("replay.captureRoot", file("src/test/resources/ble_frames"))
+    systemProperty("replay.goldenRoot", rootProject.file("euc-ble-protocols/fixtures/captures"))
+    systemProperty("replay.updateGoldens", providers.gradleProperty("updateReplayGoldens").isPresent)
+    if (!providers.gradleProperty("updateReplayGoldens").isPresent) {
+        inputs.dir(rootProject.file("euc-ble-protocols/fixtures/captures"))
+    }
+    useJUnitPlatform()
+    val isCi = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
+    maxParallelForks =
+        if (isCi) 1
+        else (project.findProperty("maxParallelForks") as String?)?.toInt()
+            ?: Runtime.getRuntime().availableProcessors()
+    jvmArgs("-Xmx1g")
 }
 
-val jacocoClassExclusions = listOf(
-    "**/R.class",
-    "**/R$*.class",
-    "**/BuildConfig.*",
-    "**/Manifest*.*",
-    "**/*Test*.*"
+val focusedPackages = listOf(
+    "io/github/tritbool/euc/ble/protocols/**",
+    "io/github/tritbool/euc/ble/models/**",
+    "io/github/tritbool/euc/ble/frames/**"
 )
 
-android {
-    namespace = "io.github.tritbool.euc.ble"
-    compileSdk = 36
+val protocolClasses = project(":euc-ble-protocols").layout.buildDirectory.dir("classes/kotlin/jvm/main")
+val protocolSources = project(":euc-ble-protocols").file("src/commonMain/kotlin")
 
-    defaultConfig {
-        minSdk = 21
-        // DEPR
-        //targetSdk = 35
-
-        consumerProguardFiles("consumer-rules.pro")
-    }
-
-    buildTypes {
-        debug {
-            enableUnitTestCoverage = true
-        }
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
-
-    testCoverage {
-        jacocoVersion = "0.8.14"
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    lint {
-        baseline = file("lint-baseline.xml")
-    }
-
-    kotlin {
-        compilerOptions {
-            //jvmTarget = "17"
-            //languageVersion = "2.0" // or KotlinVersion.KOTLIN_2_0
-        }
-    }
-
-
-    testOptions {
-        unitTests.isReturnDefaultValues = true
-        unitTests.all { testTask ->
-            val isCi = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
-
-            testTask.useJUnitPlatform {
-                if (isCi) {
-                    //excludeTags("slow") // NoDrop exclus en CI
-                }
-            }
-
-            testTask.maxParallelForks =
-                if (isCi) 1
-                else (project.findProperty("maxParallelForks") as String?)?.toInt()
-                    ?: Runtime.getRuntime().availableProcessors()
-
-            testTask.jvmArgs("-Xmx1g")
-            testTask.jvmArgumentProviders.add(
-                objects.newInstance<MockitoAgentArgumentProvider>().apply {
-                    agentClasspath.from(mockitoAgent)
-                }
-            )
-        }
-    }
-
-    lint {
-        xmlReport = true
-        htmlReport = true
-        abortOnError = true
-    }
-}
-
-tasks.register<JacocoReport>("jacocoTestReport") {
-    group = "verification"
-    description = "Generates JaCoCo coverage report for all debug unit tests."
-    dependsOn("testDebugUnitTest")
-
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    additionalClassDirs.from(protocolClasses)
+    additionalSourceDirs.from(protocolSources)
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -141,37 +85,21 @@ tasks.register<JacocoReport>("jacocoTestReport") {
         xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/full/jacoco.xml"))
         html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/full/html"))
     }
-
-    classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
-            exclude(jacocoClassExclusions)
-        }
-    )
-
-    sourceDirectories.setFrom(
-        files("src/main/java", "src/main/kotlin")
-    )
-
-    executionData.setFrom(
-        fileTree(layout.buildDirectory) {
-            include(
-                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
-            )
-        }
-    )
 }
 
 tasks.register<JacocoReport>("jacocoFocusedReport") {
     group = "verification"
     description = "Generates JaCoCo coverage report focused on protocols, models, and frames."
-    dependsOn("testDebugUnitTest")
-
-    val focusedPackages = listOf(
-        "io/github/tritbool/euc/ble/protocols/**",
-        "io/github/tritbool/euc/ble/models/**",
-        "io/github/tritbool/euc/ble/frames/**"
+    dependsOn(tasks.test)
+    executionData(tasks.test.get())
+    sourceSets(sourceSets.main.get())
+    classDirectories.setFrom(
+        sourceSets.main.get().output.classesDirs.files.map { dir ->
+            fileTree(dir) { include(focusedPackages) }
+        }
     )
-
+    additionalClassDirs.from(fileTree(protocolClasses) { include(focusedPackages) })
+    additionalSourceDirs.from(protocolSources)
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -179,81 +107,33 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
         xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/focused/jacoco.xml"))
         html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/focused/html"))
     }
-
-    classDirectories.setFrom(
-        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
-            include(focusedPackages)
-            exclude(jacocoClassExclusions)
-        }
-    )
-
-    sourceDirectories.setFrom(
-        files("src/main/java", "src/main/kotlin")
-    )
-
-    executionData.setFrom(
-        fileTree(layout.buildDirectory) {
-            include(
-                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
-            )
-        }
-    )
 }
 
-
-
-
-dependencies {
-    implementation("androidx.core:core-ktx:1.18.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-
-    testImplementation(platform("org.junit:junit-bom:5.10.2"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.junit.platform:junit-platform-suite-api")
-    testRuntimeOnly("org.junit.platform:junit-platform-suite-engine")
-
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("app.cash.turbine:turbine:1.1.0")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
-    mockitoAgent("org.mockito:mockito-core:5.23.0")
-
+sonar {
+    properties {
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            layout.buildDirectory.file("reports/jacoco/full/jacoco.xml").get().asFile.absolutePath
+        )
+    }
 }
 
 dokka {
-    moduleName.set("EUC BLE Library")
-
+    moduleName.set("euc-ble-core")
     dokkaSourceSets.configureEach {
-        //includes.from("README.md") // optionnel
-
         sourceLink {
             localDirectory.set(file("src/main/kotlin"))
             remoteUrl("https://github.com/Tritbool/euc_ble_library/tree/main/euc-ble-core/src/main/kotlin")
             remoteLineSuffix.set("#L")
         }
     }
-
-    dokkaPublications.html {
-        outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
-    }
 }
-
 
 mavenPublishing {
     configure(
-        AndroidSingleVariantLibrary(
-            // quel type de javadoc.jar publier
-            // - JavadocJar.None()
-            // - JavadocJar.Empty()
-            // - JavadocJar.Javadoc()
-            // - JavadocJar.Dokka("nomDeTaTâcheDokka")
+        KotlinJvm(
             javadocJar = JavadocJar.Dokka("dokkaGeneratePublicationHtml"),
-            // sources.jar :
-            // - SourcesJar.None()
-            // - SourcesJar.Empty()
-            // - SourcesJar.Sources()
             sourcesJar = SourcesJar.Sources(),
-            // le variant Android publié
-            variant = "release",
         )
     )
 
@@ -262,11 +142,11 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates("io.github.tritbool", "euc-ble-library", "0.1.3")
+    coordinates("io.github.tritbool", "euc-ble-core", "0.1.3")
 
     pom {
-        name.set("EUC BLE Library")
-        description.set("Android BLE library for Electric Unicycles (KingSong, Begode/Gotway, InMotion, Ninebot, Leaperkim, Nosfet).")
+        name.set("EUC BLE Core")
+        description.set("Platform-independent protocol core for Electric Unicycles (KingSong, Begode/Gotway, InMotion, Ninebot, Leaperkim, Nosfet).")
         url.set("https://github.com/Tritbool/euc_ble_library")
         licenses {
             license {

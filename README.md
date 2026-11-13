@@ -38,6 +38,37 @@ Repository administrators must configure:
 > and public APIs and behavior may evolve. Validate it with the specific wheel and firmware you
 > intend to use; do not assume that passing unit tests guarantees safe or complete behavior.
 
+## Modules
+
+| Module | Artifact | Content |
+|---|---|---|
+| `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | KMP synchronous engines, parsers, models and pure policies (`commonMain`; JVM and JavaScript targets). No Android or coroutine dependency. |
+| `euc-ble-session` | `io.github.tritbool:euc-ble-session` | KMP coroutine-free session policies and BLE transport contract. Depends on protocols. |
+| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | JVM compatibility facades, platform providers and async session drivers. Exposes protocols and session through `api`. |
+| `euc-ble-android` | `io.github.tritbool:euc-ble-library` | Android BLE connector (`BLEManager`) and the `EucBleClient` entry point. Depends on `euc-ble-core` (`api`). |
+
+Android applications keep depending on `euc-ble-library`; package names are unchanged.
+Rebuild consumers after the module split; this preserves package names and the JVM facade's
+default time/random providers, not binary compatibility with previously compiled applications.
+Direct synchronous-engine constructors now require explicit `EucClock` (and KingSong `EucRandom`).
+Custom protocols should declare a stable `protocolId` for fingerprint selection and an optional
+`parentProtocolId` for family refinement; selection no longer inspects Java class inheritance.
+Synchronous engines and polling-query values use `CommandValue` (for example
+`CommandValue.Integer(2)` or `CommandValue.Bytes(payload)`); no-value commands default to
+`CommandValue.None`. JVM/Android facades retain the legacy `Any` overload. Mixed-type alarm lists
+are rejected, not silently filtered; byte/list values snapshot their inputs.
+
+The portable engines can be tested without an Android SDK (Node.js and npm must be on `PATH`):
+
+```bash
+./gradlew -Peuc.includeAndroid=false :euc-ble-protocols:check
+./gradlew -Peuc.includeAndroid=false :euc-ble-core:test --tests io.github.tritbool.euc.ble.AllTests
+```
+
+See the [architecture overview](docs/architecture.md) for diagrams and how synchronous protocols
+are adapted and driven by sessions. This library stays Kotlin/KMP;
+a future sister Rust library will be a separate implementation using the architecture as a model.
+
 ## Client application
 
 [TuxWheel](https://github.com/Tritbool/TuxWheel) is the first client app built with this library.
@@ -349,7 +380,7 @@ Protocol tests combine offline unit tests with **raw BLE captures recorded from 
 replayed via JUnit 5 without an Android device or emulator. Capture coverage is partial and does
 not mean every supported model, firmware, command, or edge case has been verified on a physical wheel.
 
-Captures are stored in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
+Captures are stored in `euc-ble-core/src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android), a well-established EUC logging app.
 Each CSV row contains the exact byte sequence received from the wheel over BLE.
 
