@@ -60,6 +60,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.quality.outputs.sha }}
+          persist-credentials: false
 
       - name: Download reports from the exact quality run
         uses: actions/download-artifact@v4.3.0
