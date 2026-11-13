@@ -1,5 +1,8 @@
 package io.github.tritbool.euc.ble.session
 
+import co.touchlab.stately.concurrency.Lock
+import co.touchlab.stately.concurrency.withLock
+
 import io.github.tritbool.euc.ble.core.BLEConstants.ConnectionState
 import io.github.tritbool.euc.ble.core.EucRandom
 import kotlinx.coroutines.CancellationException
@@ -19,12 +22,12 @@ class ConnectionSessionDriver(
     private val error: (String, Boolean) -> Unit
 ) {
     private val session = ConnectionSession(random)
-    private val lock = Any()
+    private val lock = Lock()
     private var timer: Job? = null
     private var timerGeneration = 0L
     private var dispatching = false
 
-    fun configure(timeout: Long, autoReconnect: Boolean, maxRetries: Int) = synchronized(lock) {
+    fun configure(timeout: Long, autoReconnect: Boolean, maxRetries: Int) = lock.withLock {
         session.connectionTimeoutMs = timeout
         session.autoReconnect = autoReconnect
         session.maxRetries = maxRetries
@@ -37,9 +40,9 @@ class ConnectionSessionDriver(
     fun onConnecting() = input { session.onConnecting() }
     fun onDisconnecting() = input { session.onDisconnecting() }
 
-    private fun input(action: () -> Unit) = synchronized(lock) {
+    private fun input(action: () -> Unit) = lock.withLock {
         action()
-        if (dispatching) return@synchronized
+        if (dispatching) return@withLock
         dispatching = true
         try {
             while (true) {

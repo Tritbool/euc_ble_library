@@ -4,6 +4,7 @@ import io.github.tritbool.euc.ble.analysis.BleFrequencyAnalysisTest
 import io.github.tritbool.euc.ble.core.ByteUtilsSafeAccessTest
 import io.github.tritbool.euc.ble.core.ByteUtilsTest
 import io.github.tritbool.euc.ble.core.LoggerTest
+import io.github.tritbool.euc.ble.core.SecureEucRandomTest
 import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
 import io.github.tritbool.euc.ble.models.EUCDataTest
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -40,6 +41,7 @@ import io.github.tritbool.euc.ble.protocols.WheelLogNosfetTest
 import io.github.tritbool.euc.ble.frames.SyncFrameParsingTest
 import io.github.tritbool.euc.ble.protocols.ProtocolOutboxTest
 import io.github.tritbool.euc.ble.session.ProtocolSessionDriverTest
+import io.github.tritbool.euc.ble.session.PortableRuntimeTest
 import org.junit.platform.suite.api.SelectClasses
 import org.junit.platform.suite.api.Suite
 import io.github.tritbool.euc.ble.session.PollingEngineTest
@@ -52,6 +54,8 @@ import io.github.tritbool.euc.ble.replay.CaptureGoldenTest
 
 @Suite
 @SelectClasses(
+    SecureEucRandomTest::class,
+    PortableRuntimeTest::class,
     CaptureGoldenTest::class,
     PollingEngineTest::class,
     SessionDriversTest::class,

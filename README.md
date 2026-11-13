@@ -42,9 +42,9 @@ Repository administrators must configure:
 
 | Module | Artifact | Content |
 |---|---|---|
-| `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | KMP synchronous engines, parsers, models and pure policies (`commonMain`; JVM and JavaScript targets). No Android or coroutine dependency. |
+| `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | KMP synchronous engines, parsers, models and pure policies (`commonMain`; JVM, JavaScript and iOS targets). No Android or coroutine dependency. |
 | `euc-ble-session` | `io.github.tritbool:euc-ble-session` | KMP coroutine-free session policies and BLE transport contract. Depends on protocols. |
-| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | JVM compatibility facades, platform providers and async session drivers. Exposes protocols and session through `api`. |
+| `euc-ble-core` | `io.github.tritbool:euc-ble-core` | KMP coroutine facades and async session drivers (JVM, JavaScript, iOS). Common production sources; exposes protocols and session through `api`. |
 | `euc-ble-android` | `io.github.tritbool:euc-ble-library` | Android BLE connector (`BLEManager`) and the `EucBleClient` entry point. Depends on `euc-ble-core` (`api`). |
 
 Android applications keep depending on `euc-ble-library`; package names are unchanged.

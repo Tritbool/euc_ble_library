@@ -8,7 +8,7 @@ Bibliothèque Bluetooth Low Energy pour monocycles électriques (EUC), avec une 
 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
-> Modules: `euc-ble-core` (pure Kotlin/JVM core, artifact `euc-ble-core`), `euc-ble-android` (Android connector)<br>
+> Modules: `euc-ble-core` (Kotlin Multiplatform core, artifact `euc-ble-core`), `euc-ble-android` (Android connector)<br>
 > Version de développement actuelle : `0.1.0`
 
 > **Projet en cours de développement.** La version 0.1.0 est expérimentale et ne garantit pas la

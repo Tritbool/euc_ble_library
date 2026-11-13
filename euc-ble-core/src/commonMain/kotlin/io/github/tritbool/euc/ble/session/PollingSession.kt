@@ -1,5 +1,8 @@
 package io.github.tritbool.euc.ble.session
 
+import co.touchlab.stately.concurrency.Lock
+import co.touchlab.stately.concurrency.withLock
+
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -19,10 +22,10 @@ class PollingSession(
     private val enqueue: (ByteArray, () -> Boolean, () -> Unit, () -> Unit) -> Unit,
     private val onError: (Exception) -> Unit
 ) {
-    private val lock = Any()
+    private val lock = Lock()
     private val engine = PollingEngine(protocol.manufacturer)
     private var job: Job? = null
-    @Volatile private var active = false
+    private var active = false
 
     fun start() = guarded {
         check(!active) { "Polling session already started" }
@@ -36,13 +39,13 @@ class PollingSession(
                         dispatch()
                     }
                 }
-                if (!active) return@launch
+                if (!lock.withLock { active }) return@launch
                 delay(25)
             }
         }
     }
 
-    fun stop() = synchronized(lock) {
+    fun stop() = lock.withLock {
         active = false
         job?.cancel()
         job = null
@@ -56,7 +59,7 @@ class PollingSession(
         }
     }
 
-    private fun guarded(action: () -> Unit) = synchronized(lock) {
+    private fun guarded(action: () -> Unit) = lock.withLock {
         try {
             action()
         } catch (e: CancellationException) {
@@ -78,7 +81,7 @@ class PollingSession(
                         engine.onFailed(output.token, now(), unsupported = true)
                     } else {
                         enqueue(payload,
-                            { synchronized(lock) { active && engine.isQueued(output.token) } },
+                            { lock.withLock { active && engine.isQueued(output.token) } },
                             { guarded {
                                 if (active) { engine.onAccepted(output.token, now()); dispatch() }
                             } },

@@ -37,7 +37,7 @@ include ":euc-ble-protocols"
 // Shared session policies and state machines.
 include ":euc-ble-session"
 
-// JVM compatibility API and asynchronous drivers.
+// Shared coroutine facades and asynchronous drivers.
 include ":euc-ble-core"
 
 // Android connector (BLEManager, EucBleClient). Opt out with -Peuc.includeAndroid=false

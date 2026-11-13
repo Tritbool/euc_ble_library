@@ -97,6 +97,7 @@ android {
     sourceSets {
         // Replay fixtures (WheelLog CSV / btsnoop captures) live with the pure core tests.
         getByName("test").resources.srcDir("../euc-ble-core/src/test/resources")
+        getByName("test").java.srcDir("../euc-ble-core/src/testFixtures/kotlin")
     }
 
     testOptions {
@@ -169,7 +170,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
-    testImplementation(testFixtures(project(":euc-ble-core")))
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.platform:junit-platform-suite-api")

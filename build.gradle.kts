@@ -24,8 +24,8 @@ buildscript {
 }
 
 plugins {
-    kotlin("jvm") version "2.2.10" apply false
-    kotlin("multiplatform") version "2.2.10" apply false
+    kotlin("jvm") version "2.2.20" apply false
+    kotlin("multiplatform") version "2.2.20" apply false
     id("org.jetbrains.dokka") version "2.2.0"
     id("com.vanniktech.maven.publish") version "0.36.0" apply false
     id("org.sonarqube") version "7.5.0.8588"

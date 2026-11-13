@@ -1,5 +1,8 @@
 package io.github.tritbool.euc.ble.frames
 
+import co.touchlab.stately.concurrency.Lock
+import co.touchlab.stately.concurrency.withLock
+
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -15,28 +18,25 @@ import kotlinx.coroutines.flow.receiveAsFlow
 class FrameReassembler(
     private val parser: FrameParser
 ) {
-    private val lock = Any()
+    private val lock = Lock()
 
     private val _frames = Channel<ByteArray>(capacity = FRAME_BUFFER_CAPACITY)
     val frames: Flow<ByteArray> get() = _frames.receiveAsFlow()
     fun observeFrames(): Flow<ByteArray> = frames
 
     fun reset() {
-        synchronized(lock) { parser.reset() }
+        lock.withLock { parser.reset() }
     }
 
     /**
      * Synchronous form: appends [data] and returns the complete frames it produced, in order.
      * Frames returned here are not emitted on [frames]. Prefer this from sync protocols.
      */
-    fun feed(data: ByteArray): List<ByteArray> = synchronized(lock) { parser.appendAndExtract(data) }
+    fun feed(data: ByteArray): List<ByteArray> = lock.withLock { parser.appendAndExtract(data) }
 
     /** Flow form: appends [data] and emits the resulting complete frames on [frames]. */
     fun processIncomingBytes(data: ByteArray) {
-        val ready: List<ByteArray>
-        synchronized(lock) {
-            ready = parser.appendAndExtract(data)
-        }
+        val ready = lock.withLock { parser.appendAndExtract(data) }
         for (frame in ready) {
             check(_frames.trySend(frame).isSuccess) {
                 "Frame reassembly output queue is full (capacity=$FRAME_BUFFER_CAPACITY)"
