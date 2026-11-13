@@ -1,5 +1,9 @@
 package io.github.tritbool.euc.ble.session
 
+import co.touchlab.stately.concurrency.Lock
+import co.touchlab.stately.concurrency.withLock
+import io.github.tritbool.euc.ble.core.MonotonicClock
+
 import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.core.NoOpLogger
@@ -53,11 +57,11 @@ class ProtocolSessionDriver(
     val protocol: SyncEucProtocol,
     scope: CoroutineScope? = null,
     private val logger: Logger = NoOpLogger(),
-    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val now: () -> Long = { MonotonicClock.millis() },
 ) : EUCProtocol {
     private val ownsScope = scope == null
     private val scope: CoroutineScope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val lock = Any()
+    private val lock = Lock()
     private val session = ProtocolSession(protocol)
     private var sessionTime = now()
     private var timerJob: Job? = null
@@ -94,11 +98,11 @@ class ProtocolSessionDriver(
     override val securityEventFlow: Flow<WheelSecurityEvent> = _securityEventFlow.asSharedFlow()
 
     /** Number of currently armed timers (for diagnostics and tests). */
-    val armedTimerCount: Int get() = synchronized(lock) { session.armedTimerCount }
+    val armedTimerCount: Int get() = lock.withLock { session.armedTimerCount }
 
     override fun decode(data: ByteArray): EUCData? {
         _rawFrameFlow.tryEmit(data.copyOf())
-        return synchronized(lock) {
+        return lock.withLock {
             lastTelemetry = null
             sessionTime = maxOf(sessionTime, now())
             session.onNotification(data, sessionTime)
@@ -108,7 +112,7 @@ class ProtocolSessionDriver(
     }
 
     override fun resetSession() {
-        synchronized(lock) {
+        lock.withLock {
             cancelAllTimers()
             while (writeChannel.tryReceive().isSuccess) Unit
             while (dataChannel.tryReceive().isSuccess) Unit
@@ -122,7 +126,7 @@ class ProtocolSessionDriver(
     }
 
     override fun close() {
-        synchronized(lock) {
+        lock.withLock {
             cancelAllTimers()
             session.close()
         }
@@ -163,7 +167,7 @@ class ProtocolSessionDriver(
     override fun isDeviceReady(data: EUCData): Boolean = call { protocol.isDeviceReady(data) }
     override fun getBMSData(): List<BMSData>? = call { protocol.getBMSData() }
 
-    private inline fun <T> call(block: () -> T): T = synchronized(lock) {
+    private inline fun <T> call(block: () -> T): T = lock.withLock {
         val result = block()
         sessionTime = maxOf(sessionTime, now())
         session.afterInput(sessionTime)
@@ -210,7 +214,7 @@ class ProtocolSessionDriver(
         val delayMs = (deadline - sessionTime).coerceAtLeast(0)
         timerJob = scope.launch(start = CoroutineStart.LAZY) {
             delay(delayMs)
-            synchronized(lock) {
+            lock.withLock {
                 if (generation != timerGeneration) return@launch
                 scheduledDeadline = null
                 try {

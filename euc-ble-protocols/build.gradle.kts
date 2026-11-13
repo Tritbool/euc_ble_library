@@ -49,6 +49,9 @@ kotlin {
     jvm {
         compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
     }
+    iosArm64()
+    iosSimulatorArm64()
+    iosX64()
     js(IR) {
         outputModuleName.set("euc-ble-protocols")
         nodejs()

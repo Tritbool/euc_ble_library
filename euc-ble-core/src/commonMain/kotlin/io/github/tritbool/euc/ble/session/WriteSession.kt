@@ -1,5 +1,9 @@
 package io.github.tritbool.euc.ble.session
 
+import co.touchlab.stately.concurrency.Lock
+import co.touchlab.stately.concurrency.withLock
+import io.github.tritbool.euc.ble.core.MonotonicClock
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -15,7 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 class WriteSession(
     private val scope: CoroutineScope,
     maxQueuedWrites: Int = DEFAULT_MAX_QUEUED_WRITES,
-    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val now: () -> Long = { MonotonicClock.millis() },
     private val onError: (Exception) -> Unit
 ) {
     private class Write(
@@ -24,13 +28,13 @@ class WriteSession(
         val failed: (Int) -> Unit
     )
 
-    private val lock = Any()
+    private val lock = Lock()
     private val queue = WriteQueue<Write>(maxQueuedWrites)
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var worker: Job? = null
 
     val generation: Long
-        get() = synchronized(lock) { queue.generation }
+        get() = lock.withLock { queue.generation }
 
     init {
         require(maxQueuedWrites > 0) { "Write queue capacity must be positive" }
@@ -46,7 +50,7 @@ class WriteSession(
     ): WriteEnqueueResult {
         val write = Write(valid, submit, retryable, accepted, failed)
         var start: Job? = null
-        val result = synchronized(lock) {
+        val result = lock.withLock {
             if (!scope.isActive) return WriteEnqueueResult.SESSION_CLOSED
             val result = queue.enqueue(bytes, write)
             if (result != WriteEnqueueResult.ENQUEUED) return result
@@ -54,7 +58,7 @@ class WriteSession(
                 worker = scope.launch(start = CoroutineStart.LAZY) {
                     while (true) {
                         currentCoroutineContext().ensureActive()
-                        val attempt = synchronized(lock) {
+                        val attempt = lock.withLock {
                             if (!queue.hasPending) {
                                 worker = null
                                 return@launch
@@ -62,7 +66,7 @@ class WriteSession(
                             queue.next(now())?.let { it to it.bytes.copyOf() }
                         }
                         attempt?.let { (submission, bytes) -> perform(submission, bytes) }
-                        val wait = synchronized(lock) { queue.delayUntilNext(now()) }
+                        val wait = lock.withLock { queue.delayUntilNext(now()) }
                         if (wait > 0) withTimeoutOrNull(wait) { wake.receive() }
                     }
                 }.also { start = it }
@@ -75,12 +79,12 @@ class WriteSession(
     }
 
     fun onAcknowledgment() {
-        synchronized(lock) { queue.onAcknowledgment() }
+        lock.withLock { queue.onAcknowledgment() }
         wake.trySend(Unit)
     }
 
     /** Clears only this session's jobs and byte snapshots, not the caller's scope. */
-    fun reset() = synchronized(lock) {
+    fun reset() = lock.withLock {
         worker?.cancel()
         worker = null
         queue.reset()
@@ -90,17 +94,17 @@ class WriteSession(
     private fun perform(submission: WriteQueue.Submission<Write>, bytes: ByteArray) {
         val write = submission.attachment
         try {
-            if (!write.valid() || !synchronized(lock) { queue.isCurrent(submission.token) }) {
-                synchronized(lock) { queue.discard(submission.token) }
+            if (!write.valid() || !lock.withLock { queue.isCurrent(submission.token) }) {
+                lock.withLock { queue.discard(submission.token) }
                 return
             }
             val accepted = write.submit(bytes)
             if (!accepted && !write.valid()) {
-                synchronized(lock) { queue.discard(submission.token) }
+                lock.withLock { queue.discard(submission.token) }
                 return
             }
             val retryable = !accepted && write.retryable(bytes)
-            val outcome = synchronized(lock) {
+            val outcome = lock.withLock {
                 if (!queue.isCurrent(submission.token)) null
                 else queue.onSubmitted(submission.token, accepted, retryable, now())
             }
@@ -109,10 +113,10 @@ class WriteSession(
                 else if (outcome) write.failed(submission.attempt)
             }
         } catch (e: CancellationException) {
-            synchronized(lock) { queue.discard(submission.token) }
+            lock.withLock { queue.discard(submission.token) }
             throw e
         } catch (e: Exception) {
-            synchronized(lock) { queue.discard(submission.token) }
+            lock.withLock { queue.discard(submission.token) }
             write.failed(submission.attempt)
             onError(e)
         } finally {

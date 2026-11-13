@@ -6,7 +6,8 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # Use the Apple build environment for multiplatform releases.
+    runs-on: macos-latest
     # Si un jour tu veux exclure les pre-releases :
     # if: "!github.event.release.prerelease"
 
@@ -20,6 +21,12 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: android-actions/setup-android@v3
 
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true

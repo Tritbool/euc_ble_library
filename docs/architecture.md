@@ -10,7 +10,7 @@ connection, polling, writes and timers. A platform connector performs BLE operat
 flowchart TD
     app["Client application"]
     android["euc-ble-android<br/>EucBleClient + BLEManager<br/>Android GATT connector"]
-    core["euc-ble-core (JVM)<br/>EUCProtocol facades + coroutine drivers"]
+    core["euc-ble-core (KMP)<br/>EUCProtocol facades + coroutine drivers"]
     session["euc-ble-session (KMP)<br/>Synchronous session policies + BleTransport port"]
     protocols["euc-ble-protocols (KMP)<br/>SyncEucProtocol engines + models"]
     stack["Android Bluetooth stack"]
@@ -23,8 +23,9 @@ flowchart TD
 ```
 
 Arrows above are dependencies, not the direction of every runtime event. Both KMP modules are
-coroutine-free and have JVM and JavaScript targets. Core exposes both modules and supplies JVM
-clocks, randomness, flows and coroutine scheduling. Android owns GATT handles and permissions.
+coroutine-free. All three shared modules have JVM, JavaScript and iOS targets. Core exposes both
+modules and supplies portable clocks, randomness, flows, reentrant locks and coroutine scheduling.
+Android owns GATT handles and permissions; core contains no Android or Apple framework imports.
 `BleTransport` defines the synchronous platform operations; the Android `BLEManager` implements
 it, and callbacks from the stack are fed back into the drivers.
 
@@ -46,7 +47,7 @@ flowchart LR
     driver -->|"data / write / security flows"| manager
 ```
 
-Gotway is an example of the common pattern, not a special integration path. Built-in JVM
+Gotway is an example of the common pattern, not a special integration path. Built-in common
 facades wrap their corresponding `SyncEucProtocol` engines with `ProtocolSessionDriver` and
 present the existing `EUCProtocol` interface to Android. The driver also forwards metadata,
 command encoding and other spec calls to the engine under serialization, then drains outputs.
@@ -68,9 +69,9 @@ publishes them to the facade's flows. Reset clears session timers and protocol s
 ## How the session handles a wheel
 
 There is **not one session object that owns everything**. `BLEManager` coordinates several
-portable policies through their JVM drivers:
+portable policies through their KMP drivers:
 
-| Responsibility | Portable policy in `euc-ble-session` | JVM/Android orchestration |
+| Responsibility | Portable policy in `euc-ble-session` | Shared drivers / Android orchestration |
 |---|---|---|
 | Select a protocol | `ProtocolSelector` matches protocol specs against device names and GATT snapshots. | `BLEManager` registers facades, applies the selection and enables notifications. |
 | Manage connection | `ConnectionSession` and `ReconnectPolicy` decide lifecycle actions and deadlines. | `ConnectionSessionDriver` schedules deadlines and executes actions through `BleTransport`. |
@@ -125,5 +126,5 @@ For detailed contracts, limits, verification status and historical diagrams, see
 [`euc-ble-core/ARCHITECTURE.md`](../euc-ble-core/ARCHITECTURE.md). Useful starting points in
 the code are [`SyncEucProtocol`](../euc-ble-protocols/src/commonMain/kotlin/io/github/tritbool/euc/ble/protocols/SyncEucProtocol.kt),
 [`ProtocolSession`](../euc-ble-session/src/commonMain/kotlin/io/github/tritbool/euc/ble/session/ProtocolSession.kt),
-[`ProtocolSessionDriver`](../euc-ble-core/src/main/kotlin/io/github/tritbool/euc/ble/session/ProtocolSessionDriver.kt),
+[`ProtocolSessionDriver`](../euc-ble-core/src/commonMain/kotlin/io/github/tritbool/euc/ble/session/ProtocolSessionDriver.kt),
 and [`BleTransport`](../euc-ble-session/src/commonMain/kotlin/io/github/tritbool/euc/ble/session/BleTransport.kt).

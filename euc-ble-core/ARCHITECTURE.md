@@ -4,7 +4,7 @@ Start with the [high-level architecture overview](../docs/architecture.md) for t
 module, protocol-adapter and session flows. This document contains detailed notes and historical
 PlantUML diagrams. The older diagrams below describe the Android-facing API, not the current
 module boundaries. The
-[portable engines and session section](#portable-synchronous-engines-and-jvm-session-layer)
+[portable engines and session section](#portable-synchronous-engines-and-kmp-session-layer)
 defines the current module boundaries and the remaining architecture work.
 
 ## Diagram Files
@@ -137,12 +137,12 @@ for dependency direction and ownership.
 └─────────────────────────────────────────────────┘
 ```
 
-### Portable synchronous engines and JVM session layer
+### Portable synchronous engines and KMP session layer
 
 The module boundary is enforced by Gradle: `euc-ble-protocols` is Kotlin Multiplatform with all
 production sources in `commonMain` and no coroutine dependency. `euc-ble-session` is a separate
 Kotlin Multiplatform module for selection, polling, reconnect policies and session-facing types.
-`euc-ble-core` depends on both modules and still provides JVM compatibility facades and coroutine
+`euc-ble-core` depends on both modules and provides common compatibility facades and coroutine
 drivers; `euc-ble-android` depends on core and owns GATT. Dependencies never point from the
 portable engines or session policies back to the Android connector.
 
@@ -151,7 +151,7 @@ portable engines or session policies back to the Android connector.
 | Contract | `protocols.EucProtocolSpec` | Pure metadata, command encoding, polling plan, state queries |
 | Sync protocol | `protocols.SyncEucProtocol` | `onNotification` / `onTimer` / `onCommandSubmitted` inputs; outputs via `pollOutput()` |
 | Outputs | `protocols.ProtocolOutput` | Telemetry, security updates, writes, timer actions and diagnostic logs |
-| Platform inputs | `core.EucClock`, `core.EucRandom` | Required engine inputs; JVM facade defaults remain in `euc-ble-core/core/JvmPlatform.kt` |
+| Platform inputs | `core.EucClock`, `core.EucRandom` | Required engine inputs; common facade defaults are `core/SystemEucClock.kt` and `core/SecureEucRandom.kt` |
 | Protocol session | `euc-ble-session/session.ProtocolSession` | Pure timer bookkeeping and ordered protocol output delivery |
 | Coroutine facade driver | `euc-ble-core/session.ProtocolSessionDriver` | Serializes callers, exposes compatibility flows and schedules pure-session deadlines; replaces the temporary bridge |
 | Selection policy | `euc-ble-session/session.ProtocolSelector` | Matches plain GATT snapshots and device names; rejects ambiguous matches |
@@ -188,7 +188,8 @@ Kotlin/JS, Kotlin/Native, or Rust on an ESP32. Even seemingly ordinary Kotlin ca
 JVM APIs are fine in the JVM session/connector boundary; they are not a problem everywhere.
 Coroutines themselves support KMP, but do not belong in synchronous protocol engines.
 
-The JVM facades retain production clocks and secure randomness. Other hosts supply their own
+The common facades retain production clocks and UUID-backed randomness (see [Randomness](README.md#randomness)).
+Other hosts supply their own
 `EucClock` and `EucRandom`; deterministic test providers must not become production defaults.
 Drain every output after each input, perform writes externally, report actual write acceptance,
 and deliver timer expiries only while that session remains active.
@@ -238,16 +239,17 @@ The current dependency direction is:
 
 ```text
 Kotlin application
-  -> JVM coroutine drivers -> KMP synchronous sessions -> KMP synchronous protocols
+  -> KMP coroutine drivers -> KMP synchronous sessions -> KMP synchronous protocols
            |
            v
      BLE transport interface <- platform BLE connector
 ```
 
 Both portable modules enforce coroutine-free runtime dependencies and compile/test on JVM and JS.
-The portable sessions are synchronous state machines, not a portable async runtime. JVM locks, jobs
-and flows deliberately remain in `euc-ble-core`; a different host drives the same policies with its
-own serialization and scheduling. Android permission checks and GATT handles remain in Android.
+The portable sessions are synchronous state machines. Common reentrant locks, jobs and flows
+live in `euc-ble-core`; hosts can reuse these drivers or supply their own scheduling.
+All core production sources are common code. Android permission checks and GATT handles remain
+in Android; Apple framework integration belongs in a future iOS connector.
 
 | Phase | Implementation and evidence | Completion check |
 |---|---|---|
@@ -262,8 +264,13 @@ own serialization and scheduling. Android permission checks and GATT handles rem
 Local checks pass for both portable targets and the complete core suite. The updated CI workflow
 has not yet run against these changes. Android compilation used an API-36 JVM harness, not AGP.
 
-This is not a claim of Kotlin/Native, real-radio, or every-model compatibility. Additional platform
-connectors, Native targets, full transport capability negotiation and serialized CCCD subscription
+Core is now common KMP code and its iOS device/simulator KLIBs and shared tests cross-compile.
+JVM and JavaScript runtime checks and local KMP publication/consumer checks pass. The macOS CI
+job must still execute the shared tests on an iOS simulator. Android AGP validation is blocked
+locally by unavailable Google Maven/SDK access; Android dependency locks have been aligned with
+the resolved shared-runtime and compiler graphs and still require the standard Android gate.
+These checks do not establish real-radio or every-model compatibility. Additional platform
+connectors, full transport capability negotiation and serialized CCCD subscription
 operations are follow-up work. The standard Android quality gate must pass before calling phase 5
 fully verified.
 
@@ -428,7 +435,7 @@ class CustomLogger : Logger {
 
 1. Implement the synchronous `SyncEucProtocol` engine in `euc-ble-protocols`, including
    identification, framing, command encoding and any polling plan.
-2. Add a JVM `EUCProtocol` facade backed by `ProtocolSessionDriver`, following an existing
+2. Add a common `EUCProtocol` facade backed by `ProtocolSessionDriver`, following an existing
    facade such as `GotwayProtocol`, and register it in `EucBleClient`.
 3. Add focused protocol and capture tests (see [README_TESTS.md](README_TESTS.md)).
 

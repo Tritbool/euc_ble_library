@@ -1,18 +1,20 @@
 package io.github.tritbool.euc.ble.protocols
 
+import co.touchlab.stately.concurrency.Lock
+import co.touchlab.stately.concurrency.withLock
+
 import io.github.tritbool.euc.ble.core.InternalEucBleApi
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucCrc32
 
 @InternalEucBleApi
 class NosfetFrameDetector {
+    private val lock = Lock()
     private val buffer = ArrayList<Byte>()
 
-    @Synchronized
-    fun reset() = buffer.clear()
+    fun reset() = lock.withLock { buffer.clear() }
 
-    @Synchronized
-    fun detect(data: ByteArray): ByteArray? {
+    fun detect(data: ByteArray): ByteArray? = lock.withLock {
         for ((index, byte) in data.withIndex()) {
             buffer.add(byte)
             if (buffer.size > 259) buffer.removeAt(0)
@@ -37,9 +39,9 @@ class NosfetFrameDetector {
                     ByteUtils.getSignedShortBE(frame, 18) !in -5000..13000
                 ) continue
                 buffer.clear()
-                return frame + data.copyOfRange(index + 1, data.size)
+                return@withLock frame + data.copyOfRange(index + 1, data.size)
             }
         }
-        return null
+        null
     }
 }
