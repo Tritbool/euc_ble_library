@@ -6,6 +6,8 @@ import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.models.BMSData
 import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
+import io.github.tritbool.euc.ble.models.WheelLockState
+import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
@@ -41,6 +43,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
         /** Routing marker that prefixes extended response payloads: `02 <sub|0x80> ...`. */
         private const val EXTENDED_ROUTING_QUERY = 0x02
+        private const val EXTENDED_SUB_DETAILED = 0x04
         private const val EXTENDED_SUB_INFO = 0x06
         private const val EXTENDED_SUB_REALTIME = 0x07
         private const val EXTENDED_RESPONSE_MARKER = 0x80
@@ -159,7 +162,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     override val manufacturer: String = "InMotion"
     override val protocolId: String = "InMotionProtocol"
-    override val supportedCommandTypes: Set<CommandType> = setOf(
+    private val baseSupportedCommandTypes: Set<CommandType> = setOf(
         CommandType.LIGHT_ON,
         CommandType.LIGHT_OFF,
         CommandType.LIGHT_BRIGHTNESS,
@@ -171,10 +174,20 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         CommandType.REQUEST_SERIAL,
         CommandType.REQUEST_FIRMWARE,
         CommandType.REQUEST_BATTERY_INFO,
-        CommandType.REQUEST_DIAGNOSTIC_LOG,
-        CommandType.CANCEL_DIAGNOSTIC_LOG,
         CommandType.CUSTOM
     )
+
+    override val supportedCommandTypes: Set<CommandType>
+        get() = buildSet {
+            addAll(baseSupportedCommandTypes)
+            if (lastDetectedDialect == Dialect.V2) {
+                if (modelName == V9) add(CommandType.REQUEST_LOCK_STATE)
+                if (supportsExtendedRoutingPacks()) {
+                    add(CommandType.REQUEST_DIAGNOSTIC_LOG)
+                    add(CommandType.CANCEL_DIAGNOSTIC_LOG)
+                }
+            }
+        }
 
     override fun getServiceUUID(): UUID {
         return if (lastDetectedDialect == Dialect.V2) {
@@ -882,6 +895,12 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         val sub = payload[1].toInt() and 0x7F
         val body = payload.copyOfRange(2, payload.size)
         return when (sub) {
+            EXTENDED_SUB_DETAILED -> {
+                if (payload[1].toInt() and 0xFF == (EXTENDED_SUB_DETAILED or EXTENDED_RESPONSE_MARKER)) {
+                    parseV9LockState(body)
+                }
+                null
+            }
             EXTENDED_SUB_INFO -> {
                 parseExtendedIdentity(body)
                 null
@@ -897,6 +916,20 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             }
             else -> null
         }
+    }
+
+    private fun parseV9LockState(body: ByteArray) {
+        if (modelName != V9 || body.size != 86) return
+        // v9_lock.log: two lock/unlock cycles followed by 02 21 04 queries.
+        // Only these full status values at body[74] are verified, not individual bits.
+        val lock = when (body[74].toInt() and 0xFF) {
+            0x03 -> WheelLockState.LOCKED
+            0x20 -> WheelLockState.UNLOCKED
+            else -> return
+        }
+        securityState = securityState.copy(lock = lock)
+        outbox.push(ProtocolOutput.SecurityStateChanged(securityState))
+        outbox.push(ProtocolOutput.SecurityEvent(WheelSecurityEvent.LockStatus(lock)))
     }
 
     /**
@@ -1648,6 +1681,12 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         }
         if (!allowsActivePolling()) return byteArrayOf()
         when (commandType) {
+            CommandType.REQUEST_LOCK_STATE ->
+                return if (getCommandSupport(commandType) == CommandSupport.SUPPORTED) {
+                    buildExtendedRoutingQuery(EXTENDED_SUB_DETAILED)
+                } else {
+                    byteArrayOf()
+                }
             // Extended-routing wheels (P6/V9) expose the diagnostic log through the main-MCU
             // file service; other models and unidentified wheels are not verified.
             CommandType.REQUEST_DIAGNOSTIC_LOG ->

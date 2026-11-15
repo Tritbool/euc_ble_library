@@ -228,6 +228,14 @@ class InMotionDiagnosticLogTest {
         val engine = InMotionSyncProtocol(clock)
         assertTrue(engine.requestLog().isEmpty())
         assertNull(engine.getDiagnosticLogTransfer())
+        assertEquals(CommandSupport.UNSUPPORTED, engine.getCommandSupport(CommandType.REQUEST_DIAGNOSTIC_LOG))
+        assertEquals(CommandSupport.UNSUPPORTED, engine.getCommandSupport(CommandType.CANCEL_DIAGNOSTIC_LOG))
+        engine.onNotification(v9Identity)
         assertTrue(CommandType.REQUEST_DIAGNOSTIC_LOG in engine.supportedCommandTypes)
+        assertEquals(CommandSupport.SUPPORTED, engine.getCommandSupport(CommandType.CANCEL_DIAGNOSTIC_LOG))
+        engine.resetSession()
+        assertEquals(CommandSupport.UNSUPPORTED, engine.getCommandSupport(CommandType.REQUEST_DIAGNOSTIC_LOG))
+        engine.onNotification(hex("aaaa11088201020d0101010094"))
+        assertEquals(CommandSupport.SUPPORTED, engine.getCommandSupport(CommandType.REQUEST_DIAGNOSTIC_LOG))
     }
 }
