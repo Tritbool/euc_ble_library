@@ -1584,13 +1584,20 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         return when (commandType) {
             // V12 HS/HT/PRO/S use a two-beam form [0x50, low, high]; the standard
             // single-byte form is silently ignored on those models (eucplanet InMotionV2Adapter).
-            CommandType.LIGHT_ON -> if (isV12Model()) {
+            // Extended-routing wheels ignore the default-form light command and
+            // expect the mirrored-beam value through `02 21 60 50 <v> <v>`
+            // (eucplanet setP6Light).
+            CommandType.LIGHT_ON -> if (supportsExtendedRoutingPacks()) {
+                buildExtendedRoutingCommand(0x50, byteArrayOf(0x01, 0x01))
+            } else if (isV12Model()) {
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x01, 0x01))
             } else {
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x01))
             }
 
-            CommandType.LIGHT_OFF -> if (isV12Model()) {
+            CommandType.LIGHT_OFF -> if (supportsExtendedRoutingPacks()) {
+                buildExtendedRoutingCommand(0x50, byteArrayOf(0x00, 0x00))
+            } else if (isV12Model()) {
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x00, 0x00))
             } else {
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x50, 0x00))
@@ -2060,6 +2067,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
      * against a real V9 capture:
      *  - lock/unlock: sub 0x31, args 01/00
      *  - max speed:   sub 0x21, args = u16 LE in 0.01 km/h (25 km/h -> c4 09)
+     * Headlight uses sub 0x50 with mirrored args 01 01 / 00 00 (eucplanet P6 form).
      * The wheel acks with `AA AA 16 <len> 21 02 e0 <sub> 00 <checksum>`.
      */
     private fun buildExtendedRoutingCommand(sub: Int, args: ByteArray): ByteArray =
