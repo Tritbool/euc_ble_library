@@ -7,6 +7,7 @@ import io.github.tritbool.euc.ble.frames.GotwayFrameReassemblerTest
 import io.github.tritbool.euc.ble.models.EUCDataTest
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
+import io.github.tritbool.euc.ble.protocols.InMotionDiagnosticLogTest
 import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.KingsongProtocolAsyncTest
@@ -55,6 +56,7 @@ import io.github.tritbool.euc.ble.core.EucCrc32Test
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,
+    InMotionDiagnosticLogTest::class,
     InMotionSyncProtocolTest::class,
     GotwayFrameReassemblerTest::class,
     KingsongProtocolAsyncTest::class,

@@ -22,6 +22,7 @@ import io.github.tritbool.euc.ble.exceptions.BLEException
 import io.github.tritbool.euc.ble.integration.BleBackendEvent
 import io.github.tritbool.euc.ble.integration.BleBackendListener
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelSecurityState
@@ -1031,6 +1032,9 @@ class BLEManager internal constructor(
      * Intended to be polled by client applications as often as needed (display, logging, ...).
      */
     fun getBMSData(): List<BMSData>? = currentProtocol?.getBMSData()?.takeIf { it.isNotEmpty() }
+
+    /** Latest diagnostic-log download snapshot from the active protocol (InMotion P6/V9). */
+    fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = currentProtocol?.getDiagnosticLogTransfer()
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun cancelDataFlowCollection() {

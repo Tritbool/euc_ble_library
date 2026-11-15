@@ -1,6 +1,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.core.EucUuid
@@ -153,6 +154,12 @@ interface EucProtocolSpec {
      * a list of BMSData objects representing the current state of all battery packs.
      */
     fun getBMSData(): List<BMSData>? = null
+
+    /**
+     * Latest diagnostic-log download snapshot, or `null` if none was started (or unsupported).
+     * Data is only exposed once the whole file is received and CRC-verified.
+     */
+    fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = null
 }
 
 /**
@@ -219,6 +226,13 @@ enum class CommandType {
     REMOVE_PASSWORD,
     /** KingSong: request notification-confirmed lock status (0x5E -> 0x5F). */
     REQUEST_LOCK_STATE,
+    /**
+     * Start downloading the wheel diagnostic log (InMotion P6/V9). Poll progress and the
+     * verified file with [EucProtocolSpec.getDiagnosticLogTransfer].
+     */
+    REQUEST_DIAGNOSTIC_LOG,
+    /** Cancel an active diagnostic-log download and close the wheel-side file. */
+    CANCEL_DIAGNOSTIC_LOG,
     CUSTOM
 }
 

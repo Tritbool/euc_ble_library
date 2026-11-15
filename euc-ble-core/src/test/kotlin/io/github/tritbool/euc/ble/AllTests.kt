@@ -12,6 +12,7 @@ import io.github.tritbool.euc.ble.protocols.EUCProtocolContractTest
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocolTest
 import io.github.tritbool.euc.ble.protocols.GotwayNoDropTest
 import io.github.tritbool.euc.ble.protocols.GotwayProtocolTest
+import io.github.tritbool.euc.ble.protocols.InMotionDiagnosticLogTest
 import io.github.tritbool.euc.ble.protocols.InMotionProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionSyncProtocolTest
 import io.github.tritbool.euc.ble.protocols.InMotionP6BmsTest
@@ -72,6 +73,7 @@ import io.github.tritbool.euc.ble.replay.CaptureGoldenTest
     EUCDataTest::class,
     GotwayProtocolTest::class,
     InMotionProtocolTest::class,
+    InMotionDiagnosticLogTest::class,
     InMotionSyncProtocolTest::class,
     InMotionP6BmsTest::class,
     GotwayFrameReassemblerTest::class,
