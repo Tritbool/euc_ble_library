@@ -995,6 +995,8 @@ class InMotionProtocolTest {
     @Test
     fun v9LockUnlockAndSpeedLimitCommandsMatchCapturedWrites() {
         protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame)) // identify V9
+        protocol.decode(ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde"))
+        protocol.decode(ByteUtils.hexToBytes("aaaa12040280820117"))
 
         assertArrayEquals(
             ByteUtils.hexToBytes("aaaa1605022160310160"),
@@ -1030,12 +1032,10 @@ class InMotionProtocolTest {
 
     @Test
     fun nonExtendedRoutingModelsKeepLegacyControlForms() {
-        // V2 dialect but unidentified model: the legacy V2 control form applies.
+        // A V9 must not receive the legacy form before identification.
         protocol.setDialect(2)
-        assertArrayEquals(
-            ByteUtils.hexToBytes("aaaa140360310147"),
-            protocol.createCommand(CommandType.LOCK, Unit)
-        )
+        assertTrue(protocol.createCommand(CommandType.LOCK, Unit).isEmpty())
+        assertTrue(protocol.createCommand(CommandType.UNLOCK, Unit).isEmpty())
         // A V14-family model: legacy form too.
         protocol.decode(buildCarTypeFrame(series = 9, type = 2))
         assertArrayEquals(

@@ -255,6 +255,8 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     /** True once the wheel acked the echoed token (`80 82 01`). */
     private var controlAuthVerified: Boolean = false
 
+    private var controlAuthVerificationPending: Boolean = false
+
     private data class InMotionBmsSnapshot(
         val voltage: Double? = null,
         val current: Double? = null,
@@ -1561,6 +1563,24 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     private fun decodeTemperature(raw: Byte): Int = (raw.toInt() and 0xFF) + 80 - 256
 
+    override fun canSendCommand(payload: ByteArray): Boolean {
+        val needsControlAuth = modelName == manufacturer || supportsExtendedRoutingPacks()
+        val isExtendedLock = needsControlAuth && payload.size >= 9 &&
+            payload[0] == HEADER[0] && payload[1] == HEADER[1] &&
+            payload[2].toInt() and 0xFF == FLAG_EXTENDED &&
+            payload[4].toInt() and 0xFF == COMMAND_MAIN_INFO &&
+            payload[5].toInt() and 0xFF == EXTENDED_ROUTING_MCU_ADDRESS &&
+            payload[6].toInt() and 0xFF == COMMAND_CONTROL &&
+            payload[7].toInt() and 0xFF == 0x31
+        val isDefaultLock = needsControlAuth &&
+            lastDetectedDialect != Dialect.LEGACY_V1 && payload.size >= 7 &&
+            payload[0] == HEADER[0] && payload[1] == HEADER[1] &&
+            payload[2].toInt() and 0xFF == FLAG_DEFAULT &&
+            payload[4].toInt() and 0xFF == COMMAND_CONTROL &&
+            payload[5].toInt() and 0xFF == 0x31
+        return !(isExtendedLock || isDefaultLock) || controlAuthVerified
+    }
+
     // P6 motor temp uses a signed-byte +80°C encoding in the field consumed here:
     // 0x00 -> 80°C, 0xB0(-80) -> 0°C, 0xFF(-1) -> 79°C. This intentionally
     // differs from decodeTemperature(), which assumes an unsigned-byte input.
@@ -1581,6 +1601,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         ) {
             return byteArrayOf()
         }
+        if (modelName == manufacturer &&
+            (commandType == CommandType.LOCK || commandType == CommandType.UNLOCK)
+        ) return byteArrayOf()
         return when (commandType) {
             // V12 HS/HT/PRO/S use a two-beam form [0x50, low, high]; the standard
             // single-byte form is silently ignored on those models (eucplanet InMotionV2Adapter).
@@ -1617,12 +1640,14 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x18, 0x00))
             }
             CommandType.LOCK -> if (supportsExtendedRoutingPacks()) {
+                if (!controlAuthVerified) return byteArrayOf()
                 // Verified against a real V9: `AA AA 16 05 02 21 60 31 01`.
                 buildExtendedRoutingCommand(0x31, byteArrayOf(0x01))
             } else {
                 buildMessage(FLAG_DEFAULT, COMMAND_CONTROL, byteArrayOf(0x31, 0x01))
             }
             CommandType.UNLOCK -> if (supportsExtendedRoutingPacks()) {
+                if (!controlAuthVerified) return byteArrayOf()
                 buildExtendedRoutingCommand(0x31, byteArrayOf(0x00))
             } else {
                 buildMessage(
@@ -2009,10 +2034,11 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 val token = payload.copyOfRange(2, minOf(2 + AUTH_TOKEN_SIZE, payload.size))
                 if (token.size != AUTH_TOKEN_SIZE) return
                 controlAuthToken = token
-                securityState = securityState.copy(
-                    authentication = AuthenticationState.REQUIRED
-                )
-                outbox.push(ProtocolOutput.SecurityStateChanged(securityState))
+                controlAuthVerificationPending = true
+                if (!controlAuthVerified) {
+                    securityState = securityState.copy(authentication = AuthenticationState.REQUIRED)
+                    outbox.push(ProtocolOutput.SecurityStateChanged(securityState))
+                }
                 // Echo the wheel-issued token back (capture: `13 14 02 00 00 82 <token>`).
                 outbox.push(ProtocolOutput.Write(
                     buildMessage(
@@ -2024,15 +2050,15 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             }
 
             AUTH_SUB_VERIFY -> {
-                // `80 82 01` = token accepted. Reported by the wheel, not inferred
-                // from a successful write.
-                if (payload.getOrNull(2)?.toInt() == 0x01) {
-                    controlAuthVerified = true
-                    securityState = securityState.copy(
-                        authentication = AuthenticationState.AUTHENTICATED
-                    )
-                    outbox.push(ProtocolOutput.SecurityStateChanged(securityState))
-                }
+                val result = payload.getOrNull(2) ?: return
+                if (!controlAuthVerificationPending) return
+                controlAuthVerificationPending = false
+                controlAuthVerified = result.toInt() == 0x01
+                if (!controlAuthVerified) controlAuthToken = null
+                securityState = securityState.copy(authentication =
+                    if (controlAuthVerified) AuthenticationState.AUTHENTICATED else AuthenticationState.REQUIRED
+                )
+                outbox.push(ProtocolOutput.SecurityStateChanged(securityState))
             }
         }
     }
@@ -2293,6 +2319,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         lastKnownIsCharging = null
         controlAuthToken = null
         controlAuthVerified = false
+        controlAuthVerificationPending = false
         securityState = WheelSecurityState(authentication = AuthenticationState.UNKNOWN)
         modelName = manufacturer
         serialNumber = null

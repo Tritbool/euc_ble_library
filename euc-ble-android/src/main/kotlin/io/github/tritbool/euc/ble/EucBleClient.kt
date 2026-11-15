@@ -143,7 +143,7 @@ class EucBleClient(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun lock() = sendCommand(CommandType.LOCK)
 
-    /** Experimental KingSong unlock request; verify on the specific wheel/firmware. */
+    /** Explicit unlock request; verify behavior on the specific wheel and firmware. */
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun unlock() = sendCommand(CommandType.UNLOCK)
 
