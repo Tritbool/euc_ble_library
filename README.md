@@ -203,6 +203,9 @@ and resets on disconnect. Live behavior through the library remains unverified.
 Diagnostic request/cancel capabilities are likewise advertised only after identification
 as V9/P6. Clients must recheck capabilities as model identification completes rather
 than caching the initial, unidentified protocol's support matrix.
+When using the Android connector in a Gradle composite build, both builds must use
+the same Android Gradle plugin version. Set `-Peuc.androidGradlePluginVersion=<version>`
+to match the consuming app; standalone library builds retain the default plugin version.
 
 ## KingSong PIN authentication, password management, and lock control
 
