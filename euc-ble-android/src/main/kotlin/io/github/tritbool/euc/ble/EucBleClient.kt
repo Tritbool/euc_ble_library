@@ -16,6 +16,7 @@ import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
 import io.github.tritbool.euc.ble.core.QueryTraceEvent
 import io.github.tritbool.euc.ble.core.TrafficEvent
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
@@ -162,6 +163,22 @@ class EucBleClient(
      * entirely up to the client application.
      */
     fun getBMSData(): List<BMSData>? = bleManager.getBMSData()
+
+    /**
+     * Starts downloading the wheel diagnostic log (InMotion P6/V9). Poll
+     * [getDiagnosticLogTransfer] for progress; the verified binary is available via
+     * [DiagnosticLogTransfer.copyData] once the state is COMPLETED. Saving or sharing the file is
+     * up to the client application.
+     */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun requestDiagnosticLog() = sendCommand(CommandType.REQUEST_DIAGNOSTIC_LOG)
+
+    /** Cancels an active diagnostic-log download. */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun cancelDiagnosticLog() = sendCommand(CommandType.CANCEL_DIAGNOSTIC_LOG)
+
+    /** Latest diagnostic-log download snapshot, or `null` when none was started. */
+    fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = bleManager.getDiagnosticLogTransfer()
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun setProtocolSelectionMode(mode: ProtocolSelectionMode) {

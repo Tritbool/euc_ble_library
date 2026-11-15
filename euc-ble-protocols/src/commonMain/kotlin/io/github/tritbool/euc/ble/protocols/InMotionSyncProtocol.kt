@@ -4,6 +4,7 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.ByteUtils
 import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.AuthenticationState
@@ -59,6 +60,11 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
         private const val MIN_FRAME_SIZE = 5
         private const val MAX_LEN = 240
+        private const val FILE_FLAG = InMotionDiagnosticLogDownload.FILE_FLAG
+        private const val SEQUENCED_FILE_FLAG = InMotionDiagnosticLogDownload.SEQUENCED_FILE_FLAG
+        private const val SEQUENCE_FLAG_BIT = InMotionDiagnosticLogDownload.SEQUENCE_FLAG_BIT
+        private const val MAX_SEQUENCE_BYTES = 4
+        private val TELEMETRY_V2_FLAGS = setOf(0x11, 0x14, 0x16, 0x12)
 
         /* INMOTION WHEELS */
         private const val V5 = 0
@@ -165,6 +171,8 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         CommandType.REQUEST_SERIAL,
         CommandType.REQUEST_FIRMWARE,
         CommandType.REQUEST_BATTERY_INFO,
+        CommandType.REQUEST_DIAGNOSTIC_LOG,
+        CommandType.CANCEL_DIAGNOSTIC_LOG,
         CommandType.CUSTOM
     )
 
@@ -205,6 +213,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     )
 
     private val outbox = ProtocolOutbox()
+    private val diagnosticLog = InMotionDiagnosticLogDownload(outbox)
     private var securityState = WheelSecurityState(authentication = AuthenticationState.UNKNOWN)
     override fun getSecurityState(): WheelSecurityState = securityState
 
@@ -290,6 +299,16 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     override fun pollOutput(): ProtocolOutput? = outbox.poll()
 
+    override fun onTimer(id: String) {
+        diagnosticLog.onTimer(id)
+    }
+
+    override fun onCommandSubmitted(payload: ByteArray) {
+        diagnosticLog.onSubmitted(payload)
+    }
+
+    override fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = diagnosticLog.snapshot()
+
     fun setDialect(version: Int) {
         when (version) {
             0, 1, 2 -> {
@@ -341,31 +360,22 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 //   (b) verify the checksum, which is computed over the UNESCAPED bytes
                 //   (c) parse field offsets correctly
 
-                // Step 1: unescape the first two payload bytes (FLAG and LEN) to learn the
-                // unescaped payload length. FLAG values (0x11/0x14/0x16) are never escape
-                // markers, so this is safe.
-                val flagLen = unescapeNBytes(v2Buffer, startIdx = 2, count = 2) ?: break
-                val (headerBytes, _) = flagLen
-                val flags = headerBytes[0].toInt() and 0xFF
-                val len = headerBytes[1].toInt() and 0xFF
-
-                if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED &&
-                    flags != AUTH_RESPONSE_FLAG
-                ) {
-                    v2Buffer.removeAt(0)
-                    continue
-                }
-                if (len !in 1..MAX_LEN) {
+                // Step 1: unescape FLAG, the optional sequence number (flag bit 0x40, file
+                // transfers) and LEN to learn the unescaped payload length.
+                val header = readV2Header(v2Buffer)
+                if (header == null) break  // header incomplete, wait for more data
+                if (!header.valid || header.len !in 1..MAX_LEN) {
                     v2Buffer.removeAt(0)
                     continue
                 }
 
-                // Step 2: find the index of the checksum byte by consuming exactly `len`
-                // unescaped bytes (FLAG and LEN already counted as 2; total = len+2 from pos 2).
-                // We already consumed 2 above, so we need `len` more from where the FLAG/LEN
-                // scan left off. But it's simpler to scan from scratch for all len+2 bytes.
-                val checksumIdx =
-                    findChecksumIndex(v2Buffer, startIdx = 2, targetUnescaped = len + 2)
+                // Step 2: find the index of the checksum byte by consuming the header and
+                // exactly `len` unescaped bytes.
+                val checksumIdx = findChecksumIndex(
+                    v2Buffer,
+                    startIdx = 2,
+                    targetUnescaped = header.size + header.len
+                )
                 if (checksumIdx == -2) {
                     v2Buffer.removeAt(0)
                     continue
@@ -373,22 +383,27 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 if (checksumIdx < 0) break  // frame incomplete, wait for more data
 
                 // Step 3: verify the checksum over the unescaped payload bytes
-                if (!isValidChecksumEscaped(v2Buffer, fromIdx = 2, toIdx = checksumIdx)) {
+                val frameEnd = findValidChecksumEnd(v2Buffer, fromIdx = 2, checksumIdx = checksumIdx)
+                if (frameEnd == -1) break
+                if (frameEnd < 0) {
                     v2Buffer.removeAt(0)
                     continue
                 }
 
-                // Step 4: build an unescaped frame for parsing:
+                // Step 4: build an unescaped frame for parsing, without the sequence number:
                 //   [AA AA] [unescaped FLAG LEN CMD DATA...] [checksum]
                 val unescapedPayload = unescapeRange(v2Buffer, fromIdx = 2, toIdx = checksumIdx)
-                val unescapedFrame = ByteArray(2 + unescapedPayload.size + 1)
+                val sequenceSize = header.size - 2
+                val unescapedFrame = ByteArray(2 + unescapedPayload.size - sequenceSize + 1)
                 unescapedFrame[0] = HEADER[0]
                 unescapedFrame[1] = HEADER[1]
-                unescapedPayload.copyInto(unescapedFrame, 2)
-                unescapedFrame[unescapedFrame.size - 1] = v2Buffer[checksumIdx]
+                unescapedFrame[2] = unescapedPayload[0]
+                unescapedPayload.copyInto(unescapedFrame, 3, startIndex = 1 + sequenceSize)
+                unescapedFrame[unescapedFrame.size - 1] =
+                    unescapedPayload.fold(0) { acc, b -> acc xor (b.toInt() and 0xFF) }.toByte()
 
                 out.add(unescapedFrame)
-                repeat(checksumIdx + 1) { v2Buffer.removeAt(0) }
+                repeat(frameEnd) { v2Buffer.removeAt(0) }
             }
             return out
         }
@@ -452,14 +467,16 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     /**
      * Verify the InMotion V2 checksum: XOR of all unescaped bytes in [buffer] from
-     * [fromIdx] to [toIdx]-1 (exclusive), compared to [buffer][toIdx].
+     * [fromIdx] to [checksumIdx]-1. The checksum itself may be escaped (`A5 AA` / `A5 A5`, as
+     * on file-transfer frames) or raw. Returns the index after the checksum, -1 when more data
+     * is needed, or -2 when invalid.
      */
-    private fun isValidChecksumEscaped(buffer: List<Byte>, fromIdx: Int, toIdx: Int): Boolean {
+    private fun findValidChecksumEnd(buffer: List<Byte>, fromIdx: Int, checksumIdx: Int): Int {
         var xor = 0
         var rawIdx = fromIdx
-        while (rawIdx < toIdx) {
+        while (rawIdx < checksumIdx) {
             val b = buffer[rawIdx].toInt() and 0xFF
-            if (b == ESCAPE_MARKER && rawIdx + 1 < toIdx) {
+            if (b == ESCAPE_MARKER && rawIdx + 1 < checksumIdx) {
                 xor = xor xor (buffer[rawIdx + 1].toInt() and 0xFF)
                 rawIdx += 2
             } else {
@@ -467,7 +484,39 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 rawIdx++
             }
         }
-        return xor == (buffer[toIdx].toInt() and 0xFF)
+        val raw = buffer[checksumIdx].toInt() and 0xFF
+        if (raw != ESCAPE_MARKER) return if (raw == xor) checksumIdx + 1 else -2
+        val next = buffer.getOrNull(checksumIdx + 1)?.toInt()?.and(0xFF)
+        if ((next == ESCAPE_MARKER || next == 0xAA) && next == xor) return checksumIdx + 2
+        if (xor == ESCAPE_MARKER) return checksumIdx + 1
+        return if (next == null) -1 else -2
+    }
+
+    // Legacy V1 frames also start with `AA AA 13`: file-service frames only exist on V2 wheels.
+    private fun isAcceptedV2Flag(flags: Int): Boolean =
+        flags in TELEMETRY_V2_FLAGS ||
+            (lastDetectedDialect == Dialect.V2 && (flags == FILE_FLAG || flags == SEQUENCED_FILE_FLAG))
+
+    private class V2Header(val valid: Boolean, val size: Int = 0, val len: Int = 0)
+
+    /**
+     * Reads the unescaped FLAG, optional sequence number and LEN starting after `AA AA`.
+     * [V2Header.size] counts those header bytes. Returns `null` when more data is needed.
+     */
+    private fun readV2Header(buffer: List<Byte>): V2Header? {
+        val flags = (unescapeNBytes(buffer, startIdx = 2, count = 1) ?: return null).first[0].toInt() and 0xFF
+        if (!isAcceptedV2Flag(flags)) return V2Header(valid = false)
+        var size = 1
+        if (flags and InMotionDiagnosticLogDownload.SEQUENCE_FLAG_BIT != 0) {
+            while (true) {
+                if (size > MAX_SEQUENCE_BYTES) return V2Header(valid = false)
+                val bytes = unescapeNBytes(buffer, startIdx = 2, count = size + 1) ?: return null
+                size++
+                if (bytes.first[size - 1].toInt() and 0x80 == 0) break
+            }
+        }
+        val bytes = unescapeNBytes(buffer, startIdx = 2, count = size + 1) ?: return null
+        return V2Header(valid = true, size = size + 1, len = bytes.first[size].toInt() and 0xFF)
     }
 
     /**
@@ -543,9 +592,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             if (chunk.size >= 4) {
                 val flags = chunk[2].toInt() and 0xFF
                 val len = chunk[3].toInt() and 0xFF
-                if ((flags == FLAG_INITIAL || flags == FLAG_DEFAULT || flags == FLAG_EXTENDED ||
-                        flags == AUTH_RESPONSE_FLAG) && len in 1..MAX_LEN
-                ) {
+                if (isAcceptedV2Flag(flags) && (len in 1..MAX_LEN || flags and SEQUENCE_FLAG_BIT != 0)) {
                     return false
                 }
             }
@@ -556,6 +603,13 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     private fun parseV2Frame(frame: ByteArray): EUCData? {
         val flags = frame[2].toInt() and 0xFF
+        if (flags == FILE_FLAG || flags == SEQUENCED_FILE_FLAG) {
+            val fileLen = frame[3].toInt() and 0xFF
+            if (fileLen > 0) {
+                diagnosticLog.onResponse(frame[4].toInt() and 0xFF, frame.copyOfRange(5, 5 + fileLen - 1))
+            }
+            return null
+        }
         if (flags != FLAG_INITIAL && flags != FLAG_DEFAULT && flags != FLAG_EXTENDED &&
             flags != AUTH_RESPONSE_FLAG
         ) return null
@@ -1573,6 +1627,14 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             return createV1Command(commandType, value)
         }
         if (!allowsActivePolling()) return byteArrayOf()
+        when (commandType) {
+            // Extended-routing wheels (P6/V9) expose the diagnostic log through the main-MCU
+            // file service; other models and unidentified wheels are not verified.
+            CommandType.REQUEST_DIAGNOSTIC_LOG ->
+                return if (supportsExtendedRoutingPacks()) diagnosticLog.start() else byteArrayOf()
+            CommandType.CANCEL_DIAGNOSTIC_LOG -> return diagnosticLog.cancel()
+            else -> Unit
+        }
         // While dialect is unknown, only allow the V2 probe and pre-built CUSTOM frames
         // (the V1 handshake queries) to avoid spamming V2-only requests against legacy devices.
         if (lastDetectedDialect == Dialect.UNKNOWN &&
@@ -2299,6 +2361,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         totalPowerOnTimeSeconds = null
         lastP6StatsQueryAtMs = 0L
         outbox.clear()
+        diagnosticLog.reset()
     }
 
     /** Currently latched model name (from V2 main-info or legacy identification frames). */

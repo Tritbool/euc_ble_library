@@ -8,6 +8,7 @@ import io.github.tritbool.euc.ble.core.BLEConstants
 import io.github.tritbool.euc.ble.core.Logger
 import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.WheelSecurityState
@@ -166,6 +167,7 @@ class ProtocolSessionDriver(
     override val preferredWriteType: ProtocolWriteType get() = call { protocol.preferredWriteType }
     override fun isDeviceReady(data: EUCData): Boolean = call { protocol.isDeviceReady(data) }
     override fun getBMSData(): List<BMSData>? = call { protocol.getBMSData() }
+    override fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = call { protocol.getDiagnosticLogTransfer() }
 
     private inline fun <T> call(block: () -> T): T = lock.withLock {
         val result = block()

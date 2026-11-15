@@ -365,6 +365,34 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
   bits remain unset until their mappings are independently verified. Whole-wheel
   current and temperatures are not substituted for pack measurements.
 
+## InMotion diagnostic log
+
+InMotion P6 and V9 wheels expose the diagnostic file (`2:/log.bin`, 512 KiB on the V9) that
+the official app downloads. The library transfers the opaque binary; saving, sharing or
+decoding it belongs to the client application.
+
+```kotlin
+client.requestDiagnosticLog() // or sendCommand(CommandType.REQUEST_DIAGNOSTIC_LOG)
+
+val transfer = client.getDiagnosticLogTransfer() // poll as often as needed
+when (transfer?.state) {
+    DiagnosticLogState.COMPLETED -> save(transfer.copyData()!!)
+    DiagnosticLogState.FAILED -> showError(transfer.failure)
+    else -> showProgress(transfer?.progress) // 0.0..1.0, null until the size is known
+}
+
+client.cancelDiagnosticLog() // or CommandType.CANCEL_DIAGNOSTIC_LOG
+```
+
+- The command is only accepted once the wheel identified itself as a P6 or V9; otherwise it
+  is skipped. A second request while a transfer is active is ignored.
+- The download uses the wheel's main-MCU file service (open, 144-byte chunk reads, CRC-32
+  verification, close), with one request in flight, per-request timeouts and up to 5
+  retries. Expect roughly two minutes for 512 KiB.
+- Data is only exposed in `COMPLETED`, after the wheel-reported CRC-32 matched. Timeouts,
+  rejected opens, CRC mismatches, wheel-side aborts and disconnections (`SESSION_RESET`)
+  end in `FAILED` without partial data.
+
 ### Nosfet / Veteran telemetry
 
 - An explicit `NOSFET` token in the BLE name selects `NosfetProtocol` before automatic
