@@ -1015,6 +1015,20 @@ class InMotionProtocolTest {
     }
 
     @Test
+    fun v9HeadlightCommandsUseExtendedRouting() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216050010103"),
+            protocol.createCommand(CommandType.LIGHT_ON, Unit)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216050000003"),
+            protocol.createCommand(CommandType.LIGHT_OFF, Unit)
+        )
+    }
+
+    @Test
     fun nonExtendedRoutingModelsKeepLegacyControlForms() {
         // V2 dialect but unidentified model: the legacy V2 control form applies.
         protocol.setDialect(2)
