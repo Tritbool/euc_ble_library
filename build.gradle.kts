@@ -18,7 +18,8 @@ buildscript {
     }
     dependencies {
         if ((findProperty("euc.includeAndroid") as String?)?.toBoolean() != false) {
-            classpath("com.android.tools.build:gradle:9.1.0")
+            val agpVersion = providers.gradleProperty("euc.androidGradlePluginVersion").getOrElse("9.1.0")
+            classpath("com.android.tools.build:gradle:$agpVersion")
         }
     }
 }

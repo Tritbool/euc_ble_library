@@ -191,7 +191,21 @@ For InMotion V9/P6, lock and unlock are supported after the wheel confirms the a
 control-token handshake. Requests made before confirmation are rejected through `ErrorCallback`;
 submit them again after `securityStateFlow` reports `AUTHENTICATED`. The wheel supplies the token
 itself, so this handshake is not protection against another BLE client. InMotion lock-state
-queries are not currently supported; clients should not infer a confirmed state from a write.
+queries are supported only after identification as **V9** (`getCommandSupport(REQUEST_LOCK_STATE)`).
+Call `requestLockState()` after identification and after lock/unlock requests; collect
+`securityStateFlow` or `WheelSecurityEvent.LockStatus` on `securityEventFlow` for wheel-reported
+confirmation. Neither writing a command nor its acknowledgment confirms the lock state.
+The query uses the captured main-MCU detailed-data request `02 21 04`; the V9's 86-byte
+`21 02 84` response body reports `03` (locked) or `20` (unlocked) at offset 74, verified
+against two lock/unlock cycles in `v9_lock.log`. Other values/layouts are ignored, and
+P6/other InMotion models do not advertise lock-state querying. State starts as `UNKNOWN`
+and resets on disconnect. Live behavior through the library remains unverified.
+Diagnostic request/cancel capabilities are likewise advertised only after identification
+as V9/P6. Clients must recheck capabilities as model identification completes rather
+than caching the initial, unidentified protocol's support matrix.
+When using the Android connector in a Gradle composite build, both builds must use
+the same Android Gradle plugin version. Set `-Peuc.androidGradlePluginVersion=<version>`
+to match the consuming app; standalone library builds retain the default plugin version.
 
 ## KingSong PIN authentication, password management, and lock control
 
