@@ -8,6 +8,7 @@ import io.github.tritbool.euc.ble.models.AuthenticationState
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -100,5 +101,43 @@ class InMotionSyncProtocolTest {
         assertNull(engine.pollOutput())
         assertEquals(AuthenticationState.UNKNOWN, engine.getSecurityState().authentication)
         assertEquals("InMotion", engine.lastDecodedModel())
+    }
+
+    @Test
+    fun `V9 lock commands require a confirmed handshake and are rechecked before sending`() {
+        val engine = InMotionSyncProtocol(clock)
+        val lock = ByteUtils.hexToBytes("aaaa1605022160310160")
+        val unlock = ByteUtils.hexToBytes("aaaa1605022160310061")
+        engine.setDialect(2)
+        assertTrue(engine.createCommand(CommandType.LOCK).isEmpty())
+        assertFalse(engine.canSendCommand(ByteUtils.hexToBytes("aaaa140360310147")))
+        engine.onNotification(identity)
+        engine.drainOutputs()
+
+        assertTrue(engine.createCommand(CommandType.LOCK).isEmpty())
+        assertTrue(engine.createCommand(CommandType.UNLOCK).isEmpty())
+        assertFalse(engine.canSendCommand(lock))
+        assertFalse(engine.canSendCommand(ByteUtils.hexToBytes("aaaa140360310147")))
+        engine.onNotification(ByteUtils.hexToBytes("aaaa12040280820117"))
+        assertTrue(engine.createCommand(CommandType.LOCK).isEmpty())
+
+        engine.onNotification(ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde"))
+        assertTrue(engine.createCommand(CommandType.UNLOCK).isEmpty())
+        engine.onNotification(ByteUtils.hexToBytes("aaaa12040280820117"))
+        assertArrayEquals(lock, engine.createCommand(CommandType.LOCK))
+        assertArrayEquals(unlock, engine.createCommand(CommandType.UNLOCK))
+        assertTrue(engine.canSendCommand(lock))
+
+        // A refresh does not revoke a previously confirmed session until the wheel rejects it.
+        engine.onNotification(ByteUtils.hexToBytes("aaaa1213028002ef8764a42b432de0f2e999991445637bde"))
+        assertTrue(engine.canSendCommand(unlock))
+        engine.onNotification(ByteUtils.hexToBytes("aaaa12040280820016"))
+        assertEquals(AuthenticationState.REQUIRED, engine.getSecurityState().authentication)
+        assertFalse(engine.canSendCommand(unlock))
+        assertTrue(engine.createCommand(CommandType.UNLOCK).isEmpty())
+
+        engine.resetSession()
+        assertFalse(engine.canSendCommand(lock))
+        assertEquals(AuthenticationState.UNKNOWN, engine.getSecurityState().authentication)
     }
 }

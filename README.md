@@ -187,6 +187,12 @@ For commands:
 client.sendCommand(CommandType.LIGHT_ON)
 ```
 
+For InMotion V9/P6, lock and unlock are supported after the wheel confirms the automatic
+control-token handshake. Requests made before confirmation are rejected through `ErrorCallback`;
+submit them again after `securityStateFlow` reports `AUTHENTICATED`. The wheel supplies the token
+itself, so this handshake is not protection against another BLE client. InMotion lock-state
+queries are not currently supported; clients should not infer a confirmed state from a write.
+
 ## KingSong PIN authentication, password management, and lock control
 
 Collect `client.securityStateFlow` for a client-owned PIN popup and lock indicator.
