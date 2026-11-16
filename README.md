@@ -96,9 +96,8 @@ After updating locks, rerun the portable CI checks without either update option:
   :euc-ble-protocols:check :euc-ble-session:check :euc-ble-core:jsNodeTest
 ```
 
-See the [architecture overview](docs/architecture.md) for diagrams and how synchronous protocols
-are adapted and driven by sessions. This library stays Kotlin/KMP;
-a future sister Rust library will be a separate implementation using the architecture as a model.
+See the [architecture overview](docs/architecture.md): module dependencies and the
+client / session / protocol / BLE transport boundaries, in two diagrams.
 
 ## Client application
 
