@@ -94,14 +94,16 @@ val focusedPackages = listOf(
 
 val protocolClasses = project(":euc-ble-protocols").layout.buildDirectory.dir("classes/kotlin/jvm/main")
 val protocolSources = project(":euc-ble-protocols").file("src/commonMain/kotlin")
-val protocolJvmTest = project(":euc-ble-protocols").tasks.named("jvmTest")
+val protocolJvmTest = project(":euc-ble-protocols").tasks.matching { it.name == "jvmTest" }
 val sessionClasses = project(":euc-ble-session").layout.buildDirectory.dir("classes/kotlin/jvm/main")
 val sessionSources = project(":euc-ble-session").file("src/commonMain/kotlin")
-val sessionJvmTest = project(":euc-ble-session").tasks.named("jvmTest")
+val sessionJvmTest = project(":euc-ble-session").tasks.matching { it.name == "jvmTest" }
 
 tasks.register<JacocoReport>("jacocoTestReport") {
     dependsOn(test, protocolJvmTest, sessionJvmTest)
-    executionData(test.get(), protocolJvmTest.get(), sessionJvmTest.get())
+    executionData(test.get())
+    executionData(protocolJvmTest)
+    executionData(sessionJvmTest)
     classDirectories.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
     sourceDirectories.from("src/commonMain/kotlin")
     additionalClassDirs.from(protocolClasses)
@@ -121,7 +123,9 @@ tasks.register<JacocoReport>("jacocoFocusedReport") {
     group = "verification"
     description = "Generates JaCoCo coverage report focused on core, protocols, sessions, models, and frames."
     dependsOn(test, protocolJvmTest, sessionJvmTest)
-    executionData(test.get(), protocolJvmTest.get(), sessionJvmTest.get())
+    executionData(test.get())
+    executionData(protocolJvmTest)
+    executionData(sessionJvmTest)
     sourceDirectories.from("src/commonMain/kotlin")
     classDirectories.from(fileTree(layout.buildDirectory.dir("classes/kotlin/jvm/main")) {
         include(focusedPackages)
