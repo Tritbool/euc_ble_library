@@ -63,5 +63,9 @@ sonar {
         property("sonar.projectKey", "tritbool-github_euc-ble-library")
         property("sonar.organization", "tritbool-github")
         property("sonar.host.url", "https://sonarcloud.io")
+        property(
+            "sonar.coverage.exclusions",
+            "**/exceptions/**,**/integration/**,**/EucBleClient.kt"
+        )
     }
 }

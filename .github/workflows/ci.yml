@@ -131,7 +131,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Coverage summary (protocols/models/frames)
+      - name: Coverage summary (core/protocols/sessions/models/frames)
         if: always()
         run: |
           python3 - <<'PY'
@@ -144,7 +144,7 @@ jobs:
 
           if not focused_report.exists():
               summary.write_text(
-                  "## Coverage (protocols/models/frames)\n\n"
+                  "## Coverage (core/protocols/sessions/models/frames)\n\n"
                   "Coverage XML not found at "
                   "`euc-ble-core/build/reports/jacoco/focused/jacoco.xml`.\n"
                   "Ensure `:euc-ble-core:jacocoFocusedReport` completed successfully.\n"
@@ -175,7 +175,7 @@ jobs:
           branches = ratio(focused_root, "BRANCH")
 
           out = [
-              "## Coverage (protocols/models/frames)\n",
+              "## Coverage (core/protocols/sessions/models/frames)\n",
               f"- Line coverage: **{lines[2]:.2f}%** ({lines[0]} covered / {lines[1]} missed)",
               f"- Branch coverage: **{branches[2]:.2f}%** ({branches[0]} covered / {branches[1]} missed)",
               "- Full report: `euc-ble-core/build/reports/jacoco/full/html/index.html`",
@@ -189,7 +189,7 @@ jobs:
 
           pkgs = sorted(focused_root.findall("package"), key=lambda p: p.attrib.get("name", ""))
           for pkg in pkgs:
-              name = pkg.attrib.get("name", "").replace("com/euc/ble/", "").replace("/", ".")
+              name = pkg.attrib.get("name", "").replace("io/github/tritbool/euc/ble/", "").replace("/", ".")
               if not name:
                   name = "(root)"
               lc = pkg_ratio(pkg, "LINE")

@@ -3,8 +3,13 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     kotlin("multiplatform")
+    jacoco
     id("org.jetbrains.dokka")
     id("com.vanniktech.maven.publish")
+}
+
+jacoco {
+    toolVersion = "0.8.14"
 }
 
 dependencyLocking {
