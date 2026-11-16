@@ -1799,6 +1799,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     }
 
     override fun getPollingPlan(): ProtocolPollingPlan {
+        // The official app gives the MCU file service exclusive bandwidth, including
+        // pausing control-auth refreshes, until the transfer ends.
+        if (diagnosticLog.isActive) return ProtocolPollingPlan.disabled()
         // Legacy InMotion wheels are telemetry-push based in this library path, so
         // active polling should stay disabled once legacy dialect is identified.
         if (!allowsActivePolling()) {

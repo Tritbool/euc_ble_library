@@ -409,6 +409,9 @@ client.cancelDiagnosticLog() // or CommandType.CANCEL_DIAGNOSTIC_LOG
 - The download uses the wheel's main-MCU file service (open, 144-byte chunk reads, CRC-32
   verification, close), with one request in flight, per-request timeouts and up to 5
   retries. Expect roughly two minutes for 512 KiB.
+- Background telemetry, BMS and control-auth polling pauses while the download is active,
+  matching the official app, and resumes when it ends. Telemetry may remain unchanged
+  during the transfer; this alone does not mean the BLE connection was lost.
 - Data is only exposed in `COMPLETED`, after the wheel-reported CRC-32 matched. Timeouts,
   rejected opens, CRC mismatches, wheel-side aborts and disconnections (`SESSION_RESET`)
   end in `FAILED` without partial data.
