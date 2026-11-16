@@ -8,7 +8,7 @@ the Android BLE connector lives in [`euc-ble-android`](../euc-ble-android). The 
 built-in protocols; most applications should use that entry point instead of registering protocol
 classes themselves.
 
-> **Work in progress — version 0.1.0.** Protocol support and command coverage are incomplete.
+> **Work in progress — upcoming version 1.0.0.** Protocol support and command coverage are incomplete.
 > Behavior may be broken or vary by wheel and firmware, and APIs may evolve. Validate on the
 > physical device you intend to use. Passing unit tests is not a guarantee of device compatibility.
 

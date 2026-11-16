@@ -3,11 +3,13 @@ import io
 import json
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 import shutil
 import sys
 import unittest
 from unittest.mock import patch
 import uuid
+from urllib.parse import urljoin, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import quality_report
@@ -28,6 +30,73 @@ class FixtureTest(unittest.TestCase):
 
 
 class SnapshotTests(FixtureTest):
+    def test_published_report_index_and_assets_resolve_for_all_modules_and_tasks(self):
+        module_tasks = {
+            "euc-ble-protocols": ("jvmTest", "jsNodeTest"),
+            "euc-ble-session": ("jvmTest",),
+            "euc-ble-core": ("test", "jsNodeTest"),
+            "euc-ble-android": ("testDebugUnitTest",),
+        }
+        for module, tasks in module_tasks.items():
+            for task in tasks:
+                self.write(f"{module}/build/test-results/{task}/TEST-A.xml",
+                           f'<testsuite><testcase classname="{module}" name="{task}"/></testsuite>')
+                self.write(f"{module}/build/reports/tests/{task}/index.html",
+                           '<link href="css/style.css"><a href="classes/A.html">A</a>')
+                self.write(f"{module}/build/reports/tests/{task}/css/style.css", "body {}")
+                self.write(f"{module}/build/reports/tests/{task}/classes/A.html", "<h1>A</h1>")
+        self.write("euc-ble-android/build/reports/lint-results-debug.xml", "<issues/>")
+        self.write("euc-ble-android/build/reports/lint-results-debug.html", "<h1>Lint</h1>")
+        for kind in ("full", "focused"):
+            self.write(f"euc-ble-core/build/reports/jacoco/{kind}/jacoco.xml",
+                       '<report><counter type="LINE" covered="1" missed="0"/></report>')
+            self.write(f"euc-ble-core/build/reports/jacoco/{kind}/html/index.html",
+                       '<link href="jacoco-resources/report.css">')
+            self.write(f"euc-ble-core/build/reports/jacoco/{kind}/html/jacoco-resources/report.css",
+                       "body {}")
+        with contextlib.redirect_stdout(io.StringIO()):
+            quality_report.main(self.root, {"TEST_OUTCOME": "success"})
+        quality = self.root / "quality"
+        snapshot = json.loads((quality / "summary.json").read_text())
+        self.assertEqual(snapshot["tests"]["total"], 6)
+        sections = [snapshot["tests"], snapshot["lint"], *snapshot["coverage"].values()]
+        for section in sections:
+            self.assertTrue((quality / section["report"]).is_file())
+
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.paths = []
+
+            def handle_starttag(self, tag, attrs):
+                for key, value in attrs:
+                    if key in ("href", "src"):
+                        self.paths.append(value)
+
+        index = quality / snapshot["tests"]["report"]
+        parser = Links()
+        parser.feed(index.read_text())
+        self.assertEqual(len(parser.paths), 6)
+        for page in quality.glob("reports/**/*.html"):
+            parser = Links()
+            parser.feed(page.read_text())
+            for path in parser.paths:
+                self.assertTrue((page.parent / path).is_file(), (page, path))
+
+    def test_snapshot_does_not_link_to_missing_html_reports(self):
+        self.write("euc-ble-core/build/test-results/test/TEST-A.xml",
+                   '<testsuite><testcase classname="A" name="test"/></testsuite>')
+        self.write("euc-ble-android/build/reports/lint-results-debug.xml", "<issues/>")
+        self.write("euc-ble-core/build/reports/jacoco/full/jacoco.xml",
+                   '<report><counter type="LINE" covered="1" missed="0"/></report>')
+        with contextlib.redirect_stdout(io.StringIO()):
+            quality_report.main(self.root, {"TEST_OUTCOME": "success"})
+        snapshot = json.loads((self.root / "quality/summary.json").read_text())
+        for section in (snapshot["tests"], snapshot["lint"], snapshot["coverage"]["full"]):
+            self.assertTrue(section["available"])
+            self.assertNotIn("report", section)
+        self.assertFalse((self.root / "quality/reports/tests/index.html").exists())
+
     def test_missing_reports_are_not_zero(self):
         for result in (quality_report.tests(self.build, "success"),
                        quality_report.lint(self.build, "success"),
@@ -395,6 +464,24 @@ class SonarTests(FixtureTest):
 
 
 class DashboardTests(unittest.TestCase):
+    def test_homepage_coverage_links_resolve_from_both_languages(self):
+        root = Path(__file__).resolve().parents[2]
+        for page, url in (("docs/index.md", "https://example.com/euc_ble_library/"),
+                          ("docs/en/index.md", "https://example.com/euc_ble_library/en/")):
+            text = (root / page).read_text()
+            links = re.findall(r"\]\(([^)\n]*test-coverage[^)\n]*)\)", text)
+            self.assertTrue(links)
+            targets = []
+            for link in links:
+                relative_url = re.fullmatch(r"{{ '([^']+)' \| relative_url }}", link)
+                if relative_url:
+                    link = "/euc_ble_library" + relative_url[1]
+                targets.append(urlparse(urljoin(url, link)).path)
+            self.assertEqual(set(targets), {
+                "/euc_ble_library/test-coverage/full/",
+                "/euc_ble_library/test-coverage/focused/",
+            })
+
     def test_bilingual_pages_have_matching_ids_and_baseurl_safe_paths(self):
         root = Path(__file__).resolve().parents[2]
 
