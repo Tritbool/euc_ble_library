@@ -94,6 +94,13 @@ mavenPublishing {
                 url.set("https://www.gnu.org/licenses/gpl-3.0.html")
             }
         }
+        developers {
+            developer {
+                id.set("Tritbool")
+                name.set("Gauthier Le Bartz Lyan")
+                url.set("https://github.com/Tritbool")
+            }
+        }
         scm {
             url.set("https://github.com/Tritbool/euc_ble_library")
             connection.set("scm:git:git://github.com/Tritbool/euc_ble_library.git")
