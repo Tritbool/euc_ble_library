@@ -85,21 +85,29 @@ tasks.withType<Test>().configureEach {
 }
 
 val focusedPackages = listOf(
+    "io/github/tritbool/euc/ble/core/**",
     "io/github/tritbool/euc/ble/protocols/**",
+    "io/github/tritbool/euc/ble/session/**",
     "io/github/tritbool/euc/ble/models/**",
     "io/github/tritbool/euc/ble/frames/**"
 )
 
 val protocolClasses = project(":euc-ble-protocols").layout.buildDirectory.dir("classes/kotlin/jvm/main")
 val protocolSources = project(":euc-ble-protocols").file("src/commonMain/kotlin")
+val protocolJvmTest = project(":euc-ble-protocols").tasks.named("jvmTest")
+val sessionClasses = project(":euc-ble-session").layout.buildDirectory.dir("classes/kotlin/jvm/main")
+val sessionSources = project(":euc-ble-session").file("src/commonMain/kotlin")
+val sessionJvmTest = project(":euc-ble-session").tasks.named("jvmTest")
 
 tasks.register<JacocoReport>("jacocoTestReport") {
-    dependsOn(test)
-    executionData(test.get())
+    dependsOn(test, protocolJvmTest, sessionJvmTest)
+    executionData(test.get(), protocolJvmTest.get(), sessionJvmTest.get())
     classDirectories.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
     sourceDirectories.from("src/commonMain/kotlin")
     additionalClassDirs.from(protocolClasses)
+    additionalClassDirs.from(sessionClasses)
     additionalSourceDirs.from(protocolSources)
+    additionalSourceDirs.from(sessionSources)
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -111,15 +119,17 @@ tasks.register<JacocoReport>("jacocoTestReport") {
 
 tasks.register<JacocoReport>("jacocoFocusedReport") {
     group = "verification"
-    description = "Generates JaCoCo coverage report focused on protocols, models, and frames."
-    dependsOn(test)
-    executionData(test.get())
+    description = "Generates JaCoCo coverage report focused on core, protocols, sessions, models, and frames."
+    dependsOn(test, protocolJvmTest, sessionJvmTest)
+    executionData(test.get(), protocolJvmTest.get(), sessionJvmTest.get())
     sourceDirectories.from("src/commonMain/kotlin")
     classDirectories.from(fileTree(layout.buildDirectory.dir("classes/kotlin/jvm/main")) {
         include(focusedPackages)
     })
     additionalClassDirs.from(fileTree(protocolClasses) { include(focusedPackages) })
+    additionalClassDirs.from(fileTree(sessionClasses) { include(focusedPackages) })
     additionalSourceDirs.from(protocolSources)
+    additionalSourceDirs.from(sessionSources)
     reports {
         xml.required.set(true)
         html.required.set(true)
