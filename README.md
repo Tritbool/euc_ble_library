@@ -14,6 +14,8 @@ The former separate Sonar workflow is consolidated into CI so reports describe t
 The bilingual [quality dashboard](https://tritbool.github.io/euc_ble_library/en/quality/)
 is published after completed `main` push checks, including failures. It displays the commit,
 timestamp, test/lint results, coverage and Sonar quality gate, with detailed report links.
+The test report index includes each available module/task report and its static assets.
+Detailed links are published only when their HTML report is present.
 Sonar results are collected only after the submitted analysis completes. The gate is fetched by
 analysis ID; metrics are omitted as stale if a newer analysis replaces that commit during collection.
 Missing reports are unavailable, not zero or passing. PR artifacts are never deployed to Pages.
@@ -33,7 +35,7 @@ Repository administrators must configure:
   until a maintainer opens a trusted-branch PR for the reviewed change. Do not use
   `pull_request_target` to execute fork code with secrets.
 
-> **Work in progress — version 0.1.0.** This library is experimental: protocol support is
+> **Work in progress — upcoming version 1.0.0.** This library is experimental: protocol support is
 > incomplete, some features may be broken or behave differently across wheel/firmware versions,
 > and public APIs and behavior may evolve. Validate it with the specific wheel and firmware you
 > intend to use; do not assume that passing unit tests guarantees safe or complete behavior.

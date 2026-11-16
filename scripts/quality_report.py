@@ -2,9 +2,11 @@
 """Create a dependency-free CI snapshot; absent reports never imply zero defects."""
 
 from datetime import datetime, timezone
+from html import escape
 import json
 import os
 from pathlib import Path
+import shutil
 import xml.etree.ElementTree as ET
 
 
@@ -127,10 +129,40 @@ def sonar(root, outcome, sha):
                        metrics_status="unavailable", gate_status="unavailable")
 
 
+def collect_reports(root, builds, core_build, android_build):
+    reports = root / "quality/reports"
+    links = []
+    for build in builds:
+        module = build.parent.name
+        for source in sorted((build / "reports/tests").glob("*/index.html")):
+            task = source.parent.name
+            destination = reports / "tests" / module / task
+            shutil.copytree(source.parent, destination, dirs_exist_ok=True)
+            href = escape(f"{module}/{task}/index.html", quote=True)
+            links.append(f'<li><a href="{href}">{escape(module)}: {escape(task)}</a></li>')
+    if links:
+        (reports / "tests/index.html").write_text(
+            '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
+            '<title>Unit test reports</title></head><body>'
+            '<h1>Unit test reports</h1><ul>' + "\n".join(links) +
+            '</ul></body></html>\n', encoding="utf-8")
+    lint_html = android_build / "reports/lint-results-debug.html"
+    if lint_html.is_file():
+        (reports / "lint").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(lint_html, reports / "lint/index.html")
+    for kind in ("full", "focused"):
+        source = core_build / f"reports/jacoco/{kind}/html"
+        if (source / "index.html").is_file():
+            shutil.copytree(source, reports / "coverage" / kind, dirs_exist_ok=True)
+
+
 def main(root=Path("."), environ=None):
     env = os.environ if environ is None else environ
     core_build = root / "euc-ble-core/build"
     android_build = root / "euc-ble-android/build"
+    builds = [root / module / "build" for module in
+              ("euc-ble-protocols", "euc-ble-session", "euc-ble-core", "euc-ble-android")]
+    collect_reports(root, builds, core_build, android_build)
     test_outcome = env.get("TEST_OUTCOME")
     sha = env.get("GITHUB_SHA")
     result = {
@@ -138,12 +170,15 @@ def main(root=Path("."), environ=None):
         "sha": sha, "run_id": env.get("GITHUB_RUN_ID"),
         "repository": env.get("GITHUB_REPOSITORY"),
         "check_outcome": env.get("CHECK_OUTCOME", "unknown"),
-        "tests": tests([core_build, android_build], test_outcome),
+        "tests": tests(builds, test_outcome),
         "lint": lint(android_build, env.get("LINT_OUTCOME")),
         "coverage": {kind: coverage(core_build, kind, test_outcome)
                      for kind in ("full", "focused")},
         "sonar": sonar(root, env.get("SONAR_OUTCOME"), sha),
     }
+    for item in (result["tests"], result["lint"], *result["coverage"].values()):
+        if "report" in item and not (root / "quality" / item["report"]).is_file():
+            del item["report"]
     statuses = [result["tests"]["status"], result["lint"]["status"],
                 result["sonar"]["status"],
                 *(item["status"] for item in result["coverage"].values())]

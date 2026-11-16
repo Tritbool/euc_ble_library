@@ -278,7 +278,7 @@ jobs:
             euc-ble-android/build/reports/jacoco/
           retention-days: 7
 
-      - name: Generate website quality snapshot
+      - name: Generate website quality snapshot and collect reports
         if: ${{ !cancelled() }}
         run: python3 scripts/quality_report.py
         env:
@@ -286,27 +286,6 @@ jobs:
           LINT_OUTCOME: ${{ steps.lint.outcome }}
           SONAR_OUTCOME: ${{ steps.sonar.outcome }}
           CHECK_OUTCOME: ${{ job.status }}
-
-      - name: Collect website reports
-        if: ${{ !cancelled() }}
-        run: |
-          mkdir -p quality/reports/tests
-          if [ -d euc-ble-core/build/reports/tests/test ]; then
-            cp -r euc-ble-core/build/reports/tests/test quality/reports/tests
-          fi
-          if [ -d euc-ble-android/build/reports/tests/testDebugUnitTest ]; then
-            cp -r euc-ble-android/build/reports/tests/testDebugUnitTest quality/reports/tests/android
-          fi
-          if [ -f euc-ble-android/build/reports/lint-results-debug.html ]; then
-            mkdir -p quality/reports/lint
-            cp euc-ble-android/build/reports/lint-results-debug.html quality/reports/lint/index.html
-          fi
-          for scope in full focused; do
-            if [ -d "euc-ble-core/build/reports/jacoco/$scope/html" ]; then
-              mkdir -p quality/reports/coverage
-              cp -r "euc-ble-core/build/reports/jacoco/$scope/html" "quality/reports/coverage/$scope"
-            fi
-          done
 
       - name: Upload website quality snapshot
         if: ${{ !cancelled() }}

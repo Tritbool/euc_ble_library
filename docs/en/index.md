@@ -14,9 +14,9 @@ Bluetooth Low Energy library for Electric Unicycles (EUC), providing an Android 
 > GroupId: `io.github.tritbool`  
 > ArtifactId: `euc-ble-library`  
 > Modules: `euc-ble-protocols` + `euc-ble-session` + `euc-ble-core` (KMP), `euc-ble-android` (Android connector)<br>
-> Current development version: `0.1.0`
+> Upcoming version: `{{ site.upcoming_version }}`
 
-> **Work in progress.** Version 0.1.0 is experimental, not a stability guarantee. Protocol support is
+> **Work in progress.** The upcoming {{ site.upcoming_version }} release is not a stability guarantee. Protocol support is
 > incomplete; some features may be broken, vary by wheel or firmware, or change as the project evolves.
 > Verify behavior on the exact device and firmware you plan to use. Unit tests and captured traffic do
 > not replace physical-device testing.
@@ -131,8 +131,8 @@ client.startScan()
 
 HTML coverage reports are published under:
 
-- [`/test-coverage/full/`](./test-coverage/full/) – global view.
-- [`/test-coverage/focused/`](./test-coverage/focused/) – protocols / models / frames only.
+- [`/test-coverage/full/`]({{ '/test-coverage/full/' | relative_url }}) – global view.
+- [`/test-coverage/focused/`]({{ '/test-coverage/focused/' | relative_url }}) – protocols / models / frames only.
 
 *(See the “Test coverage reports” section below.)*
 
@@ -159,23 +159,23 @@ To make coverage visible:
 - These reports are copied into the generated site and published via GitHub Pages:
 
 
-- [https://tritbool.github.io/euc_ble_library/test-coverage/full/](https://tritbool.github.io/euc_ble_library/test-coverage/full/)
-- [https://tritbool.github.io/euc_ble_library/test-coverage/focused/](https://tritbool.github.io/euc_ble_library/test-coverage/focused/)
+- [Full coverage report]({{ '/test-coverage/full/' | relative_url }})
+- [Focused coverage report]({{ '/test-coverage/focused/' | relative_url }})
 as a “health check” for the library.
 
 ---
 
 ## Using it in an app
 
-### Maven Central dependency (0.1.0)
+### Maven Central dependency (upcoming {{ site.upcoming_version }})
 
 ```kotlin
 dependencies {
-    implementation("io.github.tritbool:euc-ble-library:0.1.0")
+    implementation("io.github.tritbool:euc-ble-library:{{ site.upcoming_version }}")
 }
 ```
 
-The dependency is usable from Maven Central once version 0.1.0 has been published.
+The dependency will be usable from Maven Central once version {{ site.upcoming_version }} has been published.
 
 ### Android BLE permissions
 
