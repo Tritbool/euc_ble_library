@@ -1543,6 +1543,17 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         return run(42, 62) ?: run(22, 42)
     }
 
+    /**
+     * V9 56-byte summary page temperatures (offset-80 bytes, see [decodeTemperature]),
+     * verified against the official app with charger idle/plugged:
+     * `[26]` charge MOS, `[27]` discharge MOS, `[30..33]` the pack's four cell probes.
+     * Returned in that order. The P6 60-byte layout is not mapped yet.
+     */
+    private fun decodeV9PackTemperatures(payload: ByteArray): List<Double>? {
+        if (payload.size != 56) return null
+        return listOf(26, 27, 30, 31, 32, 33).map { decodeTemperature(payload[it]).toDouble() }
+    }
+
     private fun parseP6Pack(command: Int, payload: ByteArray) {
         if (!isP6PackPayload(command, payload)) return
         run {
@@ -1562,7 +1573,8 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                         chargeCurrent = charge,
                         dischargeCurrent = discharge,
                         current = discharge - charge,
-                        isCharging = charge > 0.1
+                        isCharging = charge > 0.1,
+                        temperatures = decodeV9PackTemperatures(payload) ?: previous.temperatures
                     )
                 }
 

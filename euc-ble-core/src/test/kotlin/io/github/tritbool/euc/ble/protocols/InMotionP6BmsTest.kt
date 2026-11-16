@@ -8,6 +8,10 @@ import java.io.ByteArrayOutputStream
 import io.github.tritbool.euc.ble.test.BtsnoopCapture
 
 class InMotionP6BmsTest {
+    private companion object {
+        const val V9_CAPTURE = "btsnoop-v9-bms_hci.hex"
+    }
+
     private data class Response(val pack: Int, val payload: ByteArray, val wire: ByteArray)
 
     @Test
@@ -43,6 +47,46 @@ class InMotionP6BmsTest {
                 else listOf(215.81, 215.86)
             assertEquals(expectedVolts, packs.map { it.voltage })
         }
+    }
+
+    @Test
+    fun v9CaptureIdentifiesAndExposesTwo20CellPacksWithScreenshotTemperatures() {
+        val protocol = InMotionProtocol()
+        val acknowledged = mutableSetOf<String>()
+        for (notification in notifications(V9_CAPTURE)) {
+            packQueries(protocol).filter { protocol.matchesQueryResponse(it, notification.bytes) }
+                .forEach { acknowledged += it.id }
+            protocol.decode(notification.bytes)
+        }
+        assertEquals(packQueries(protocol).map { it.id }.toSet(), acknowledged)
+        val packs = protocol.getBMSData()!!
+        assertEquals(listOf(1, 2), packs.map { it.bmsIndex })
+        for (pack in packs) {
+            assertEquals("BW268Y00720S103A624", pack.serialNumber)
+            assertEquals("0.0.14", pack.firmwareVersion)
+            assertEquals(20, pack.cellVoltages!!.size)
+            assertTrue(pack.cellVoltages!!.all { it in 3.83..3.91 })
+            assertTrue(pack.voltage!! in 76.0..78.5)
+            assertEquals(false, pack.isCharging)
+            assertEquals(6, pack.temperatures!!.size)
+        }
+    }
+
+    @Test
+    fun v9SummaryTemperaturesFollowMosAndCellProbesWhileCharging() {
+        val summaries = responses(V9_CAPTURE).filter { it.pack == 0x24 && subtype(it) == 1 }
+        val idle = InMotionProtocol().also(::identifyV9)
+        idle.decode(summaries.first().wire)
+        // Screenshot 11:13: MOS 17/17 °C, cells 17 17 16 17.
+        assertEquals(listOf(17.0, 17.0, 17.0, 17.0, 16.0, 17.0), idle.getBMSData()!!.single().temperatures)
+
+        val charging = InMotionProtocol().also(::identifyV9)
+        charging.decode(summaries.first { ByteUtils.getUnsignedShortLE(it.payload, 10) == 197 }.wire)
+        // Screenshot 11:14 (charging): charge MOS rises to 18 °C, discharge MOS stays 17 °C.
+        val pack = charging.getBMSData()!!.single()
+        assertEquals(true, pack.isCharging)
+        assertEquals(1.97, pack.chargeCurrent)
+        assertEquals(listOf(18.0, 17.0), pack.temperatures!!.take(2))
     }
 
     @Test
@@ -345,6 +389,10 @@ class InMotionP6BmsTest {
     }
 
     private fun p6() = InMotionProtocol().also(::identify)
+
+    private fun identifyV9(protocol: InMotionProtocol) {
+        protocol.decode(frame(0x82, byteArrayOf(1, 2, 12, 1), flag = 0x11))
+    }
 
     private fun identify(protocol: InMotionProtocol) {
         protocol.decode(frame(0x82, byteArrayOf(1, 2, 13, 1), flag = 0x11))

@@ -365,13 +365,13 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
   the ROCKET, 4 pages = 16 on the EXTREME); a group's cells are the first/second half of its
   stream. `getBMSData()` returns one `BMSData` per group (`bmsIndex` 0..3).
 
-### InMotion P6 BMS
+### InMotion P6/V9 BMS
 
 - The two packs are addressed independently (`0x24` and `0x25`) and exposed as
-  `bmsIndex` 1 and 2, each with 56 cell voltages in volts.
+  `bmsIndex` 1 and 2, each with 56 (P6) or 20 (V9) cell voltages in volts.
 - Summary, cell and identity replies update each pack independently. `getBMSData()`
   reads the latest snapshots; it does not initiate BLE requests.
-  The protocol polls summaries and cells after P6 identification and requests
+  The protocol polls summaries and cells after P6/V9 identification and requests
   identity once per session. These use V2 command `0x02` with the pack address and
   subtype `0x01` (summary), `0x02` (cells) or `0x04` (identity).
 - V2 UART characteristics are selected for automatic, manual and forced connections.
@@ -381,8 +381,10 @@ temperature probes, cell voltages and the pack charging status (`isCharging`).
   `chargeCurrent` / `dischargeCurrent` readings are available when reported.
   Net `current` uses the library convention: discharge minus charge, in amps.
   Charging is derived from that pack's current, not the wheel's charging state.
-- Capacity, cycle count, temperature probes and individual status/error/warning
-  bits remain unset until their mappings are independently verified. Whole-wheel
+- V9 `temperatures` (°C) are, in order: charge MOS, discharge MOS, then the
+  pack's four cell probes. P6 temperatures stay unset.
+- Capacity, cycle count and individual status/error/warning bits remain unset
+  until their mappings are independently verified. Whole-wheel
   current and temperatures are not substituted for pack measurements.
 
 ## InMotion diagnostic log
