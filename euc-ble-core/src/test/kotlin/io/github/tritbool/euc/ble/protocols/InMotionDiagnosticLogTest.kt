@@ -8,6 +8,7 @@ import io.github.tritbool.euc.ble.models.DiagnosticLogFailure
 import io.github.tritbool.euc.ble.models.DiagnosticLogState
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -237,5 +238,46 @@ class InMotionDiagnosticLogTest {
         assertEquals(CommandSupport.UNSUPPORTED, engine.getCommandSupport(CommandType.REQUEST_DIAGNOSTIC_LOG))
         engine.onNotification(hex("aaaa11088201020d0101010094"))
         assertEquals(CommandSupport.SUPPORTED, engine.getCommandSupport(CommandType.REQUEST_DIAGNOSTIC_LOG))
+    }
+
+    @Test
+    fun `background polling pauses for every active download phase and resumes on completion`() {
+        val engine = v9Engine()
+        val plan = engine.getPollingPlan()
+        assertTrue(plan.enabled)
+        assertTrue(plan.periodicQueries.any { it.id == "inmotion.control-auth" })
+
+        engine.requestLog()
+        assertFalse(engine.getPollingPlan().enabled)
+        engine.onNotification(openResponse(2))
+        assertFalse(engine.getPollingPlan().enabled)
+        val data = byteArrayOf(1, 2)
+        engine.onNotification(readResponse(0, 0, data))
+        assertFalse(engine.getPollingPlan().enabled)
+        engine.onNotification(verifyResponse(2, EucCrc32.calculate(data)))
+        assertEquals(plan, engine.getPollingPlan())
+    }
+
+    @Test
+    fun `background polling resumes after cancellation timeout wheel abort or reset`() {
+        val engine = v9Engine()
+        engine.requestLog()
+        engine.createCommand(CommandType.CANCEL_DIAGNOSTIC_LOG, CommandValue.None)
+        assertTrue(engine.getPollingPlan().enabled)
+
+        engine.requestLog()
+        repeat(6) { engine.onTimer(timerId) }
+        assertEquals(DiagnosticLogFailure.TIMEOUT, engine.getDiagnosticLogTransfer()!!.failure)
+        assertTrue(engine.getPollingPlan().enabled)
+        engine.drainOutputs()
+
+        engine.requestLog()
+        engine.onNotification(hex("aaaa1305210083840030"))
+        assertEquals(DiagnosticLogFailure.WHEEL_ABORTED, engine.getDiagnosticLogTransfer()!!.failure)
+        assertTrue(engine.getPollingPlan().enabled)
+
+        engine.requestLog()
+        engine.resetSession()
+        assertTrue(engine.getPollingPlan().enabled)
     }
 }

@@ -81,7 +81,10 @@ class PollingSession(
                         engine.onFailed(output.token, now(), unsupported = true)
                     } else {
                         enqueue(payload,
-                            { lock.withLock { active && engine.isQueued(output.token) } },
+                            { lock.withLock {
+                                if (active && !protocol.getPollingPlan().enabled) engine.reset()
+                                active && engine.isQueued(output.token)
+                            } },
                             { guarded {
                                 if (active) { engine.onAccepted(output.token, now()); dispatch() }
                             } },

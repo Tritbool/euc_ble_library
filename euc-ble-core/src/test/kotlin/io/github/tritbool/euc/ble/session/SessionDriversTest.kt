@@ -77,6 +77,53 @@ class SessionDriversTest {
     }
 
     @Test
+    fun `disabled plan immediately blocks queued polls and resumes without replaying startup`() = runTest {
+        var enabled = true
+        val protocol = object : EUCProtocol by protocol() {
+            override fun getPollingPlan() = if (enabled) {
+                ProtocolPollingPlan(true, startupQueries = listOf(query),
+                    periodicQueries = listOf(query.copy(id = "periodic", intervalMs = 200)))
+            } else ProtocolPollingPlan.disabled()
+        }
+        val pending = mutableListOf<() -> Boolean>()
+        val accepted = mutableListOf<() -> Unit>()
+        val traces = mutableListOf<QueryTraceEvent>()
+        val session = PollingSession(protocol, backgroundScope, { testScheduler.currentTime },
+            traces::add, { _, valid, accept, _ -> pending += valid; accepted += accept }, { throw it })
+        session.start()
+        runCurrent()
+        assertTrue(pending.single()())
+
+        enabled = false
+        // No driver tick has occurred yet: writes already in the transport queue must stop too.
+        assertFalse(pending.single()())
+        // A quick cancellation before the next tick must not leave the dropped poll QUEUED forever.
+        enabled = true
+        advanceTimeBy(25)
+        runCurrent()
+        assertEquals(2, pending.size)
+        assertFalse(pending.first()())
+        assertTrue(pending.last()())
+
+        enabled = false
+        assertFalse(pending.last()())
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(2, pending.size)
+        assertTrue(traces.isEmpty())
+
+        enabled = true
+        advanceTimeBy(25)
+        runCurrent()
+        assertEquals(3, pending.size)
+        assertFalse(pending.first()())
+        assertTrue(pending.last()())
+        accepted.last()()
+        assertEquals("periodic", traces.single().queryId)
+        session.stop()
+    }
+
+    @Test
     fun `write session retries stack rejection but never repeats accepted payloads`() = runTest {
         val session = WriteSession(backgroundScope, now = { testScheduler.currentTime }) { throw it }
         val calls = mutableListOf<Int>()
