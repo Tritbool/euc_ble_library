@@ -58,8 +58,7 @@
           "description": { "$ref": "#/$defs/string" },
           "encoding": { "enum": ["available", "conditional", "unavailable", "unknown"] },
           "operation": { "$ref": "#/$defs/string" },
-          "input": { "$ref": "#/$defs/input" },
-          "extensions": { "type": "object" }
+          "input": { "$ref": "#/$defs/input" }
         }
       }
     },
@@ -158,19 +157,6 @@
             "kind": { "const": "raw_payload" },
             "description": { "$ref": "#/$defs/string" },
             "valueTypes": { "$ref": "#/$defs/strings" }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": true,
-          "required": ["kind", "description"],
-          "properties": {
-            "kind": {
-              "type": "string",
-              "minLength": 1,
-              "not": { "enum": ["none", "boolean", "range", "choice", "text", "tuple", "record", "raw_payload", "unknown"] }
-            },
-            "description": { "$ref": "#/$defs/string" }
           }
         }
       ]

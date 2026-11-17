@@ -111,9 +111,9 @@ interface EucProtocolSpec {
         if (descriptor.encoding == CommandEncoding.UNAVAILABLE || descriptor.encoding == CommandEncoding.UNKNOWN) {
             return CommandEncodingResult.Rejected(CommandRejection.UNAVAILABLE, "Command is unavailable in this context")
         }
-        if (descriptor.input is CommandInput.Extension) {
+        if (descriptor.input is CommandInput.Unsupported) {
             return CommandEncodingResult.Rejected(
-                CommandRejection.UNSUPPORTED_INPUT, "Input kind requires a dedicated library handler"
+                CommandRejection.UNSUPPORTED_INPUT, descriptor.input.reason
             )
         }
         descriptor.input.validationError(value)?.let {

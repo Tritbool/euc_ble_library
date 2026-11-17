@@ -62,14 +62,14 @@ a required selector. At most one profile may match, and it replaces each listed 
 descriptor in full. There is no nested merge or file-order priority. Firmware selectors
 are intentionally absent until verified firmware boundaries exist.
 
-## Extension and maintenance
+## Maintenance
 
-Command IDs, operations and input-kind names are open strings. Future IDs do not require
-an enum or schema change. Unknown input kinds preserve their metadata but checked encoding
-rejects them until a dedicated library handler exists; clients must not guess values or
-route them through `CUSTOM`. Custom implementations can supply a `CommandInput` validator
-and override the string-ID encoder. Additional declarative metadata belongs in `extensions`.
-Breaking changes to existing meanings require a new schema version.
+Command IDs and operations are strings; adding a supported command still requires a
+protocol encoder and contract entry. Input kinds are deliberately closed: add a new kind
+only alongside its typed value, validator, schema definition and tests. A command with
+`kind: "unknown"` remains discoverable but checked encoding rejects it; clients must not
+guess values or route it through `CUSTOM`. Breaking changes to existing meanings require
+a new schema version.
 
 Keep client drift out of the dictionary: remap clients to library values in the actions
 file. Alleged missing commands start as `review_library`; verified gaps can become

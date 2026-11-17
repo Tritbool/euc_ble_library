@@ -102,13 +102,10 @@ interface CommandInput {
         }
     }
 
-    /** Preserves unrecognized metadata, but never guesses how to validate or send it. */
-    data class Extension(
-        override val kind: String,
-        val description: String,
-        val metadataJson: String,
-    ) : CommandInput {
-        override fun validationError(value: CommandValue) = "Input kind requires a dedicated library handler"
+    /** The catalogue knows the command, but its input contract is not yet implemented. */
+    data class Unsupported(val reason: String) : CommandInput {
+        override val kind = "unknown"
+        override fun validationError(value: CommandValue) = reason
     }
 }
 
@@ -127,7 +124,6 @@ data class CommandDescriptor(
     val encoding: CommandEncoding,
     val operation: String? = null,
     val hardwareLimits: String = "unknown",
-    val extensionsJson: String? = null,
 ) {
     /** Compatibility convenience, not the identity or an exhaustive command registry. */
     val commandType: CommandType? get() = CommandType.entries.firstOrNull { it.name == id }

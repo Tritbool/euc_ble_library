@@ -50,10 +50,8 @@ val generateCommandCatalogue by tasks.registering {
                     }
                 }
                 "raw_payload" -> "CommandInput.RawPayload(${quote(spec["description"])}, ${strings(spec["valueTypes"], "setOf")})"
-                else -> {
-                    val description = spec["description"] ?: spec["reason"]
-                    "CommandInput.Extension(${quote(kind)}, ${quote(description)}, ${quote(JsonOutput.toJson(spec))})"
-                }
+                "unknown" -> "CommandInput.Unsupported(${quote(spec["reason"])})"
+                else -> error("Unsupported command input kind: $kind")
             }
         }
 
@@ -64,8 +62,7 @@ val generateCommandCatalogue by tasks.registering {
             "CommandDescriptor(id = ${quote(id)}, name = ${quote(command["name"])}, " +
                 "description = ${quote(command["description"])}, input = ${input(command["input"])}, " +
                 "encoding = CommandEncoding.$encoding, " +
-                "operation = ${command["operation"]?.let(::quote) ?: "null"}, " +
-                "extensionsJson = ${command["extensions"]?.let { quote(JsonOutput.toJson(it)) } ?: "null"})"
+                "operation = ${command["operation"]?.let(::quote) ?: "null"})"
         }
 
         val root = obj(JsonSlurper().parse(catalogue.asFile))

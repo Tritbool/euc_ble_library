@@ -156,7 +156,7 @@ class CommandContractTest {
     }
 
     @Test
-    fun openIdsAndInputHandlersWorkWithoutEnumChangesAndUnknownKindsFailClosed() {
+    fun customInputValidatorsWorkAndUnknownKindsFailClosed() {
         var calls = 0
         val customInput = object : CommandInput {
             override val kind = "vendor.positive"
@@ -186,7 +186,7 @@ class CommandContractTest {
         assertEquals(CommandRejection.INVALID_VALUE, assertIs<CommandEncodingResult.Rejected>(
             engine.encodeCommand(descriptor.id, CommandValue.Integer(0))
         ).reason)
-        descriptor = descriptor.copy(input = CommandInput.Extension("vendor.future", "Needs a handler.", "{}"))
+        descriptor = descriptor.copy(input = CommandInput.Unsupported("Input kind needs library support."))
         assertEquals(CommandRejection.UNSUPPORTED_INPUT, assertIs<CommandEncodingResult.Rejected>(
             engine.encodeCommand(descriptor.id, CommandValue.Integer(7))
         ).reason)
