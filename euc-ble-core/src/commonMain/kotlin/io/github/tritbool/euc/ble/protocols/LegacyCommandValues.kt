@@ -13,7 +13,6 @@ internal fun Any.toCommandValue(): CommandValue = when (this) {
         require(it is Int) { "Command integer lists must contain only Int values" }
         it
     })
-    is PasswordChangeRequest -> this
     else -> throw IllegalArgumentException("Unsupported command value type")
 }
 
@@ -24,5 +23,5 @@ internal fun CommandValue.toLegacyValue(): Any = when (this) {
     is CommandValue.Text -> value
     is CommandValue.Bytes -> copyBytes()
     is CommandValue.Integers -> copyValues().toIntArray()
-    is PasswordChangeRequest -> this
+    is CommandRecordValue -> this
 }

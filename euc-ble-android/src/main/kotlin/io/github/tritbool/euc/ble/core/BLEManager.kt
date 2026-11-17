@@ -28,7 +28,10 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
+import io.github.tritbool.euc.ble.protocols.CommandDescriptor
+import io.github.tritbool.euc.ble.protocols.CommandEncodingResult
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.CommandValue
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.GattSignature
@@ -496,6 +499,31 @@ class BLEManager internal constructor(
     fun getCommandSupport(commandType: CommandType): CommandSupport {
         val protocol = currentProtocol ?: return CommandSupport.UNSUPPORTED
         return protocol.getCommandSupport(commandType)
+    }
+
+    fun getCommandDescriptors(): List<CommandDescriptor> = currentProtocol?.getCommandDescriptors().orEmpty()
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun sendCommand(commandId: String, value: CommandValue = CommandValue.None) {
+        val generation = writeGeneration
+        val protocol = currentProtocol ?: run {
+            errorCallback?.onError(BLEException("No protocol selected; cannot send command"))
+            return
+        }
+        when (val result = protocol.encodeCommand(commandId, value)) {
+            is CommandEncodingResult.Rejected -> errorCallback?.onError(
+                BLEException("Command '$commandId' rejected (${result.reason}): ${result.message}")
+            )
+            is CommandEncodingResult.Encoded -> try {
+                if (generation != writeGeneration || currentProtocol !== protocol) {
+                    errorCallback?.onError(BLEException("Protocol changed before command submission"))
+                } else {
+                    sendCommand(result.payload, protocol.getWriteCharacteristicUUID().toAndroidUuid())
+                }
+            } finally {
+                result.payload.fill(0)
+            }
+        }
     }
 
     fun createCommand(commandType: CommandType, value: Any = Unit): ByteArray {

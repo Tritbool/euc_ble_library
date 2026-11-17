@@ -106,6 +106,12 @@ client / session / protocol / BLE transport boundaries, in two diagrams.
 [TuxWheel](https://github.com/Tritbool/TuxWheel) is the first client app built with this library.
 It is available as a pre-release, with publication on F-Droid planned.
 
+The [command contract](docs/commands/README.md) exposes names, input types and permitted values
+through `getCommandDescriptors()`, including model/dialect variations. Use the checked
+`encodeCommand(id, value)` API (Android: `sendCommand(id, value)`) rather than duplicating
+protocol values in clients. Its pure-data dictionary is separate from client migration and
+maintainer actions. Encoding bounds are not a guarantee of safe hardware limits.
+
 ## Usage (single entry point)
 
 `io.github.tritbool.euc.ble.EucBleClient` is the public BLE entry point for client applications.

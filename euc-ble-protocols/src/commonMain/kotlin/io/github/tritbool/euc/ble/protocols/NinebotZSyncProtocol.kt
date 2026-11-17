@@ -54,20 +54,8 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
 
     override val manufacturer: String = "Ninebot"
     override val protocolId: String = "NinebotZProtocol"
-    override val supportedCommandTypes: Set<CommandType> = setOf(
-        CommandType.LIGHT_ON,
-        CommandType.LIGHT_OFF,
-        CommandType.BEEP,
-        CommandType.LOCK,
-        CommandType.UNLOCK,
-        CommandType.SET_SPEED_LIMIT,
-        CommandType.SET_ALARM_SPEED,
-        CommandType.CALIBRATE,
-        CommandType.REQUEST_SERIAL,
-        CommandType.REQUEST_FIRMWARE,
-        CommandType.REQUEST_BATTERY_INFO,
-        CommandType.CUSTOM
-    )
+    override val supportedCommandTypes: Set<CommandType>
+        get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.NINEBOT_Z_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =

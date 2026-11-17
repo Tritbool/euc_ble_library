@@ -1,0 +1,343 @@
+{
+  "$schema": "./commands.schema.json",
+  "schemaVersion": 1,
+  "protocols": {
+    "KingsongProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_LIGHT_MODE": {
+          "name": "Headlight mode", "description": "Select off, on or automatic lighting.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "off", "value": 0 }, { "id": "on", "value": 1 }, { "id": "auto", "value": 2 }
+          ] }
+        },
+        "LIGHT_BRIGHTNESS": {
+          "name": "Headlight state", "description": "Three lighting states, not continuous dimming.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "off", "value": 0 }, { "id": "on", "value": 1 }, { "id": "auto", "value": 100 }
+          ] }
+        },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "POWER_OFF": { "name": "Power off", "description": "Turn off the wheel.", "encoding": "available", "input": { "kind": "none" } },
+        "AUTHENTICATE": {
+          "name": "Authenticate", "description": "Submit a four-ASCII-digit PIN; preserve leading zeros.", "encoding": "available",
+          "input": { "kind": "text", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$", "sensitive": true }
+        },
+        "SET_PASSWORD": {
+          "name": "Set password", "description": "Set a four-ASCII-digit password.", "encoding": "available",
+          "input": { "kind": "text", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$", "sensitive": true }
+        },
+        "CHANGE_PASSWORD": {
+          "name": "Change password", "description": "Replace the password using the current password.", "encoding": "available",
+          "input": { "kind": "record", "apiType": "PasswordChangeRequest", "fields": [
+            { "id": "oldPassword", "input": { "kind": "text", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$", "sensitive": true } },
+            { "id": "newPassword", "input": { "kind": "text", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$", "sensitive": true } }
+          ] }
+        },
+        "REMOVE_PASSWORD": {
+          "name": "Remove password", "description": "Remove protection using the current password.", "encoding": "available",
+          "input": { "kind": "text", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$", "sensitive": true }
+        },
+        "LOCK": { "name": "Lock", "description": "Lock the wheel after required authentication.", "encoding": "conditional", "input": { "kind": "none" } },
+        "UNLOCK": { "name": "Unlock", "description": "Unlock using the wheel-provided challenge after authentication.", "encoding": "conditional", "input": { "kind": "none" } },
+        "REQUEST_LOCK_STATE": { "name": "Lock state", "description": "Request wheel-confirmed lock status.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "SET_PEDALS_MODE": {
+          "name": "Pedal mode", "description": "Select a pedal mode code; semantic labels are unverified.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "mode_0", "value": 0 }, { "id": "mode_1", "value": 1 }, { "id": "mode_2", "value": 2 }
+          ] }
+        },
+        "SET_LED_MODE": {
+          "name": "LED mode", "description": "LED mode code; valid model-specific modes are unverified.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 255, "step": 1, "unit": "mode_code" }
+        },
+        "SET_SPEED_LIMIT": {
+          "name": "Speed limit", "description": "Change maximum speed while preserving previously received alarm settings.", "encoding": "conditional",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "km/h" }
+        },
+        "SET_ALARM_SPEED": {
+          "name": "Alarm speeds", "description": "Set all three alarms while preserving the previously received maximum speed.", "encoding": "conditional",
+          "input": { "kind": "tuple", "apiType": "CommandValue.Integers", "fields": [
+            { "id": "alarm1", "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "km/h" } },
+            { "id": "alarm2", "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "km/h" } },
+            { "id": "alarm3", "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "km/h" } }
+          ] }
+        },
+        "CALIBRATE": { "name": "Calibrate", "description": "Start wheel calibration.", "encoding": "available", "input": { "kind": "none" } },
+        "REQUEST_SERIAL": { "name": "Serial number", "description": "Request the wheel serial number.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request firmware identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_BMS_SERIAL": { "name": "BMS serial number", "description": "Request BMS identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "SET_LED_STROBE": {
+          "name": "LED strobe", "description": "Strobe mode code; valid model-specific modes are unverified.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 255, "step": 1, "unit": "mode_code" }
+        },
+        "SET_CHARGE_LIMIT": {
+          "name": "Charge limit", "description": "Set charge cutoff percentage.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
+        },
+        "SET_STANDBY_DELAY": {
+          "name": "Standby delay", "description": "Set idle power-off delay; bounds describe encoding capacity.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 65535, "step": 1, "unit": "second" }
+        },
+        "SET_PEDAL_CUTOFF_ANGLE": {
+          "name": "Pedal cutoff angle", "description": "Set cutoff angle in tenths of a degree; bounds describe encoding capacity.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 65535, "step": 1, "unit": "degree", "scale": 0.1 }
+        },
+        "SET_PEDAL_PITCH_TRIM": {
+          "name": "Pedal pitch trim", "description": "Set signed pitch trim in tenths of a degree; bounds describe encoding capacity.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": -32768, "max": 32767, "step": 1, "unit": "degree", "scale": 0.1 }
+        },
+        "CUSTOM": {
+          "name": "Raw command", "description": "Unvalidated payload for a dedicated handler.", "encoding": "available", "operation": "raw",
+          "input": { "kind": "raw_payload", "description": "Owned bytes.", "valueTypes": ["bytes"] }
+        }
+      },
+      "profiles": []
+    },
+    "GotwayProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_LIGHT_MODE": {
+          "name": "Headlight mode", "description": "Select off, on or strobe lighting.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "off", "value": 0 }, { "id": "on", "value": 1 }, { "id": "strobe", "value": 2 }
+          ] }
+        },
+        "SET_PEDALS_MODE": {
+          "name": "Pedal mode", "description": "Select pedal response; free-mode model applicability is unverified.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }, { "id": "free", "value": 3 }
+          ] }
+        },
+        "SET_ALARM_SPEED": {
+          "name": "Alarm preset", "description": "Select alarm/tiltback behavior, not a speed. Dynamic mode requires compatible custom firmware.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "two_speed_alarms_and_pwm_tiltback", "value": 0 }, { "id": "one_speed_alarm_and_pwm_tiltback", "value": 1 },
+            { "id": "pwm_tiltback_only", "value": 2 }, { "id": "dynamic_pwm_tiltback", "value": 3 }
+          ] }
+        },
+        "SET_SPEED_LIMIT": {
+          "name": "Speed limit", "description": "Set tiltback speed; zero disables speed tiltback.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 99, "step": 1, "unit": "km/h" }
+        },
+        "CALIBRATE": { "name": "Calibrate", "description": "Start calibration and schedule its confirmation write.", "encoding": "available", "input": { "kind": "none" } },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "REQUEST_SERIAL": { "name": "Serial number", "description": "Request the wheel serial number.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request firmware identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } }
+      },
+      "profiles": []
+    },
+    "ExtremeBullProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_LIGHT_MODE": {
+          "name": "Headlight mode", "description": "Select off, on or strobe lighting.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "off", "value": 0 }, { "id": "on", "value": 1 }, { "id": "strobe", "value": 2 }
+          ] }
+        },
+        "SET_PEDALS_MODE": {
+          "name": "Pedal mode", "description": "Select pedal response; free-mode model applicability is unverified.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }, { "id": "free", "value": 3 }
+          ] }
+        },
+        "SET_ALARM_SPEED": {
+          "name": "Alarm preset", "description": "Select alarm/tiltback behavior, not a speed. Dynamic-mode firmware applicability is unverified.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "two_speed_alarms_and_pwm_tiltback", "value": 0 }, { "id": "one_speed_alarm_and_pwm_tiltback", "value": 1 },
+            { "id": "pwm_tiltback_only", "value": 2 }, { "id": "dynamic_pwm_tiltback", "value": 3 }
+          ] }
+        },
+        "SET_SPEED_LIMIT": {
+          "name": "Speed limit", "description": "Set tiltback speed; zero disables speed tiltback.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 99, "step": 1, "unit": "km/h" }
+        },
+        "CALIBRATE": { "name": "Calibrate", "description": "Start calibration and schedule its confirmation write.", "encoding": "available", "input": { "kind": "none" } },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "REQUEST_SERIAL": { "name": "Serial number", "description": "Request the wheel serial number.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request firmware identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } }
+      },
+      "profiles": []
+    },
+    "LeaperkimProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the low beam.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the low beam.", "encoding": "available", "input": { "kind": "none" } },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "LOCK": { "name": "Lock", "description": "Send a time-sensitive lock request.", "encoding": "available", "input": { "kind": "none" } },
+        "UNLOCK": { "name": "Unlock", "description": "Send a time-sensitive unlock request.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_PEDALS_MODE": {
+          "name": "Pedal mode", "description": "Select pedal response.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }
+          ] }
+        },
+        "RESET_TRIP": { "name": "Reset trip", "description": "Reset the wheel trip meter.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_HIGH_BEAM": { "name": "High beam", "description": "Enable or disable the separate high-beam circuit.", "encoding": "available", "input": { "kind": "boolean" } },
+        "SET_PEDAL_ANGLE": {
+          "name": "Pedal angle", "description": "Set signed pedal angle in tenths of a degree; bounds describe encoding capacity.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": -128, "max": 127, "step": 1, "unit": "degree", "scale": 0.1 }
+        },
+        "SET_RIDE_MODE": {
+          "name": "Ride mode", "description": "Set the ride response scalar, independent of discrete pedal mode.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "scalar" }
+        },
+        "SET_PWM_LIMIT": {
+          "name": "PWM limit", "description": "Set maximum PWM percentage.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
+        },
+        "CUSTOM": {
+          "name": "Raw command", "description": "Unvalidated payload for a dedicated handler.", "encoding": "available", "operation": "raw",
+          "input": { "kind": "raw_payload", "description": "Owned bytes or UTF-8 text.", "valueTypes": ["bytes", "text"] }
+        }
+      },
+      "profiles": []
+    },
+    "NosfetProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the low beam.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the low beam.", "encoding": "available", "input": { "kind": "none" } },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "LOCK": { "name": "Lock", "description": "Send a time-sensitive lock request.", "encoding": "available", "input": { "kind": "none" } },
+        "UNLOCK": { "name": "Unlock", "description": "Send a time-sensitive unlock request.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_PEDALS_MODE": {
+          "name": "Pedal mode", "description": "Select pedal response.", "encoding": "available",
+          "input": { "kind": "choice", "valueType": "integer", "options": [
+            { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }
+          ] }
+        },
+        "RESET_TRIP": { "name": "Reset trip", "description": "Reset the wheel trip meter.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_HIGH_BEAM": { "name": "High beam", "description": "Inherited high-beam toggle; model applicability is unverified.", "encoding": "available", "input": { "kind": "boolean" } },
+        "SET_PEDAL_ANGLE": {
+          "name": "Pedal angle", "description": "Set signed pedal angle in tenths of a degree; bounds describe encoding capacity.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": -128, "max": 127, "step": 1, "unit": "degree", "scale": 0.1 }
+        },
+        "SET_RIDE_MODE": {
+          "name": "Ride mode", "description": "Set the ride response scalar, independent of discrete pedal mode.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "scalar" }
+        },
+        "SET_PWM_LIMIT": {
+          "name": "PWM limit", "description": "Set maximum PWM percentage.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
+        },
+        "CUSTOM": {
+          "name": "Raw command", "description": "Unvalidated payload for a dedicated handler.", "encoding": "available", "operation": "raw",
+          "input": { "kind": "raw_payload", "description": "Owned bytes or UTF-8 text.", "valueTypes": ["bytes", "text"] }
+        }
+      },
+      "profiles": []
+    },
+    "NinebotProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "LOCK": { "name": "Lock", "description": "Request wheel locking.", "encoding": "available", "input": { "kind": "none" } },
+        "UNLOCK": { "name": "Unlock", "description": "Request wheel unlocking.", "encoding": "available", "input": { "kind": "none" } },
+        "REQUEST_SERIAL": { "name": "Serial number", "description": "Request the wheel serial number.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request firmware identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_BATTERY_INFO": { "name": "Battery information", "description": "Request battery telemetry.", "encoding": "available", "operation": "query", "input": { "kind": "none" } }
+      },
+      "profiles": []
+    },
+    "NinebotZProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the headlight.", "encoding": "available", "input": { "kind": "none" } },
+        "BEEP": { "name": "Horn", "description": "Sound the wheel horn.", "encoding": "available", "input": { "kind": "none" } },
+        "LOCK": { "name": "Lock", "description": "Request wheel locking.", "encoding": "available", "input": { "kind": "none" } },
+        "UNLOCK": { "name": "Unlock", "description": "Request wheel unlocking.", "encoding": "available", "input": { "kind": "none" } },
+        "SET_SPEED_LIMIT": {
+          "name": "Speed limit", "description": "Set the configured maximum speed.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 5, "max": 60, "step": 1, "unit": "km/h" }
+        },
+        "SET_ALARM_SPEED": {
+          "name": "Alarm speed", "description": "Set a single speed alarm threshold.", "encoding": "available",
+          "input": { "kind": "range", "valueType": "integer", "min": 5, "max": 60, "step": 1, "unit": "km/h" }
+        },
+        "CALIBRATE": { "name": "Calibrate", "description": "Start wheel calibration.", "encoding": "available", "input": { "kind": "none" } },
+        "REQUEST_SERIAL": { "name": "Serial number", "description": "Request the wheel serial number.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request firmware identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_BATTERY_INFO": { "name": "Battery information", "description": "Request BMS telemetry.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+        "CUSTOM": {
+          "name": "Raw command", "description": "Unvalidated payload for a dedicated handler.", "encoding": "available", "operation": "raw",
+          "input": { "kind": "raw_payload", "description": "Owned bytes.", "valueTypes": ["bytes"] }
+        }
+      },
+      "profiles": []
+    },
+    "InMotionProtocol": {
+      "hardwareLimits": "unknown",
+      "commands": {
+        "LIGHT_ON": { "name": "Headlight on", "description": "Enable the headlight using the identified dialect/model.", "encoding": "conditional", "input": { "kind": "none" } },
+        "LIGHT_OFF": { "name": "Headlight off", "description": "Disable the headlight using the identified dialect/model.", "encoding": "conditional", "input": { "kind": "none" } },
+        "LIGHT_BRIGHTNESS": {
+          "name": "Headlight brightness", "description": "Set V2 headlight brightness.", "encoding": "conditional",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
+        },
+        "BEEP": { "name": "Horn", "description": "Sound the horn using the identified dialect/model.", "encoding": "conditional", "input": { "kind": "none" } },
+        "LOCK": { "name": "Lock", "description": "Lock an identified wheel; P6/V9 require verified control authentication.", "encoding": "conditional", "input": { "kind": "none" } },
+        "UNLOCK": { "name": "Unlock", "description": "Unlock an identified wheel; P6/V9 require verified control authentication.", "encoding": "conditional", "input": { "kind": "none" } },
+        "POWER_OFF": { "name": "Power off", "description": "Turn off a V2 wheel.", "encoding": "conditional", "input": { "kind": "none" } },
+        "SET_SPEED_LIMIT": {
+          "name": "Speed limit", "description": "Requires an identified P6/V9 V2 profile.", "encoding": "conditional",
+          "input": { "kind": "unknown", "reason": "No model-independent speed-limit input." }
+        },
+        "REQUEST_SERIAL": { "name": "Serial number", "description": "Request V2 main information after dialect identification.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request V2 main information or probe an unknown dialect.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },
+        "REQUEST_BATTERY_INFO": { "name": "Battery information", "description": "Request V2 realtime information after dialect identification.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },
+        "CUSTOM": {
+          "name": "Raw command", "description": "Unvalidated payload for a dedicated handler, including identification.", "encoding": "available", "operation": "raw",
+          "input": { "kind": "raw_payload", "description": "Owned bytes.", "valueTypes": ["bytes"] }
+        }
+      },
+      "profiles": [
+        {
+          "id": "legacy-v1", "match": { "dialects": ["LEGACY_V1"] },
+          "commands": {
+            "LIGHT_BRIGHTNESS": { "name": "Headlight brightness", "description": "No legacy V1 encoder.", "encoding": "unavailable", "input": { "kind": "unknown", "reason": "Not implemented for legacy V1." } },
+            "POWER_OFF": { "name": "Power off", "description": "No legacy V1 encoder.", "encoding": "unavailable", "input": { "kind": "none" } },
+            "SET_SPEED_LIMIT": { "name": "Speed limit", "description": "No legacy V1 encoder.", "encoding": "unavailable", "input": { "kind": "unknown", "reason": "Not implemented for legacy V1." } },
+            "REQUEST_SERIAL": { "name": "Serial number", "description": "No legacy V1 query encoder.", "encoding": "unavailable", "operation": "query", "input": { "kind": "none" } },
+            "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "No legacy V1 query encoder.", "encoding": "unavailable", "operation": "query", "input": { "kind": "none" } },
+            "REQUEST_BATTERY_INFO": { "name": "Battery information", "description": "No legacy V1 query encoder.", "encoding": "unavailable", "operation": "query", "input": { "kind": "none" } }
+          }
+        },
+        {
+          "id": "p6-v2", "match": { "models": ["InMotion P6"], "dialects": ["V2"] },
+          "commands": {
+            "SET_SPEED_LIMIT": {
+              "name": "Speed limit", "description": "Set integer km/h without wire saturation; safe model limits remain unknown.", "encoding": "available",
+              "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 655, "step": 1, "unit": "km/h" }
+            },
+            "REQUEST_DIAGNOSTIC_LOG": { "name": "Download diagnostic log", "description": "Start a stateful, CRC-verified diagnostic file transfer.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } },
+            "CANCEL_DIAGNOSTIC_LOG": { "name": "Cancel diagnostic download", "description": "Close an active diagnostic file transfer.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } }
+          }
+        },
+        {
+          "id": "v9-v2", "match": { "models": ["InMotion V9"], "dialects": ["V2"] },
+          "commands": {
+            "SET_SPEED_LIMIT": {
+              "name": "Speed limit", "description": "Set integer km/h without wire saturation; safe model limits remain unknown.", "encoding": "available",
+              "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 655, "step": 1, "unit": "km/h" }
+            },
+            "REQUEST_LOCK_STATE": { "name": "Lock state", "description": "Request V9 detailed lock status.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
+            "REQUEST_DIAGNOSTIC_LOG": { "name": "Download diagnostic log", "description": "Start a stateful, CRC-verified diagnostic file transfer.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } },
+            "CANCEL_DIAGNOSTIC_LOG": { "name": "Cancel diagnostic download", "description": "Close an active diagnostic file transfer.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } }
+          }
+        }
+      ]
+    }
+  }
+}

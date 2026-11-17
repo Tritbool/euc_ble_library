@@ -30,20 +30,8 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
 
     override val manufacturer: String = "Leaperkim"
     override val protocolId: String = "LeaperkimProtocol"
-    override val supportedCommandTypes: Set<CommandType> = setOf(
-        CommandType.LIGHT_ON,
-        CommandType.LIGHT_OFF,
-        CommandType.SET_HIGH_BEAM,
-        CommandType.BEEP,
-        CommandType.LOCK,
-        CommandType.UNLOCK,
-        CommandType.SET_PEDALS_MODE,
-        CommandType.SET_PEDAL_ANGLE,
-        CommandType.SET_RIDE_MODE,
-        CommandType.SET_PWM_LIMIT,
-        CommandType.RESET_TRIP,
-        CommandType.CUSTOM
-    )
+    override val supportedCommandTypes: Set<CommandType>
+        get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
 
     override fun matchesDeviceName(deviceName: String): Boolean {
         val lower = deviceName.lowercase()

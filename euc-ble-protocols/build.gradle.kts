@@ -8,6 +8,8 @@ plugins {
     id("com.vanniktech.maven.publish")
 }
 
+apply(from = "command-catalogue.gradle.kts")
+
 jacoco {
     toolVersion = "0.8.14"
 }
@@ -62,6 +64,9 @@ kotlin {
         nodejs()
     }
     sourceSets {
+        commonMain {
+            kotlin.srcDir(tasks.named("generateCommandCatalogue"))
+        }
         all {
             languageSettings.optIn("io.github.tritbool.euc.ble.core.InternalEucBleApi")
         }
