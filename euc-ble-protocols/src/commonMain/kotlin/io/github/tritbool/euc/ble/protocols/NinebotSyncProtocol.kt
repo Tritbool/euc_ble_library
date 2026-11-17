@@ -78,16 +78,8 @@ class NinebotSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     override val manufacturer: String = "Ninebot"
     override val protocolId: String = "NinebotProtocol"
-    override val supportedCommandTypes: Set<CommandType> = setOf(
-        CommandType.LIGHT_ON,
-        CommandType.LIGHT_OFF,
-        CommandType.BEEP,
-        CommandType.LOCK,
-        CommandType.UNLOCK,
-        CommandType.REQUEST_SERIAL,
-        CommandType.REQUEST_FIRMWARE,
-        CommandType.REQUEST_BATTERY_INFO
-    )
+    override val supportedCommandTypes: Set<CommandType>
+        get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
 
     private val outbox = ProtocolOutbox()
 

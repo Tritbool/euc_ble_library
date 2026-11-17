@@ -148,6 +148,28 @@ class EUCProtocolContractTest {
     }
 
     @Test
+    fun facadeForwardsDiscoveryAndCheckedEncodingWithoutChangingLegacyValues() {
+        val protocol = KingsongProtocol()
+        try {
+            val descriptor = protocol.getCommandDescriptors().first { it.id == "SET_LIGHT_MODE" }
+            assertTrue(descriptor.input is CommandInput.Choice)
+            val encoded = protocol.encodeCommand(descriptor.id, CommandValue.Integer(2))
+                as CommandEncodingResult.Encoded
+            assertArrayEquals(protocol.createCommand(CommandType.SET_LIGHT_MODE, 2), encoded.payload)
+            val rejected = protocol.encodeCommand(descriptor.id, CommandValue.Integer(255))
+                as CommandEncodingResult.Rejected
+            assertEquals(CommandRejection.INVALID_VALUE, rejected.reason)
+            assertTrue(protocol.createCommand(CommandType.SET_LIGHT_MODE, 255).isNotEmpty())
+            val password = protocol.encodeCommand("SET_PASSWORD", CommandValue.Text("secret"))
+                as CommandEncodingResult.Rejected
+            assertFalse(password.toString().contains("secret"))
+            assertEquals(CommandRejection.INVALID_VALUE, password.reason)
+        } finally {
+            protocol.close()
+        }
+    }
+
+    @Test
     fun unrepresentableLegacyInputIsLoggedWithoutExposingItsContents() {
         val warnings = mutableListOf<String>()
         val logger = object : Logger by NoOpLogger() {

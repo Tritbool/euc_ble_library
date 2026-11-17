@@ -113,35 +113,17 @@ class KingsongSyncProtocol(
     override val manufacturer: String = "KingSong"
     override val protocolId: String = "KingsongProtocol"
     override val preferredWriteType: ProtocolWriteType = ProtocolWriteType.NO_RESPONSE
-    override val supportedCommandTypes: Set<CommandType> = setOf(
-        CommandType.LIGHT_ON,
-        CommandType.LIGHT_OFF,
-        CommandType.SET_LIGHT_MODE,
-        CommandType.LIGHT_BRIGHTNESS,
-        CommandType.BEEP,
-        CommandType.POWER_OFF,
-        CommandType.AUTHENTICATE,
-        CommandType.SET_PASSWORD,
-        CommandType.CHANGE_PASSWORD,
-        CommandType.REMOVE_PASSWORD,
-        CommandType.LOCK,
-        CommandType.UNLOCK,
-        CommandType.REQUEST_LOCK_STATE,
-        CommandType.SET_PEDALS_MODE,
-        CommandType.SET_LED_MODE,
-        CommandType.SET_LED_STROBE,
-        CommandType.SET_SPEED_LIMIT,
-        CommandType.SET_ALARM_SPEED,
-        CommandType.CALIBRATE,
-        CommandType.REQUEST_SERIAL,
-        CommandType.REQUEST_FIRMWARE,
-        CommandType.REQUEST_BMS_SERIAL,
-        CommandType.SET_CHARGE_LIMIT,
-        CommandType.SET_STANDBY_DELAY,
-        CommandType.SET_PEDAL_CUTOFF_ANGLE,
-        CommandType.SET_PEDAL_PITCH_TRIM,
-        CommandType.CUSTOM
-    )
+    override val supportedCommandTypes: Set<CommandType>
+        get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
+
+    override fun commandStateError(commandId: String): String? = when {
+        commandId == CommandType.SET_SPEED_LIMIT.name &&
+            (lastKnownAlarm1Speed == null || lastKnownAlarm2Speed == null || lastKnownAlarm3Speed == null) ->
+            "Wheel alarm settings must be received before changing the speed limit"
+        commandId == CommandType.SET_ALARM_SPEED.name && lastKnownWheelMaxSpeed == null ->
+            "Wheel maximum speed must be received before changing alarms"
+        else -> null
+    }
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.KINGSONG_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =

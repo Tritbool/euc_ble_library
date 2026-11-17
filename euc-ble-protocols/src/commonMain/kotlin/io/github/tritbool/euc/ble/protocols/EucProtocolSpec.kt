@@ -89,6 +89,44 @@ interface EucProtocolSpec {
      */
     fun createCommand(commandType: CommandType, value: CommandValue = CommandValue.None): ByteArray
 
+    /** Latest model/dialect snapshot. Conditional encoding still requires protocol state checks. */
+    fun getCommandDescriptors(): List<CommandDescriptor> = CommandCatalogue.getCommands(protocolId)
+
+    /** Open-ID encoder extension point; existing protocols retain their enum encoder. */
+    fun createCommand(commandId: String, value: CommandValue = CommandValue.None): ByteArray {
+        val type = CommandType.entries.firstOrNull { it.name == commandId } ?: return byteArrayOf()
+        return createCommand(type, value)
+    }
+
+    /** Additional live prerequisites; explanations must never include input values or credentials. */
+    fun commandStateError(commandId: String): String? = null
+
+    /**
+     * Checked contract API. Rejects invalid values before encoding (and its possible side effects),
+     * instead of relying on legacy clamping, masking or ignored fields.
+     */
+    fun encodeCommand(commandId: String, value: CommandValue = CommandValue.None): CommandEncodingResult {
+        val descriptor = getCommandDescriptors().firstOrNull { it.id == commandId }
+            ?: return CommandEncodingResult.Rejected(CommandRejection.UNKNOWN_COMMAND, "Command is not advertised")
+        if (descriptor.encoding == CommandEncoding.UNAVAILABLE || descriptor.encoding == CommandEncoding.UNKNOWN) {
+            return CommandEncodingResult.Rejected(CommandRejection.UNAVAILABLE, "Command is unavailable in this context")
+        }
+        if (descriptor.input is CommandInput.Extension) {
+            return CommandEncodingResult.Rejected(
+                CommandRejection.UNSUPPORTED_INPUT, "Input kind requires a dedicated library handler"
+            )
+        }
+        descriptor.input.validationError(value)?.let {
+            return CommandEncodingResult.Rejected(CommandRejection.INVALID_VALUE, it)
+        }
+        commandStateError(commandId)?.let {
+            return CommandEncodingResult.Rejected(CommandRejection.UNAVAILABLE, it)
+        }
+        val payload = createCommand(commandId, value)
+        return if (payload.isNotEmpty()) CommandEncodingResult.Encoded(payload)
+        else CommandEncodingResult.Rejected(CommandRejection.ENCODING_FAILED, "Protocol state prevented encoding")
+    }
+
     /**
      * Explicit command support matrix for this protocol.
      * Commands outside this set are considered unsupported by design.

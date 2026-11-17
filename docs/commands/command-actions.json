@@ -1,0 +1,98 @@
+{
+  "KingsongProtocol": {
+    "SET_LIGHT_MODE": [
+      { "action": "remap_client", "description": "Remap on 0->1 and off 1->0; keep auto=2 and remove strobe." }
+    ],
+    "LIGHT_BRIGHTNESS": [
+      { "action": "remap_client", "description": "Replace the percentage slider with off/on/auto using 0/1/100, or SET_LIGHT_MODE using 0/1/2." }
+    ],
+    "SET_PEDALS_MODE": [
+      { "action": "review_library", "description": "Establish hard/soft meanings of codes 0..2 from wheel evidence; do not infer them from TuxWheel or another brand." }
+    ],
+    "SET_LED_MODE": [
+      { "action": "review_library", "description": "Establish valid modes per model/firmware. Neither the client's 0..9 nor the encoder's byte capacity proves valid options." }
+    ],
+    "SET_LED_STROBE": [
+      { "action": "review_library", "description": "Establish semantic strobe modes per model/firmware; byte capacity is not a valid option list." }
+    ],
+    "SET_SPEED_LIMIT": [
+      { "action": "remap_client", "description": "Use the library range and retain the readiness guard for all three alarm settings." },
+      { "action": "review_library", "description": "Migrate callers to checked encoding; legacy encoding still substitutes zero for unknown companion settings." }
+    ],
+    "SET_ALARM_SPEED": [
+      { "action": "remap_client", "description": "Submit all three alarm values together and retain the maximum-speed readiness guard." },
+      { "action": "review_library", "description": "Migrate callers to checked encoding; legacy encoding still substitutes zero for an unknown maximum speed." }
+    ]
+  },
+  "GotwayProtocol": {
+    "SET_LIGHT_MODE": [
+      { "action": "remap_client", "description": "Remap on 0->1, off 1->0 and strobe 3->2; remove auto." }
+    ],
+    "SET_PEDALS_MODE": [
+      { "action": "remap_client", "description": "Remap soft 0->2 and hard 2->0; keep medium=1. Verify model applicability before offering free=3." }
+    ],
+    "SET_SPEED_LIMIT": [
+      { "action": "remap_client", "description": "Use 0..99, with zero explicitly meaning disabled tiltback; reject incompatible persisted values instead of silently clamping." }
+    ],
+    "SET_ALARM_SPEED": [
+      { "action": "remap_client", "description": "Keep a preset selector rather than a km/h control; dynamic PWM tiltback requires compatible custom firmware." }
+    ]
+  },
+  "ExtremeBullProtocol": {
+    "SET_LIGHT_MODE": [
+      { "action": "remap_client", "description": "Remap on 0->1, off 1->0 and strobe 3->2; remove auto." }
+    ],
+    "SET_PEDALS_MODE": [
+      { "action": "remap_client", "description": "Remap soft 0->2 and hard 2->0; keep medium=1. Verify model applicability before offering free=3." }
+    ],
+    "SET_SPEED_LIMIT": [
+      { "action": "remap_client", "description": "Use 0..99, with zero explicitly meaning disabled tiltback; reject incompatible persisted values instead of silently clamping." }
+    ],
+    "SET_ALARM_SPEED": [
+      { "action": "remap_client", "description": "Keep a preset selector rather than a km/h control; dynamic-mode firmware applicability is unverified." }
+    ]
+  },
+  "LeaperkimProtocol": {
+    "SET_PEDALS_MODE": [
+      { "action": "remap_client", "description": "Remap soft 0->2 and hard 2->0; keep medium=1." }
+    ]
+  },
+  "NosfetProtocol": {
+    "SET_PEDALS_MODE": [
+      { "action": "remap_client", "description": "Remap soft 0->2 and hard 2->0; keep medium=1." }
+    ]
+  },
+  "NinebotZProtocol": {
+    "SET_SPEED_LIMIT": [
+      { "action": "remap_client", "description": "Use the library's 5..60 km/h encoding range, not a universal 0..100 slider; model-safe limits remain unknown." }
+    ],
+    "SET_ALARM_SPEED": [
+      { "action": "remap_client", "description": "Use a single threshold in 5..60 km/h, not a universal 0..100 slider." }
+    ]
+  },
+  "InMotionProtocol": {
+    "LIGHT_BRIGHTNESS": [
+      { "action": "review_library", "description": "No legacy V1 encoder; keep unavailable unless wheel evidence supports implementing one." }
+    ],
+    "POWER_OFF": [
+      { "action": "review_library", "description": "No legacy V1 encoder; keep unavailable unless wheel evidence supports implementing one." }
+    ],
+    "SET_SPEED_LIMIT": [
+      { "action": "review_library", "description": "Only identified P6/V9 V2 models have an encoder. Checked encoding rejects values above 655; legacy encoding can saturate. Establish safe model limits." }
+    ],
+    "REQUEST_SERIAL": [
+      { "action": "review_library", "description": "No legacy V1 query encoder; retain dialect gating unless implementation is supported by evidence." }
+    ],
+    "REQUEST_FIRMWARE": [
+      { "action": "review_library", "description": "No legacy V1 query encoder; retain dialect gating unless implementation is supported by evidence." }
+    ],
+    "REQUEST_BATTERY_INFO": [
+      { "action": "review_library", "description": "No legacy V1 query encoder; retain dialect gating unless implementation is supported by evidence." }
+    ]
+  },
+  "_unattributed": {
+    "SPEAKER_VOLUME": [
+      { "action": "review_library", "description": "TuxWheel contains a support-gated 0..100 control, but no built-in protocol advertises it. Identify protocol/model support and wire evidence before flagging implement_library." }
+    ]
+  }
+}

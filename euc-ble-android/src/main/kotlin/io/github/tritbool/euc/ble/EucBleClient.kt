@@ -21,7 +21,9 @@ import io.github.tritbool.euc.ble.models.EUCDevice
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.protocols.CommandSupport
+import io.github.tritbool.euc.ble.protocols.CommandDescriptor
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.CommandValue
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
@@ -97,6 +99,15 @@ class EucBleClient(
 
     fun getCommandSupport(commandType: CommandType): CommandSupport {
         return bleManager.getCommandSupport(commandType)
+    }
+
+    /** Refresh after protocol identification, model updates or reconnects; not a wheel safety guarantee. */
+    fun getCommandDescriptors(): List<CommandDescriptor> = bleManager.getCommandDescriptors()
+
+    /** Validates against the current contract; rejected inputs are reported through ErrorCallback. */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun sendCommand(commandId: String, value: CommandValue = CommandValue.None) {
+        bleManager.sendCommand(commandId, value)
     }
 
     /** Latest wheel-confirmed security state. Null when unavailable; collect for client PIN UI. */

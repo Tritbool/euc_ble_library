@@ -13,6 +13,8 @@ import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.WheelSecurityEvent
 import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.protocols.CommandSupport
+import io.github.tritbool.euc.ble.protocols.CommandDescriptor
+import io.github.tritbool.euc.ble.protocols.CommandEncodingResult
 import io.github.tritbool.euc.ble.protocols.CommandType
 import io.github.tritbool.euc.ble.protocols.CommandValue
 import io.github.tritbool.euc.ble.protocols.EUCProtocol
@@ -157,6 +159,12 @@ class ProtocolSessionDriver(
     }
     override fun createCommand(commandType: CommandType, value: CommandValue): ByteArray =
         call { protocol.createCommand(commandType, value) }
+    override fun getCommandDescriptors(): List<CommandDescriptor> = call { protocol.getCommandDescriptors() }
+    override fun createCommand(commandId: String, value: CommandValue): ByteArray =
+        call { protocol.createCommand(commandId, value) }
+    override fun commandStateError(commandId: String): String? = call { protocol.commandStateError(commandId) }
+    override fun encodeCommand(commandId: String, value: CommandValue): CommandEncodingResult =
+        call { protocol.encodeCommand(commandId, value) }
     override val supportedCommandTypes: Set<CommandType> get() = call { protocol.supportedCommandTypes }
     override fun getCommandSupport(commandType: CommandType): CommandSupport =
         call { protocol.getCommandSupport(commandType) }

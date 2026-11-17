@@ -162,31 +162,21 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     override val manufacturer: String = "InMotion"
     override val protocolId: String = "InMotionProtocol"
-    private val baseSupportedCommandTypes: Set<CommandType> = setOf(
-        CommandType.LIGHT_ON,
-        CommandType.LIGHT_OFF,
-        CommandType.LIGHT_BRIGHTNESS,
-        CommandType.BEEP,
-        CommandType.LOCK,
-        CommandType.UNLOCK,
-        CommandType.POWER_OFF,
-        CommandType.SET_SPEED_LIMIT,
-        CommandType.REQUEST_SERIAL,
-        CommandType.REQUEST_FIRMWARE,
-        CommandType.REQUEST_BATTERY_INFO,
-        CommandType.CUSTOM
-    )
-
     override val supportedCommandTypes: Set<CommandType>
-        get() = buildSet {
-            addAll(baseSupportedCommandTypes)
-            if (lastDetectedDialect == Dialect.V2) {
-                if (modelName == V9) add(CommandType.REQUEST_LOCK_STATE)
-                if (supportsExtendedRoutingPacks()) {
-                    add(CommandType.REQUEST_DIAGNOSTIC_LOG)
-                    add(CommandType.CANCEL_DIAGNOSTIC_LOG)
-                }
+        get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
+
+    override fun getCommandDescriptors(): List<CommandDescriptor> =
+        CommandCatalogue.getCommands(protocolId, CommandContext(modelName, lastDetectedDialect.name)).map {
+            val blocked = when {
+                lastDetectedDialect == Dialect.UNKNOWN ->
+                    it.id != CommandType.REQUEST_FIRMWARE.name && it.id != CommandType.CUSTOM.name
+                lastDetectedDialect == Dialect.V2 && it.id == CommandType.SET_SPEED_LIMIT.name ->
+                    !supportsExtendedRoutingPacks()
+                lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
+                    it.id == CommandType.LOCK.name || it.id == CommandType.UNLOCK.name
+                else -> false
             }
+            if (blocked) it.copy(encoding = CommandEncoding.UNAVAILABLE) else it
         }
 
     override fun getServiceUUID(): UUID {

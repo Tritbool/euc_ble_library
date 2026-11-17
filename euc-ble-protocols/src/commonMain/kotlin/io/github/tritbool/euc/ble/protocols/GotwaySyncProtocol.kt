@@ -298,18 +298,8 @@ open class GotwaySyncProtocol(
 
     override val manufacturer: String = "Gotway"
     override val protocolId: String = "GotwayProtocol"
-    override val supportedCommandTypes: Set<CommandType> = setOf(
-        CommandType.LIGHT_ON,
-        CommandType.LIGHT_OFF,
-        CommandType.SET_LIGHT_MODE,
-        CommandType.BEEP,
-        CommandType.SET_PEDALS_MODE,
-        CommandType.SET_ALARM_SPEED,
-        CommandType.SET_SPEED_LIMIT,
-        CommandType.CALIBRATE,
-        CommandType.REQUEST_SERIAL,
-        CommandType.REQUEST_FIRMWARE
-    )
+    override val supportedCommandTypes: Set<CommandType>
+        get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
 
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
