@@ -7,8 +7,10 @@ portable Kotlin descriptors from this dictionary; no JSON parser is required at 
 
 Migration instructions and maintainer follow-ups live separately in
 [`command-actions.json`](command-actions.json), keyed by `[protocolId][commandId]`.
-Each entry contains actions such as `remap_client`, `review_library` or, once verified,
-`implement_library`. These flags neither enable commands nor create issues automatically.
+Each entry contains follow-ups such as `remap_client`, `integrate_client`, `review_library`
+or, once verified, `implement_library`. These flags neither enable commands nor create
+issues automatically. The file is not a command inventory: an absent entry means no
+migration follow-up is recorded, not that the command is unsupported or missing.
 `_unattributed` holds commands whose protocol attribution still needs investigation.
 
 ## Client API

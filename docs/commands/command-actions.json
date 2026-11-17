@@ -17,11 +17,22 @@
     ],
     "SET_SPEED_LIMIT": [
       { "action": "remap_client", "description": "Use the library range and retain the readiness guard for all three alarm settings." },
-      { "action": "review_library", "description": "Migrate callers to checked encoding; legacy encoding still substitutes zero for unknown companion settings." }
+      { "action": "review_library", "description": "Migrate callers to checked encoding; legacy encoding still substitutes zero for unknown companion settings." },
+      { "action": "integrate_client", "description": "Expose checked speed writes only after the companion alarm settings are known." }
     ],
     "SET_ALARM_SPEED": [
       { "action": "remap_client", "description": "Submit all three alarm values together and retain the maximum-speed readiness guard." },
-      { "action": "review_library", "description": "Migrate callers to checked encoding; legacy encoding still substitutes zero for an unknown maximum speed." }
+      { "action": "review_library", "description": "Migrate callers to checked encoding; legacy encoding still substitutes zero for an unknown maximum speed." },
+      { "action": "integrate_client", "description": "Expose checked three-threshold writes only after the companion maximum speed is known." }
+    ],
+    "LOCK": [
+      { "action": "integrate_client", "description": "Expose locking only after authentication and present wheel-confirmed status separately." }
+    ],
+    "UNLOCK": [
+      { "action": "integrate_client", "description": "Expose challenge-based unlocking; do not report success until the wheel confirms it." }
+    ],
+    "REQUEST_LOCK_STATE": [
+      { "action": "integrate_client", "description": "Expose the notification-confirmed lock-state query." }
     ]
   },
   "GotwayProtocol": {
@@ -78,7 +89,23 @@
       { "action": "review_library", "description": "No legacy V1 encoder; keep unavailable unless wheel evidence supports implementing one." }
     ],
     "SET_SPEED_LIMIT": [
-      { "action": "review_library", "description": "Only identified P6/V9 V2 models have an encoder. Checked encoding rejects values above 655; legacy encoding can saturate. Establish safe model limits." }
+      { "action": "review_library", "description": "Only identified P6/V9 V2 models have an encoder. Checked encoding rejects values above 655; legacy encoding can saturate. Establish safe model limits." },
+      { "action": "integrate_client", "description": "Expose checked speed writes only for identified P6/V9 V2 profiles; do not present encoding bounds as safe operating limits." }
+    ],
+    "LOCK": [
+      { "action": "integrate_client", "description": "Expose locking only after model/dialect discovery and retain P6/V9 authentication checks." }
+    ],
+    "UNLOCK": [
+      { "action": "integrate_client", "description": "Expose unlocking only after model/dialect discovery and retain P6/V9 authentication checks." }
+    ],
+    "REQUEST_LOCK_STATE": [
+      { "action": "integrate_client", "description": "Expose the V9 lock-state query only for its matching profile." }
+    ],
+    "REQUEST_DIAGNOSTIC_LOG": [
+      { "action": "integrate_client", "description": "Expose the P6/V9 V2 diagnostic download and surface transfer state, progress, failure, and verified bytes." }
+    ],
+    "CANCEL_DIAGNOSTIC_LOG": [
+      { "action": "integrate_client", "description": "Expose cancellation for an active P6/V9 V2 diagnostic-log transfer." }
     ],
     "REQUEST_SERIAL": [
       { "action": "review_library", "description": "No legacy V1 query encoder; retain dialect gating unless implementation is supported by evidence." }
