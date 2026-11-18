@@ -108,16 +108,16 @@
           ] }
         },
         "SET_PEDALS_MODE": {
-          "name": "Pedal mode", "description": "Select pedal response; free-mode model applicability is unverified.", "encoding": "available",
+          "name": "Pedal mode", "description": "Select pedal response. A fourth mode exists only on SmirnoV custom firmware.", "encoding": "available",
           "input": { "kind": "choice", "valueType": "integer", "options": [
-            { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }, { "id": "free", "value": 3 }
+            { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }
           ] }
         },
         "SET_ALARM_SPEED": {
-          "name": "Alarm preset", "description": "Select alarm/tiltback behavior, not a speed. Dynamic mode requires compatible custom firmware.", "encoding": "available",
+          "name": "Alarm preset", "description": "Select alarm/tiltback behavior, not a speed. A fourth preset exists only on Freestyl3r custom firmware.", "encoding": "available",
           "input": { "kind": "choice", "valueType": "integer", "options": [
             { "id": "two_speed_alarms_and_pwm_tiltback", "value": 0 }, { "id": "one_speed_alarm_and_pwm_tiltback", "value": 1 },
-            { "id": "pwm_tiltback_only", "value": 2 }, { "id": "dynamic_pwm_tiltback", "value": 3 }
+            { "id": "pwm_tiltback_only", "value": 2 }
           ] }
         },
         "SET_SPEED_LIMIT": {
@@ -129,7 +129,31 @@
         "REQUEST_SERIAL": { "name": "Serial number", "description": "Request the wheel serial number.", "encoding": "available", "operation": "query", "input": { "kind": "none" } },
         "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request firmware identification.", "encoding": "available", "operation": "query", "input": { "kind": "none" } }
       },
-      "profiles": []
+      "profiles": [
+        {
+          "id": "smirnov", "match": { "dialects": ["SV"] },
+          "commands": {
+            "SET_PEDALS_MODE": {
+              "name": "Pedal mode", "description": "Select pedal response, including the fourth mode added by SmirnoV custom firmware.", "encoding": "available",
+              "input": { "kind": "choice", "valueType": "integer", "options": [
+                { "id": "hard", "value": 0 }, { "id": "medium", "value": 1 }, { "id": "soft", "value": 2 }, { "id": "free", "value": 3 }
+              ] }
+            }
+          }
+        },
+        {
+          "id": "freestyl3r", "match": { "dialects": ["Freestyl3r"] },
+          "commands": {
+            "SET_ALARM_SPEED": {
+              "name": "Alarm preset", "description": "Select alarm/tiltback behavior, including the fourth preset added by Freestyl3r custom firmware.", "encoding": "available",
+              "input": { "kind": "choice", "valueType": "integer", "options": [
+                { "id": "two_speed_alarms_and_pwm_tiltback", "value": 0 }, { "id": "one_speed_alarm_and_pwm_tiltback", "value": 1 },
+                { "id": "pwm_tiltback_only", "value": 2 }, { "id": "dynamic_pwm_tiltback", "value": 3 }
+              ] }
+            }
+          }
+        }
+      ]
     },
     "ExtremeBullProtocol": {
       "hardwareLimits": "unknown",

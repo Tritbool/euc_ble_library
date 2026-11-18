@@ -41,7 +41,10 @@ import io.github.tritbool.euc.ble.core.InternalEucBleApi
  * @param rollAngleMode Protocol-specific roll-angle-mode code.
  * @param usesMiles True when the wheel reports imperial display mode, false for metric, or null when unknown.
  * Metric units are still used for decoded physical measurements.
- * @param autoPowerOffMinutes Configured auto-power-off delay in minutes.
+ * @param autoPowerOffMinutes Auto-power-off delay in minutes (whole minutes, truncated).
+ * Protocols that encode this as a live countdown expose the time still remaining before the
+ * wheel auto-sleeps rather than a fixed configured delay, so the value can decrease frame to
+ * frame (Gotway/Begode do this and report seconds, truncated here to minutes).
  * @param tiltBackSpeed Configured tilt-back speed threshold in km/h where its unit is defined by the protocol;
  * otherwise the protocol's encoded integer is preserved.
  * @param ledMode Protocol-specific LED mode code.

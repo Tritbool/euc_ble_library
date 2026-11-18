@@ -20,7 +20,8 @@ import io.github.tritbool.euc.ble.core.EucUuid as UUID
  * Improved KingSong protocol: tolerant parsing, header resync, header-aware frame reassembly
  * using ByteByByteFrameParser, safe bounds checks, optional cell voltages parsing, and clamped command generation.
  *
- * Supports frame types: 0xA9 (live telemetry), 0xB9 (distance/fan/motorTemperature), 0xBB (name/model/version),
+ * Supports frame types: 0xA9 (live telemetry + pedal hardness), 0xB9 (distance/fan/motorTemperature),
+ * 0xBB (name/model/version),
  * 0xB3 (serial number), 0xF5 (CPU load/PWM), 0xF6 (dynamic speed limit), 0xA4/0xB5 (speed settings),
  * 0xF1/0xF2 (Smart BMS data).
  */
@@ -184,6 +185,7 @@ class KingsongSyncProtocol(
             lastKnownWheelDistance = null
             lastKnownTotalDistance = null
             lastKnownLightMode = null
+            lastKnownPedalsMode = null
             inferredSeriesCells = null
             bmsCellPages.clear()
             bmsSummary.clear()
@@ -278,6 +280,7 @@ class KingsongSyncProtocol(
     private var lastKnownWheelDistance: Double? = null
     private var lastKnownTotalDistance: Double? = null
     private var lastKnownLightMode: Int? = null
+    private var lastKnownPedalsMode: Int? = null
     private var inferredSeriesCells: Int? = null
 
     // BMS cell data: bmsIndex (1 or 2) -> array of cell voltages
@@ -319,6 +322,10 @@ class KingsongSyncProtocol(
 
         // Special byte values
         private const val BMS_FRAME_OFFSET = 0xF0
+        /** Frame 0xA9 byte 15: marks the pedal-mode byte at offset 14 as meaningful. */
+        private const val PEDALS_MODE_VALID = 0xE0
+        /** Highest pedal-mode index KingSong is known to report; newer indices stay unreported. */
+        private const val PEDALS_MODE_MAX = 3
 
         // Serial number length
         private const val SERIAL_NUMBER_LENGTH = 17
@@ -328,6 +335,8 @@ class KingsongSyncProtocol(
         private const val OFFSET_SPEED = 4
         private const val OFFSET_MESSAGE_TYPE = 16
         private const val OFFSET_PAGE_NUM = 17
+        private const val OFFSET_PEDALS_MODE = 14
+        private const val OFFSET_PEDALS_MODE_MARKER = 15
 
         private const val QUERY_ID_REQUEST_ALARMS = "ks.request-alarms"
         const val PASSWORD_OPERATION_TIMEOUT_MS = 3000L
@@ -499,9 +508,19 @@ class KingsongSyncProtocol(
             val temperature = if (ensureRange(data, base + 12, 2))
                 ByteUtils.getSignedShortLE(data, base + 12) / 100.0 else 0.0
 
-            // Byte 14 carries the ride mode (when byte 15 is the 0xE0 marker) and byte 15
-            // is that marker, not a battery level: KingSong never transmits a battery
-            // percentage, so it is always derived from the pack voltage.
+            // Byte 15 is a validity marker, not a battery level: KingSong never transmits a
+            // battery percentage, so it is always derived from the pack voltage. When it reads
+            // 0xE0, byte 14 is the pedal hardness the wheel is running -- the only place
+            // KingSong ever reports it back, since there is no settings-read frame for it.
+            // Frames whose marker is not 0xE0 say nothing, so the last known mode stands.
+            if (ensureRange(data, base + OFFSET_PEDALS_MODE_MARKER, 1) &&
+                ByteUtils.getUnsignedByte(data, base + OFFSET_PEDALS_MODE_MARKER) == PEDALS_MODE_VALID &&
+                ensureRange(data, base + OFFSET_PEDALS_MODE, 1)
+            ) {
+                val pedalsMode = ByteUtils.getUnsignedByte(data, base + OFFSET_PEDALS_MODE)
+                if (pedalsMode in 0..PEDALS_MODE_MAX) lastKnownPedalsMode = pedalsMode
+            }
+
             val batteryLevel = estimateBatteryPercent(voltage)
 
             // === Sanity filters ===
@@ -551,7 +570,8 @@ class KingsongSyncProtocol(
                 alarm3Speed = lastKnownAlarm3Speed,
                 wheelMaxSpeed = lastKnownWheelMaxSpeed,
                 wheelDistance = lastKnownWheelDistance,
-                lightMode = lastKnownLightMode
+                lightMode = lastKnownLightMode,
+                pedalsMode = lastKnownPedalsMode
             )
         } catch (_: Exception) {
             return null

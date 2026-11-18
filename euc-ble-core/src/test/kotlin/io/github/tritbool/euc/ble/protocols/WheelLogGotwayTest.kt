@@ -386,7 +386,8 @@ class WheelLogGotwayTest {
             val expectedAlarmMode = settings?.let { (it shr 10) and 0x03 }
             val expectedRollAngleMode = settings?.let { (it shr 7) and 0x03 }
             val expectedUsesMiles = settings?.let { (it and 0x01) == 1 }
-            val expectedAutoPowerOff = ByteUtils.tryGetUnsignedShortBE(raw, 8)
+            val expectedAutoPowerOff =
+                ByteUtils.tryGetUnsignedShortBE(raw, 8)?.let { it / 60 }
             val expectedTiltBack =
                 ByteUtils.tryGetUnsignedShortBE(raw, 10)?.takeIf { it < maxValidTiltBackSpeed }
             val expectedLedMode = ByteUtils.tryGetUnsignedByte(raw, 13)

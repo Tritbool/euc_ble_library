@@ -96,11 +96,12 @@ class GotwayProtocolTest {
      * Helper to create a Type B frame (for total distance).
      * Format for Type B:
      *   [2-5]: Total distance (BE, uint32)
+     *   [8-9]: Auto-sleep countdown remaining, in seconds (BE, uint16)
      */
     private fun createGotwayFrameTypeB(
         distanceRaw: Long,
         settings: Int = 0,
-        autoPowerOffMinutes: Int = 0,
+        autoPowerOffSeconds: Int = 0,
         tiltBackSpeed: Int = 0,
         ledMode: Int = 0,
         alertFlags: Int = 0,
@@ -118,8 +119,8 @@ class GotwayProtocolTest {
         // Settings and mode data
         frame[6] = ((settings shr 8) and 0xFF).toByte()
         frame[7] = (settings and 0xFF).toByte()
-        frame[8] = ((autoPowerOffMinutes shr 8) and 0xFF).toByte()
-        frame[9] = (autoPowerOffMinutes and 0xFF).toByte()
+        frame[8] = ((autoPowerOffSeconds shr 8) and 0xFF).toByte()
+        frame[9] = (autoPowerOffSeconds and 0xFF).toByte()
         frame[10] = ((tiltBackSpeed shr 8) and 0xFF).toByte()
         frame[11] = (tiltBackSpeed and 0xFF).toByte()
         frame[12] = 0x00
@@ -376,7 +377,7 @@ class GotwayProtocolTest {
         val frame = createGotwayFrameTypeB(
             distanceRaw = 456789,
             settings = settings,
-            autoPowerOffMinutes = 15,
+            autoPowerOffSeconds = 15 * 60,
             tiltBackSpeed = 40,
             ledMode = 5,
             alertFlags = 0b0010_1101,
@@ -399,6 +400,30 @@ class GotwayProtocolTest {
             assertEquals(2, result.lightMode)
             assertEquals(0b0010_1101, result.alertFlags)
             assertEquals(true, result.wheelAlarm)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testDecodeTypeBAutoPowerOffSecondsAreConvertedToMinutes() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        // Real Begode/Gotway captures show bytes 8-9 as an auto-sleep countdown expressed in
+        // seconds and saturating at 7200 (2 h). A wheel idling just below that ceiling reported
+        // 7170, which used to surface in the UI as an impossible "7170 min" auto power-off.
+        val frame = createGotwayFrameTypeB(
+            distanceRaw = 1000,
+            autoPowerOffSeconds = 7170
+        )
+
+        protocol.dataFlow.test {
+            protocol.decode(frame)
+
+            val result = awaitItem()
+
+            assertEquals(119, result.autoPowerOffMinutes)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -987,10 +1012,45 @@ class GotwayProtocolTest {
 
     @Test
     fun testCreateCommandSetPedalsModeValues() {
-        assertArrayEquals("s".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
+        // 'h'ard / 'f'irm / 's'oft per the Begode protocol reference. 'i' selects the fourth pedal
+        // mode, which only SmirnoV custom firmware accepts.
+        assertArrayEquals("h".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 0))
         assertArrayEquals("f".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 1))
-        assertArrayEquals("h".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
+        assertArrayEquals("s".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 2))
         assertArrayEquals("i".encodeToByteArray(), protocol.createCommand(CommandType.SET_PEDALS_MODE, 3))
+    }
+
+    /**
+     * Writing a pedal mode and reading back the settings word the wheel then reports has to land on
+     * the option that was written. The raw field is documented as 0=soft, 1=medium, 2=hard while the
+     * option ids are 0=hard, 1=medium, 2=soft, so the two spaces only agree when the encoder sends
+     * 'h' for hard and 's' for soft. Guards against the two halves being corrected separately.
+     */
+    @Test
+    fun testPedalsModeWriteReadRoundTrip() = runTest {
+        tearDown()
+        protocol = GotwayProtocol(scope = backgroundScope)
+
+        val rawForLetter = mapOf('h' to 2, 'f' to 1, 's' to 0)
+
+        for (option in 0..2) {
+            val letter = protocol.createCommand(CommandType.SET_PEDALS_MODE, option)
+                .decodeToString().single()
+            val frame = createGotwayFrameTypeB(
+                distanceRaw = 0,
+                settings = rawForLetter.getValue(letter) shl 13,
+            )
+            protocol.dataFlow.test {
+                protocol.decode(frame)
+                assertEquals(
+                    "option $option sent '$letter', which the wheel reports as pedals mode " +
+                        "${rawForLetter.getValue(letter)}",
+                    option,
+                    awaitItem().pedalsMode,
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
     }
 
     @Test
@@ -1008,6 +1068,40 @@ class GotwayProtocolTest {
     fun testCreateCommandSetPedalsModeInvalidValueReturnsEmpty() {
         val command = protocol.createCommand(CommandType.SET_PEDALS_MODE, "invalid")
         assertArrayEquals(byteArrayOf(), command)
+    }
+
+    private fun choiceOptionIds(commandId: String): List<String> =
+        (protocol.getCommandDescriptors().first { it.id == commandId }.input as CommandInput.Choice)
+            .options.map { it.id }
+
+    /** The fourth pedal mode is a SmirnoV addition, so it must stay hidden on stock firmware. */
+    @Test
+    fun testPedalsModeOptionsFollowFirmwareVariant() {
+        val stock = listOf("hard", "medium", "soft")
+        assertEquals(stock, choiceOptionIds("SET_PEDALS_MODE"))
+
+        protocol.decode("BF1.0.0".encodeToByteArray())
+        assertEquals(stock + "free", choiceOptionIds("SET_PEDALS_MODE"))
+
+        protocol.decode("GW2.5.1".encodeToByteArray())
+        assertEquals(stock, choiceOptionIds("SET_PEDALS_MODE"))
+    }
+
+    /** The fourth alarm preset is a Freestyl3r addition, so it must stay hidden on stock firmware. */
+    @Test
+    fun testAlarmPresetOptionsFollowFirmwareVariant() {
+        val stock = listOf(
+            "two_speed_alarms_and_pwm_tiltback",
+            "one_speed_alarm_and_pwm_tiltback",
+            "pwm_tiltback_only",
+        )
+        assertEquals(stock, choiceOptionIds("SET_ALARM_SPEED"))
+
+        protocol.decode("CF1.0.3".encodeToByteArray())
+        assertEquals(stock + "dynamic_pwm_tiltback", choiceOptionIds("SET_ALARM_SPEED"))
+
+        protocol.decode("GW2.5.1".encodeToByteArray())
+        assertEquals(stock, choiceOptionIds("SET_ALARM_SPEED"))
     }
 
     @Test

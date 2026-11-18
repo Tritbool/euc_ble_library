@@ -369,6 +369,57 @@ class KingsongProtocolTest {
         }
     }
 
+    // --- Pedal hardness (A9 byte 14, only meaningful when byte 15 is the 0xE0 marker) ---
+
+    @Test
+    fun pedalsModeComesFromTelemetryWhenTheModeMarkerIsValid() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame(statusByte = 2, batteryByte = 0xE0))
+            assertEquals(2, awaitItem().pedalsMode)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun pedalsModeStaysUnknownUntilMarkedAndSurvivesFramesThatSayNothing() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame(statusByte = 2, batteryByte = 0x00))
+            assertNull(awaitItem().pedalsMode)
+            protocol.decode(createA9Frame(statusByte = 1, batteryByte = 0xE0))
+            assertEquals(1, awaitItem().pedalsMode)
+            protocol.decode(createA9Frame(statusByte = 0, batteryByte = 0x00))
+            assertEquals(1, awaitItem().pedalsMode)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun pedalsModeDecodesFromAKingSongTelemetryCapture() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        // First 0xA9 frame of RAW_2023_08_19_18_34_07.csv: byte 14 = 0x00, byte 15 = 0xE0.
+        val capture = byteArrayOf(
+            0xAA.toByte(), 0x55, 0xEC.toByte(), 0x2A, 0x00, 0x00, 0x0C, 0x00,
+            0x35, 0x02, 0x00, 0x00, 0xD0.toByte(), 0x07, 0x00, 0xE0.toByte(),
+            0xA9.toByte(), 0x14, 0x5A.toByte(), 0x5A.toByte()
+        )
+        protocol.dataFlow.test {
+            protocol.decode(capture)
+            assertEquals(0, awaitItem().pedalsMode)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun pedalsModeReadBackUsesTheSameCodeTheWriteCommandSends() {
+        val command = protocol.createCommand(CommandType.SET_PEDALS_MODE, 1)
+        assertEquals(1, command[2].toInt() and 0xFF)
+    }
+
     @Test
     fun batteryPercentHelpersCoverKnownPackClasses() {
         assertEquals(20, KingsongProtocol.seriesCellsForModel("KS-S18"))

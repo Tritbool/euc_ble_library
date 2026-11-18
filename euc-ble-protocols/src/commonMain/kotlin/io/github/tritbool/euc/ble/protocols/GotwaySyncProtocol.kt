@@ -301,6 +301,15 @@ open class GotwaySyncProtocol(
     override val supportedCommandTypes: Set<CommandType>
         get() = CommandCatalogue.supportedTypes(getCommandDescriptors())
 
+    /**
+     * The advertised firmware banner selects which catalogue profile applies. Stock firmware gets
+     * the base command set; "BF" (SmirnoV) adds the fourth pedal mode and "CF" (Freestyl3r) adds
+     * the fourth alarm preset. Until a banner arrives the base set is used, so unknown wheels are
+     * never offered a command their firmware is not known to accept.
+     */
+    override fun getCommandDescriptors(): List<CommandDescriptor> =
+        CommandCatalogue.getCommands(protocolId, CommandContext(resolveModelName(), gotwayFirmwareVariant))
+
     override fun getServiceUUID(): UUID = UUID.fromString(BLEConstants.GOTWAY_SERVICE_UUID)
     override fun getDataCharacteristicUUID(): UUID =
         UUID.fromString(BLEConstants.GOTWAY_READ_CHARACTERISTIC)
@@ -478,7 +487,14 @@ open class GotwaySyncProtocol(
         // Latch the imperial flag so parseTypeA can convert speed/distance on every
         // subsequent frame without repeating the detection logic there.
         wheelInMiles = usesMiles == true
-        val autoPowerOffMinutes = ByteUtils.tryGetUnsignedShortBE(data, 8)
+        // Bytes 8-9 are the auto-sleep countdown *remaining*, expressed in seconds, and not a
+        // configured delay in minutes. Real WheelLog captures prove it: the field ticks down
+        // exactly one unit per wall-clock second while the wheel is idle, is refreshed back to
+        // 7200 while riding, and never exceeds 7200 (= 120 min). Forwarding the raw value broke
+        // the EUCData.autoPowerOffMinutes contract and made the UI show impossible settings such
+        // as "7170 min"; divide by 60 the same way LeaperkimSyncProtocol already does.
+        val autoPowerOffSeconds = ByteUtils.tryGetUnsignedShortBE(data, 8)
+        val autoPowerOffMinutes = autoPowerOffSeconds?.let { it / 60 }
         // Sentinel raised from 100 to 200: modern high-speed wheels (Master Pro, XWay,
         // MSX HS) legitimately set tiltback thresholds above 100 km/h, so the old
         // `< 100` guard incorrectly discarded valid settings for those models.
@@ -955,12 +971,17 @@ open class GotwaySyncProtocol(
             }
 
             CommandType.SET_PEDALS_MODE -> {
-                // Matches legacy WheelLog GotwayAdapter.updatePedalsMode: 0=hard, 1=medium,
-                // 2=soft, 3=free-standing/independent pedals ("free").
+                // ASCII pedal-tightness letters, per the Begode protocol reference: 'h' = hard,
+                // 'f' = medium, 's' = soft. 'i' selects the fourth pedal mode, which only exists
+                // on SmirnoV custom firmware (advertised banner "BF"); the catalogue hides the
+                // option unless that variant was detected.
+                //
+                // The reported pedals mode is decoded elsewhere as `2 - raw`, which already lands
+                // in this same 0=hard .. 2=soft space, so write and read agree.
                 val command = when ((value as? CommandValue.Integer)?.value) {
-                    0 -> "s".encodeToByteArray()
+                    0 -> "h".encodeToByteArray()
                     1 -> "f".encodeToByteArray()
-                    2 -> "h".encodeToByteArray()
+                    2 -> "s".encodeToByteArray()
                     3 -> "i".encodeToByteArray()
                     else -> return byteArrayOf()
                 }
@@ -969,12 +990,13 @@ open class GotwaySyncProtocol(
             }
 
             CommandType.SET_ALARM_SPEED -> {
-                // Begode/Gotway exposes a single preset alarm/tiltback mode rather than
-                // per-threshold speeds (matches legacy WheelLog GotwayAdapter.updateAlarmMode):
+                // Begode/Gotway exposes a single alarm-preset selector rather than per-threshold
+                // speeds (matches legacy WheelLog GotwayAdapter.updateAlarmMode):
                 // 0 = two alarms (30 + 35/45 km/h) + 80% PWM tiltback,
                 // 1 = one alarm (35/45 km/h) + 80% PWM tiltback,
                 // 2 = 80% PWM tiltback only (no speed alarms),
-                // 3 = dynamic/proportional PWM tiltback (custom firmware "dynamic tiltback").
+                // 3 = 'I', the fourth alarm preset added by Freestyl3r custom firmware
+                // (advertised banner "CF"); the catalogue hides the option otherwise.
                 val command = when ((value as? CommandValue.Integer)?.value) {
                     0 -> "o".encodeToByteArray()
                     1 -> "u".encodeToByteArray()
