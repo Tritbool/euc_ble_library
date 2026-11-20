@@ -59,6 +59,9 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
     iosX64()
+    linuxArm64()
+    linuxX64()
+    macosArm64()
     js(IR) {
         outputModuleName.set("euc-ble-protocols")
         nodejs()

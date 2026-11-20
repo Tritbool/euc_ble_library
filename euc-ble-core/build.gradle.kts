@@ -24,7 +24,9 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
     iosX64()
-
+    linuxArm64()
+    linuxX64()
+    macosArm64()
     sourceSets {
         all {
             languageSettings.optIn("io.github.tritbool.euc.ble.core.InternalEucBleApi")
