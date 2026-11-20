@@ -204,6 +204,7 @@ class KingsongProtocolTest {
         voltageRaw: Int = 8400,
         speedRaw: Int = 1250,
         distanceRaw: Long = 12345,
+        distanceBytes: ByteArray? = null,
         currentRaw: Int = 150,
         temperatureRaw: Int = 2500,
         statusByte: Int = 0,
@@ -216,11 +217,18 @@ class KingsongProtocolTest {
         frame[3] = ((voltageRaw shr 8) and 0xFF).toByte()
         frame[4] = (speedRaw and 0xFF).toByte()
         frame[5] = ((speedRaw shr 8) and 0xFF).toByte()
-        // A9 sends the high 16-bit word first, with each word little-endian.
-        frame[6] = ((distanceRaw shr 16) and 0xFF).toByte()
-        frame[7] = ((distanceRaw shr 24) and 0xFF).toByte()
-        frame[8] = (distanceRaw and 0xFF).toByte()
-        frame[9] = ((distanceRaw shr 8) and 0xFF).toByte()
+        if (distanceBytes != null) {
+            frame[6] = distanceBytes[0]
+            frame[7] = distanceBytes[1]
+            frame[8] = distanceBytes[2]
+            frame[9] = distanceBytes[3]
+        } else {
+            // A9 sends the high 16-bit word first, with each word little-endian.
+            frame[6] = ((distanceRaw shr 16) and 0xFF).toByte()
+            frame[7] = ((distanceRaw shr 24) and 0xFF).toByte()
+            frame[8] = (distanceRaw and 0xFF).toByte()
+            frame[9] = ((distanceRaw shr 8) and 0xFF).toByte()
+        }
         frame[10] = (currentRaw and 0xFF).toByte()
         frame[11] = ((currentRaw shr 8) and 0xFF).toByte()
         frame[12] = (temperatureRaw and 0xFF).toByte()
@@ -320,6 +328,74 @@ class KingsongProtocolTest {
                 assertEquals(0.0, data.distance, 0.0)
                 assertNull(data.wheelDistance)
             }
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun decodeA9PlainLEOdometerFallsBackWhenSwappedImplausible() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            // 1,000,000 m sent as plain little-endian: the word-swapped reading
+            // (0x4240000F / 1000 km) is implausible, so the LE reading wins.
+            protocol.decode(
+                createA9Frame(distanceBytes = byteArrayOf(0x40, 0x42, 0x0F, 0x00))
+            )
+            val data = awaitItem()
+            assertEquals(1000.0, data.totalDistance ?: -1.0, 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun decodeA9ImplausibleOdometerKeepsLastKnownDistance() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame(distanceRaw = 12345L))
+            awaitItem()
+            protocol.decode(
+                createA9Frame(
+                    distanceBytes = byteArrayOf(
+                        0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()
+                    )
+                )
+            )
+            val data = awaitItem()
+            assertEquals(12.345, data.totalDistance ?: -1.0, 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun decodeA9GarbageOdometerOnFirstFrameKeepsZeroDistance() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(
+                createA9Frame(
+                    distanceBytes = byteArrayOf(
+                        0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()
+                    )
+                )
+            )
+            val data = awaitItem()
+            assertEquals(0.0, data.totalDistance ?: -1.0, 0.001)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun decodeA9WordSwappedOdometerCrossing64kBoundaryStaysSwapped() = runTest {
+        tearDown()
+        protocol = KingsongProtocol(scope = backgroundScope)
+        protocol.dataFlow.test {
+            protocol.decode(createA9Frame(distanceRaw = 65535L))
+            awaitItem()
+            protocol.decode(createA9Frame(distanceRaw = 65536L))
+            val data = awaitItem()
+            assertEquals(65.536, data.totalDistance ?: -1.0, 0.001)
             cancelAndIgnoreRemainingEvents()
         }
     }
