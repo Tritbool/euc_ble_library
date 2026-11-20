@@ -255,16 +255,36 @@ class BLEManager internal constructor(
         }
     }
 
-    private fun canChangeSpeedLimit(protocol: EUCProtocol): Boolean {
+    private fun canChangeSpeedLimit(protocol: EUCProtocol): Boolean =
+        guardsStandstill(protocol, "Speed limit command", "No speed measurement is available")
+
+    /**
+     * Standstill gate shared by the commands that must not reach a moving wheel. Locking a
+     * wheel that accepts the request at speed would cut propulsion mid-ride; no firmware is
+     * proven to reject it, so the client-facing write path refuses the encode while the latest
+     * speed measurement shows movement. A protocol that never reports a speed measurement
+     * ([missingMeasurementReason] == null) cannot be judged and stays allowed, rather than
+     * permanently blocking its lock behind an unavailable reading. Best effort, like the speed
+     * limit gate: the raw command and write paths are not guarded.
+     */
+    private fun canLockStationary(protocol: EUCProtocol): Boolean =
+        guardsStandstill(protocol, "Lock command", null)
+
+    private fun guardsStandstill(
+        protocol: EUCProtocol,
+        label: String,
+        missingMeasurementReason: String?
+    ): Boolean {
         val reason = synchronized(speedLock) {
             when {
                 connectionState != BLEConstants.ConnectionState.CONNECTED -> "Not connected to a device"
-                currentProtocol !== protocol || speedProtocol !== protocol -> "No speed measurement is available"
+                currentProtocol !== protocol -> "No speed measurement is available"
+                speedProtocol !== protocol -> missingMeasurementReason
                 else -> speedLimitGuard.rejection(monotonicMillis())
             }
         }
         if (reason != null) {
-            errorCallback?.onError(BLEException("Speed limit command rejected: $reason"))
+            errorCallback?.onError(BLEException("$label rejected: $reason"))
         }
         return reason == null
     }
@@ -540,6 +560,7 @@ class BLEManager internal constructor(
             return
         }
         if (commandId == CommandType.SET_SPEED_LIMIT.name && !canChangeSpeedLimit(protocol)) return
+        if (commandId == CommandType.LOCK.name && !canLockStationary(protocol)) return
         when (val result = protocol.encodeCommand(commandId, value)) {
             is CommandEncodingResult.Rejected -> errorCallback?.onError(
                 BLEException("Command '$commandId' rejected (${result.reason}): ${result.message}")
@@ -584,6 +605,7 @@ class BLEManager internal constructor(
             return
         }
         if (commandType == CommandType.SET_SPEED_LIMIT && !canChangeSpeedLimit(protocol)) return
+        if (commandType == CommandType.LOCK && !canLockStationary(protocol)) return
         val payload = createCommand(commandType, value)
         if (payload.isEmpty()) return
         val sensitivePayload = commandType == CommandType.AUTHENTICATE ||
