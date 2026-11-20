@@ -218,6 +218,10 @@
           "name": "PWM limit", "description": "Set maximum PWM percentage.", "encoding": "available",
           "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
         },
+        "SET_SPEED_LIMIT": { "name": "Tiltback speed", "description": "Set the tiltback speed in km/h.", "encoding": "available", "input": { "kind": "range", "valueType": "integer", "min": 1, "max": 99, "step": 1, "unit": "km/h" } },
+        "SET_ALARM_SPEED": { "name": "Alarm speed", "description": "Set the first speed alarm in km/h.", "encoding": "available", "input": { "kind": "range", "valueType": "integer", "min": 1, "max": 99, "step": 1, "unit": "km/h" } },
+        "REQUEST_DIAGNOSTIC_LOG": { "name": "Download diagnostic log", "description": "Arm the wheel event-log cursor and collect log pages over the telemetry stream.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } },
+        "CANCEL_DIAGNOSTIC_LOG": { "name": "Cancel diagnostic download", "description": "Park the event-log cursor and stop an active transfer.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } },
         "CUSTOM": {
           "name": "Raw command", "description": "Unvalidated payload for a dedicated handler.", "encoding": "available", "operation": "raw",
           "input": { "kind": "raw_payload", "description": "Owned bytes or UTF-8 text.", "valueTypes": ["bytes", "text"] }
@@ -253,6 +257,10 @@
           "name": "PWM limit", "description": "Set maximum PWM percentage.", "encoding": "available",
           "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
         },
+        "SET_SPEED_LIMIT": { "name": "Tiltback speed", "description": "Set the tiltback speed in km/h.", "encoding": "available", "input": { "kind": "range", "valueType": "integer", "min": 1, "max": 99, "step": 1, "unit": "km/h" } },
+        "SET_ALARM_SPEED": { "name": "Alarm speed", "description": "Set the first speed alarm in km/h.", "encoding": "available", "input": { "kind": "range", "valueType": "integer", "min": 1, "max": 99, "step": 1, "unit": "km/h" } },
+        "REQUEST_DIAGNOSTIC_LOG": { "name": "Download diagnostic log", "description": "Arm the wheel event-log cursor and collect log pages over the telemetry stream.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } },
+        "CANCEL_DIAGNOSTIC_LOG": { "name": "Cancel diagnostic download", "description": "Park the event-log cursor and stop an active transfer.", "encoding": "conditional", "operation": "file_transfer", "input": { "kind": "none" } },
         "CUSTOM": {
           "name": "Raw command", "description": "Unvalidated payload for a dedicated handler.", "encoding": "available", "operation": "raw",
           "input": { "kind": "raw_payload", "description": "Owned bytes or UTF-8 text.", "valueTypes": ["bytes", "text"] }

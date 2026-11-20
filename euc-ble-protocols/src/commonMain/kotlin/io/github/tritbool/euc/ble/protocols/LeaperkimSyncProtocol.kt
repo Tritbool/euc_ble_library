@@ -7,6 +7,7 @@ import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.EucDateTime
 import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import io.github.tritbool.euc.ble.core.EucUuid as UUID
@@ -147,6 +148,10 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
     private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
+    private val diagnosticLog = LeaperkimDiagnosticLogDownload(outbox)
+    private var lastKnownTiltBackSpeed: Int? = null
+    private var lastKnownAlarmSpeed: Int? = null
+    private var lastKnownMosfetTemperature: Double? = null
 
     override fun onNotification(data: ByteArray) {
         if (data.isEmpty()) return
@@ -155,6 +160,20 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
     }
 
     override fun pollOutput(): ProtocolOutput? = outbox.poll()
+
+    override fun onTimer(id: String) {
+        diagnosticLog.onTimer(id)
+    }
+
+    override fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = diagnosticLog.snapshot()
+
+    override fun commandStateError(commandId: String): String? = when {
+        commandId == CommandType.SET_SPEED_LIMIT.name && lastKnownTiltBackSpeed == null ->
+            "Wheel tiltback settings must be received before changing the speed limit"
+        commandId == CommandType.SET_ALARM_SPEED.name && lastKnownAlarmSpeed == null ->
+            "Wheel alarm settings must be received before changing the alarm speed"
+        else -> null
+    }
 
     private fun updateLastKnownVersionFromRawChunk(data: ByteArray) {
         if (data.size < 30) return
@@ -179,6 +198,9 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         // Smart-BMS equipped wheels (Lynx S, Patton, Oryx) cycle through four frame layouts.
         // Frames with LEN == 0x5F carry BMS ADC readings at bytes 4..5, NOT pack voltage.
         // Parsing them as regular telemetry produces ~3–7 V voltage spikes every ~200 ms.
+        // The event-log download reuses the same stream: log pages replace the frame
+        // extension (byte 46 and beyond) while the main telemetry body keeps updating.
+        if (diagnosticLog.isActive && frame.size > 46) diagnosticLog.onFrame(frame)
         // Skip the telemetry parse and only extract BMS cell data from these frames.
         if (frame.size > 3 && frame[3] == 0x5F.toByte()) {
             if (frame.size >= 47) parseSmartBms(frame)
@@ -212,6 +234,8 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         val autoOffSeconds = ByteUtils.tryGetUnsignedShortBE(frame, 20) ?: 0
         val speedAlertRaw = ByteUtils.tryGetUnsignedShortBE(frame, 24) ?: 0
         val speedTiltBackRaw = ByteUtils.tryGetUnsignedShortBE(frame, 26) ?: 0
+        lastKnownTiltBackSpeed = speedTiltBackRaw
+        lastKnownAlarmSpeed = speedAlertRaw
         val pedalsMode = ByteUtils.tryGetUnsignedShortBE(frame, 30)
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0
 
@@ -271,19 +295,43 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
             chargingStatus = chargeMode,
             rideTime = rideTimeSeconds,
             cellVoltages = getCombinedCellVoltages(),
-            motorTemperature = null,
+            mosfetTemperature = lastKnownMosfetTemperature,
             totalDistance = totalDistanceKm,
             angle = angle,
             pedalsMode = pedalsMode,
             autoPowerOffMinutes = autoOffSeconds.takeIf { it > 0 }?.let { it / 60 },
-            tiltBackSpeed = speedTiltBackRaw.takeIf { it > 0 }?.let { it * 10 },
-            alarm1Speed = speedAlertRaw.takeIf { it > 0 }?.let { it * 10 }
+            // Raw words at offsets 24 and 26 are in 0.1 km/h units (200 = 20 km/h), confirmed by
+            // WheelLog, the eucplanet captures and the loeuc firmware readout. Above 120.0 km/h -
+            // the firmware's own configuration ceiling - the word is a "disabled" marker or noise.
+            tiltBackSpeed = speedTiltBackRaw.takeIf { it in 1..1200 }?.let { it / 10 },
+            alarm1Speed = speedAlertRaw.takeIf { it in 1..1200 }?.let { it / 10 },
+            // Stock firmware fills offsets 40..45 with the 0x80 "not reported" sentinel; patched
+            // builds put the motor probe there instead, in centidegrees capped by the firmware's
+            // own 27-entry lookup (about -40..220 C). Anything outside that range stays null.
+            motorTemperature = ByteUtils.tryGetSignedShortBE(frame, 40)
+                ?.let { it / 100.0 }?.takeIf { it in -40.0..220.0 },
         )
     }
 
     private fun parseSmartBms(frame: ByteArray) {
         val packetNum = ByteUtils.tryGetUnsignedByte(frame, 46) ?: return
         if (packetNum !in 0..7) return
+        // The 0x5F "BMS ADC" frames follow the same page layout as the standard long frames,
+        // but the 59..60 MOSFET mapping below is the one loeuc read out of the dispatch for the
+        // standard frames, so it is not latched from an ADC frame.
+        val isAdcFrame = frame.size > 3 && frame[3] == 0x5F.toByte()
+        // Page 0/4 carries the real MOSFET temperature in centidegrees at offset 59, the reading
+        // the wheel's own screen shows (the realtime body only carries the controller board
+        // temperature at offset 18). Read it before the per-page length gate: Patton's 69-byte
+        // page-0 payload stops before the battery currents but still carries the MOS word.
+        // Only sane samples are latched and stamped onto every telemetry frame, like the Oryx
+        // battery percentage.
+        if (!isAdcFrame && (packetNum == 0 || packetNum == 4)) {
+            ByteUtils.tryGetSignedShortBE(frame, 59)
+                ?.let { it / 100.0 }
+                ?.takeIf { it in -40.0..200.0 }
+                ?.let { lastKnownMosfetTemperature = it }
+        }
         val payloadEnd = ByteUtils.getUnsignedByte(frame, 3)
         val requiredEnd = if (packetNum == 0 || packetNum == 4) 73 else 83
         if (payloadEnd < requiredEnd) return
@@ -503,6 +551,29 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
                 )
             }
 
+            CommandType.SET_SPEED_LIMIT -> {
+                // Tiltback speed in km/h, LdAp form (Lynx S capture: slider 21 km/h <-> 0x15).
+                val kmh = (value as? CommandValue.Integer)?.value?.coerceIn(1, 99) ?: return byteArrayOf()
+                buildVendorFrame(
+                    LDAP, 17,
+                    byteArrayOf(0x01, 0x02, 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
+                    kmh.toByte()
+                )
+            }
+
+            CommandType.SET_ALARM_SPEED -> {
+                // Alarm speed in km/h, LkAp companion form (Lynx S capture: 20 km/h <-> 0x14).
+                val kmh = (value as? CommandValue.Integer)?.value?.coerceIn(1, 99) ?: return byteArrayOf()
+                buildVendorFrame(
+                    LKAP, 17,
+                    byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
+                    kmh.toByte()
+                )
+            }
+
+            CommandType.REQUEST_DIAGNOSTIC_LOG -> return diagnosticLog.start()
+            CommandType.CANCEL_DIAGNOSTIC_LOG -> return diagnosticLog.cancel()
+
             CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
             CommandType.CUSTOM -> {
                 when (value) {
@@ -584,6 +655,10 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         lastMajorVersion = null
         lastOryxBatterySoc = -1
         lastKnownChargeMode = null
+        lastKnownTiltBackSpeed = null
+        lastKnownAlarmSpeed = null
+        lastKnownMosfetTemperature = null
+        diagnosticLog.reset()
         bmsCellPages.clear()
         bmsTemperatures.clear()
         bmsCurrents.clear()

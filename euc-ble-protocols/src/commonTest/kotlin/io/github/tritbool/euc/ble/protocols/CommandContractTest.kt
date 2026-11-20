@@ -40,9 +40,23 @@ class CommandContractTest {
             it.drainOutputs()
         }
 
+    private fun leaperkimTelemetry() = ByteArray(40).apply {
+        this[0] = 0xDC.toByte()
+        this[1] = 0x5A
+        this[2] = 0x5C
+        this[3] = 36
+        this[4] = 0x30
+        this[5] = 0xED.toByte()
+        this[24] = 0x00
+        this[25] = 20
+        this[26] = 0x00
+        this[27] = 30
+    }
+
     private fun scenarios(): List<() -> SyncEucProtocol> = listOf(
         { GotwaySyncProtocol(clock) }, { ExtremeBullSyncProtocol(clock) },
-        { LeaperkimSyncProtocol(clock) }, { NosfetSyncProtocol(clock) },
+        { LeaperkimSyncProtocol(clock).also { it.onNotification(leaperkimTelemetry()); it.drainOutputs() } },
+        { NosfetSyncProtocol(clock).also { it.onNotification(leaperkimTelemetry()); it.drainOutputs() } },
         { kingsong() }, { NinebotSyncProtocol(clock) }, { NinebotZSyncProtocol(clock) },
         { InMotionSyncProtocol(clock) }, { inMotion(dialect = 1) },
         { inMotion() }, { inMotion(6) }, { inMotion(12) }, { inMotion(13) },
