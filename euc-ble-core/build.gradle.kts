@@ -1,3 +1,11 @@
+/*
+ *
+ *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
+ *  * euc_ble_library — version 0.1.3 — licence GPL-3.0
+ *  * https://github.com/Tritbool/euc_ble_library
+ *
+ */
+
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget

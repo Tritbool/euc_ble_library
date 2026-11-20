@@ -1,3 +1,11 @@
+/*
+ *
+ *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
+ *  * euc_ble_library — version 0.1.3 — licence GPL-3.0
+ *  * https://github.com/Tritbool/euc_ble_library
+ *
+ */
+
 package io.github.tritbool.euc.ble.session
 
 enum class WriteEnqueueResult { ENQUEUED, QUEUE_FULL, SESSION_CLOSED }

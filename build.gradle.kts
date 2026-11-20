@@ -1,3 +1,11 @@
+/*
+ *
+ *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
+ *  * euc_ble_library — version 0.1.3 — licence GPL-3.0
+ *  * https://github.com/Tritbool/euc_ble_library
+ *
+ */
+
 // Plugins shared by several modules are declared once here so that every module
 // uses the same plugin classloader (avoids "Kotlin Gradle plugin loaded multiple times").
 // KGP, Dokka, vanniktech and Sonar integrate with AGP, so AGP must live in this root
