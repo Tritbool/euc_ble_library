@@ -7,6 +7,7 @@ import io.github.tritbool.euc.ble.core.EucClock
 import io.github.tritbool.euc.ble.core.EucDateTime
 import io.github.tritbool.euc.ble.frames.ByteByByteFrameParser
 import io.github.tritbool.euc.ble.models.BMSData
+import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import io.github.tritbool.euc.ble.core.EucUuid as UUID
@@ -147,6 +148,9 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
     private val bmsCellPages: MutableMap<Int, DoubleArray> = mutableMapOf()
     private val bmsTemperatures: MutableMap<Int, List<Double>> = mutableMapOf()
     private val bmsCurrents: MutableMap<Int, Double> = mutableMapOf()
+    private val diagnosticLog = LeaperkimDiagnosticLogDownload(outbox)
+    private var lastKnownTiltBackSpeed: Int? = null
+    private var lastKnownAlarmSpeed: Int? = null
 
     override fun onNotification(data: ByteArray) {
         if (data.isEmpty()) return
@@ -155,6 +159,20 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
     }
 
     override fun pollOutput(): ProtocolOutput? = outbox.poll()
+
+    override fun onTimer(id: String) {
+        diagnosticLog.onTimer(id)
+    }
+
+    override fun getDiagnosticLogTransfer(): DiagnosticLogTransfer? = diagnosticLog.snapshot()
+
+    override fun commandStateError(commandId: String): String? = when {
+        commandId == CommandType.SET_SPEED_LIMIT.name && lastKnownTiltBackSpeed == null ->
+            "Wheel tiltback settings must be received before changing the speed limit"
+        commandId == CommandType.SET_ALARM_SPEED.name && lastKnownAlarmSpeed == null ->
+            "Wheel alarm settings must be received before changing the alarm speed"
+        else -> null
+    }
 
     private fun updateLastKnownVersionFromRawChunk(data: ByteArray) {
         if (data.size < 30) return
@@ -179,6 +197,9 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         // Smart-BMS equipped wheels (Lynx S, Patton, Oryx) cycle through four frame layouts.
         // Frames with LEN == 0x5F carry BMS ADC readings at bytes 4..5, NOT pack voltage.
         // Parsing them as regular telemetry produces ~3–7 V voltage spikes every ~200 ms.
+        // The event-log download reuses the same stream: log pages replace the frame
+        // extension (byte 46 and beyond) while the main telemetry body keeps updating.
+        if (diagnosticLog.isActive && frame.size > 46) diagnosticLog.onFrame(frame)
         // Skip the telemetry parse and only extract BMS cell data from these frames.
         if (frame.size > 3 && frame[3] == 0x5F.toByte()) {
             if (frame.size >= 47) parseSmartBms(frame)
@@ -212,6 +233,8 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         val autoOffSeconds = ByteUtils.tryGetUnsignedShortBE(frame, 20) ?: 0
         val speedAlertRaw = ByteUtils.tryGetUnsignedShortBE(frame, 24) ?: 0
         val speedTiltBackRaw = ByteUtils.tryGetUnsignedShortBE(frame, 26) ?: 0
+        lastKnownTiltBackSpeed = speedTiltBackRaw
+        lastKnownAlarmSpeed = speedAlertRaw
         val pedalsMode = ByteUtils.tryGetUnsignedShortBE(frame, 30)
         val versionRaw = ByteUtils.tryGetUnsignedShortBE(frame, 28) ?: 0
 
@@ -503,6 +526,29 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
                 )
             }
 
+            CommandType.SET_SPEED_LIMIT -> {
+                // Tiltback speed in km/h, LdAp form (Lynx S capture: slider 21 km/h <-> 0x15).
+                val kmh = (value as? CommandValue.Integer)?.value?.coerceIn(1, 99) ?: return byteArrayOf()
+                buildVendorFrame(
+                    LDAP, 17,
+                    byteArrayOf(0x01, 0x02, 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
+                    kmh.toByte()
+                )
+            }
+
+            CommandType.SET_ALARM_SPEED -> {
+                // Alarm speed in km/h, LkAp companion form (Lynx S capture: 20 km/h <-> 0x14).
+                val kmh = (value as? CommandValue.Integer)?.value?.coerceIn(1, 99) ?: return byteArrayOf()
+                buildVendorFrame(
+                    LKAP, 17,
+                    byteArrayOf(0x01, 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte()),
+                    kmh.toByte()
+                )
+            }
+
+            CommandType.REQUEST_DIAGNOSTIC_LOG -> return diagnosticLog.start()
+            CommandType.CANCEL_DIAGNOSTIC_LOG -> return diagnosticLog.cancel()
+
             CommandType.RESET_TRIP -> "CLEARMETER".encodeToByteArray()
             CommandType.CUSTOM -> {
                 when (value) {
@@ -584,6 +630,9 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         lastMajorVersion = null
         lastOryxBatterySoc = -1
         lastKnownChargeMode = null
+        lastKnownTiltBackSpeed = null
+        lastKnownAlarmSpeed = null
+        diagnosticLog.reset()
         bmsCellPages.clear()
         bmsTemperatures.clear()
         bmsCurrents.clear()
