@@ -48,6 +48,12 @@ low-level APIs and do not apply this guard; custom protocols must expose actual 
 through `latestSpeedMeasurement()` for the Android command API. Custom synchronous protocols
 using `ProtocolSessionDriver` must implement `hasSpeedMeasurement()` for this purpose.
 
+The same standstill gate applies to `LOCK` only: no firmware is proven to reject a lock request
+made while riding, and a wheel that accepts one would cut propulsion mid-ride. `UNLOCK` and lock
+state queries are never gated, so undoing a state at speed stays possible. Unlike the speed
+limit gate, `LOCK` is allowed when the selected protocol reports no speed measurement at all:
+a protocol that cannot be judged is not permanently blocked behind an unavailable reading.
+
 ## Dictionary
 
 Commands have `name`, `description`, `encoding` and `input`. Optional `operation` describes

@@ -102,6 +102,50 @@ class BLEManagerTrafficTest {
     }
 
     @Test
+    fun lockRejectsMovingSpeedAndAllowsStillOrSpeedlessWheels() = runTest {
+        val manager = manager()
+        val gotway = GotwayProtocol(scope = backgroundScope)
+        val encoded = mutableListOf<String>()
+        val protocol = object : EUCProtocol by gotway {
+            override fun getCommandSupport(commandType: CommandType) = CommandSupport.SUPPORTED
+            override fun createCommand(commandType: CommandType, value: Any) =
+                byteArrayOf(3).also { encoded += commandType.name }
+        }
+        manager.currentProtocol = protocol
+        attachGatt(manager).also { acceptWrites(it.first) }
+        manager.startDataFlowCollection(protocol)
+        val errors = mutableListOf<String>()
+        manager.setErrorCallback(object : ErrorCallback {
+            override fun onError(error: BLEException) { errors += error.message.orEmpty() }
+        })
+        val events = collectTraffic(manager)
+
+        // No speed measurement was ever reported: standstill cannot be judged, so the lock
+        // is allowed rather than permanently blocked behind an unavailable reading.
+        manager.sendCommand(CommandType.LOCK, Unit)
+        runCurrent()
+        assertEquals(listOf("LOCK"), encoded)
+        assertTrue(errors.isEmpty(), errors.toString())
+
+        // Riding: rejected before any payload is encoded or written.
+        manager.handleIncomingBytes(gotwayFrame(speedRaw = 56), characteristicUuid)
+        manager.sendCommand(CommandType.LOCK, Unit)
+        runCurrent()
+        assertEquals(listOf("LOCK"), encoded)
+        assertTrue(errors.single().contains("moving"), errors.toString())
+
+        // Unlock is never standstill-guarded: undoing a state at speed must stay possible.
+        manager.handleIncomingBytes(gotwayFrame(speedRaw = 0), characteristicUuid)
+        manager.sendCommand(CommandType.UNLOCK, Unit)
+        manager.handleIncomingBytes(gotwayFrame(speedRaw = 56), characteristicUuid)
+        manager.sendCommand(CommandType.UNLOCK, Unit)
+        runCurrent()
+        assertEquals(listOf("LOCK", "UNLOCK", "UNLOCK"), encoded)
+        assertEquals(1, errors.size)
+        assertEquals(3, events.count { it.direction == TrafficDirection.TX })
+    }
+
+    @Test
     fun pollingDeadlineStartsAfterQueuedWriteIsAccepted() = runTest {
         val manager = manager()
         val protocol = object : EUCProtocol by GotwayProtocol(scope = backgroundScope) {
