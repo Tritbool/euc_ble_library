@@ -146,6 +146,29 @@ class KingsongSyncProtocol(
         return (b1 shl 24) or (b0 shl 16) or (b3 shl 8) or b2
     }
 
+    private fun isPlausibleDistanceKm(distanceKm: Double): Boolean =
+        distanceKm in 0.0..MAX_PLAUSIBLE_DISTANCE_KM
+
+    /**
+     * The A9 odometer is word-swapped on captured KingSong firmwares, but some
+     * models/firmwares send it as plain little-endian, which inflates the
+     * word-swapped reading by up to ~65536x (a 1000 km odometer reads as
+     * ~1.1e6 km). Prefer the word-swapped reading when plausible, fall back to
+     * the plain LE reading when it is the only plausible one, and otherwise
+     * keep the last known value instead of publishing garbage distance.
+     * See https://github.com/Tritbool/euc_ble_library/issues/103.
+     */
+    private fun resolveA9TotalDistance(data: ByteArray, offset: Int): Double {
+        val swappedKm = (readWordSwappedLE32(data, offset).toLong() and 0xFFFFFFFFL) / 1000.0
+        if (isPlausibleDistanceKm(swappedKm)) return swappedKm
+
+        val plainKm = ByteUtils.getUnsignedIntLE(data, offset) / 1000.0
+        if (isPlausibleDistanceKm(plainKm)) return plainKm
+
+        return lastKnownTotalDistance ?: 0.0
+    }
+
+
     // Internal buffer used by the unpacker
 
     private val byteParser = ByteByByteFrameParser(unpacker, resetUnpacker = {
@@ -349,6 +372,7 @@ class KingsongSyncProtocol(
         // matching the official KingSong app (eucplanet KingsongParser captures).
         private const val KS_EMPTY_V_PER_CELL = 3.10
         private const val KS_FULL_V_PER_CELL = 4.15
+        private const val MAX_PLAUSIBLE_DISTANCE_KM = 1_000_000.0
 
         // Upper bound per cell used to infer the pack class from voltage alone.
         private const val MAX_V_PER_CELL_FOR_INFERENCE = 4.25
@@ -502,7 +526,7 @@ class KingsongSyncProtocol(
                 ByteUtils.getUnsignedShortLE(data, base + OFFSET_SPEED) / 100.0 else 0.0
 
             val totalDistRaw = if (ensureRange(data, base + 6, 4))
-                readWordSwappedLE32(data, base + 6).toDouble() / 1000.0 else 0.0
+                resolveA9TotalDistance(data, base + 6) else 0.0
 
             val current = if (ensureRange(data, base + 10, 2))
                 ByteUtils.getSignedShortLE(data, base + 10) / 100.0 else 0.0
