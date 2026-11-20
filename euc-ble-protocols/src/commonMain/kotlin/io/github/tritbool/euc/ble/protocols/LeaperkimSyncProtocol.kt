@@ -151,6 +151,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
     private val diagnosticLog = LeaperkimDiagnosticLogDownload(outbox)
     private var lastKnownTiltBackSpeed: Int? = null
     private var lastKnownAlarmSpeed: Int? = null
+    private var lastKnownMosfetTemperature: Double? = null
 
     override fun onNotification(data: ByteArray) {
         if (data.isEmpty()) return
@@ -294,19 +295,43 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
             chargingStatus = chargeMode,
             rideTime = rideTimeSeconds,
             cellVoltages = getCombinedCellVoltages(),
-            motorTemperature = null,
+            mosfetTemperature = lastKnownMosfetTemperature,
             totalDistance = totalDistanceKm,
             angle = angle,
             pedalsMode = pedalsMode,
             autoPowerOffMinutes = autoOffSeconds.takeIf { it > 0 }?.let { it / 60 },
-            tiltBackSpeed = speedTiltBackRaw.takeIf { it > 0 }?.let { it * 10 },
-            alarm1Speed = speedAlertRaw.takeIf { it > 0 }?.let { it * 10 }
+            // Raw words at offsets 24 and 26 are in 0.1 km/h units (200 = 20 km/h), confirmed by
+            // WheelLog, the eucplanet captures and the loeuc firmware readout. Above 120.0 km/h -
+            // the firmware's own configuration ceiling - the word is a "disabled" marker or noise.
+            tiltBackSpeed = speedTiltBackRaw.takeIf { it in 1..1200 }?.let { it / 10 },
+            alarm1Speed = speedAlertRaw.takeIf { it in 1..1200 }?.let { it / 10 },
+            // Stock firmware fills offsets 40..45 with the 0x80 "not reported" sentinel; patched
+            // builds put the motor probe there instead, in centidegrees capped by the firmware's
+            // own 27-entry lookup (about -40..220 C). Anything outside that range stays null.
+            motorTemperature = ByteUtils.tryGetSignedShortBE(frame, 40)
+                ?.let { it / 100.0 }?.takeIf { it in -40.0..220.0 },
         )
     }
 
     private fun parseSmartBms(frame: ByteArray) {
         val packetNum = ByteUtils.tryGetUnsignedByte(frame, 46) ?: return
         if (packetNum !in 0..7) return
+        // The 0x5F "BMS ADC" frames follow the same page layout as the standard long frames,
+        // but the 59..60 MOSFET mapping below is the one loeuc read out of the dispatch for the
+        // standard frames, so it is not latched from an ADC frame.
+        val isAdcFrame = frame.size > 3 && frame[3] == 0x5F.toByte()
+        // Page 0/4 carries the real MOSFET temperature in centidegrees at offset 59, the reading
+        // the wheel's own screen shows (the realtime body only carries the controller board
+        // temperature at offset 18). Read it before the per-page length gate: Patton's 69-byte
+        // page-0 payload stops before the battery currents but still carries the MOS word.
+        // Only sane samples are latched and stamped onto every telemetry frame, like the Oryx
+        // battery percentage.
+        if (!isAdcFrame && (packetNum == 0 || packetNum == 4)) {
+            ByteUtils.tryGetSignedShortBE(frame, 59)
+                ?.let { it / 100.0 }
+                ?.takeIf { it in -40.0..200.0 }
+                ?.let { lastKnownMosfetTemperature = it }
+        }
         val payloadEnd = ByteUtils.getUnsignedByte(frame, 3)
         val requiredEnd = if (packetNum == 0 || packetNum == 4) 73 else 83
         if (payloadEnd < requiredEnd) return
@@ -632,6 +657,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
         lastKnownChargeMode = null
         lastKnownTiltBackSpeed = null
         lastKnownAlarmSpeed = null
+        lastKnownMosfetTemperature = null
         diagnosticLog.reset()
         bmsCellPages.clear()
         bmsTemperatures.clear()

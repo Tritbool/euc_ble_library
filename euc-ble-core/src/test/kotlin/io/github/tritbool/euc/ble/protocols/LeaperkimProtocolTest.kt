@@ -223,12 +223,14 @@ class LeaperkimProtocolTest {
     fun decodeLegacySettingsFieldsAreMapped() = runTest {
         tearDown()
         protocol = LeaperkimProtocol(scope = backgroundScope)
+        // Alarm and tiltback raws are in 0.1 km/h units (WheelLog/eucplanet/loeuc readouts):
+        // 0.1 x 300 = 30 km/h, 0.1 x 400 = 40 km/h.
         val frame = createLeaperkimFrame(
             versionRaw = 5000,
             pedalsModeRaw = 2,
             autoOffSecondsRaw = 600,
-            speedAlertRaw = 3,
-            speedTiltBackRaw = 4
+            speedAlertRaw = 300,
+            speedTiltBackRaw = 400
         )
 
         protocol.dataFlow.test(timeout = telemetryEmissionTimeoutMs.milliseconds) {
