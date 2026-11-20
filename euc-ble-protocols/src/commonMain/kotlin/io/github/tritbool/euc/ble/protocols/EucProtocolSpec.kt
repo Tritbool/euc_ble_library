@@ -64,6 +64,9 @@ interface EucProtocolSpec {
     /** Whether a BLE-stack rejection may be retried. Accepted writes are never replayed. */
     fun canRetryCommand(payload: ByteArray): Boolean = true
 
+    /** True when this telemetry contains a new speed measurement rather than a carried-over value. */
+    fun hasSpeedMeasurement(data: EUCData): Boolean = false
+
     /**
      * Returns the candidate data characteristic UUIDs for this protocol.
      *

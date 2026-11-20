@@ -1141,6 +1141,22 @@ class GotwayProtocolTest {
     }
 
     @Test
+    fun speedMeasurementOnlyChangesForFramesContainingSpeed() {
+        assertNull(protocol.latestSpeedMeasurement())
+        protocol.decode(createGotwayFrame(frameType = 0x04))
+        assertNull(protocol.latestSpeedMeasurement())
+        protocol.decode(createGotwayFrame(speedRaw = 55))
+        val first = protocol.latestSpeedMeasurement()!!
+        assertEquals(1.98, first.speedKmh, 0.001)
+        protocol.decode(createGotwayFrame(frameType = 0x07))
+        assertEquals(first, protocol.latestSpeedMeasurement())
+        protocol.decode(createGotwayFrame(speedRaw = 56))
+        assertTrue(protocol.latestSpeedMeasurement()!!.sequence > first.sequence)
+        protocol.resetSession()
+        assertNull(protocol.latestSpeedMeasurement())
+    }
+
+    @Test
     fun testCreateCommandSetSpeedLimitSchedulesFullSequence() = runTest {
         val scopedProtocol = GotwayProtocol(scope = backgroundScope)
         scopedProtocol.writeFlow.test {

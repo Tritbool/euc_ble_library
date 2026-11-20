@@ -45,6 +45,7 @@ import io.github.tritbool.euc.ble.session.BleTransport
 import io.github.tritbool.euc.ble.session.ConnectionSessionDriver
 import io.github.tritbool.euc.ble.session.WriteSession
 import io.github.tritbool.euc.ble.session.WriteEnqueueResult
+import io.github.tritbool.euc.ble.session.SpeedLimitGuard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -239,6 +240,37 @@ class BLEManager internal constructor(
         errorCallback?.onError(BLEException("Write session failed: ${it.message}"))
     }
     private val writeGeneration: Long get() = writeSession.generation
+    private val speedLock = Any()
+    private val speedLimitGuard = SpeedLimitGuard()
+    private var speedProtocol: EUCProtocol? = null
+    private var speedSequence: Long? = null
+
+    private fun decodeAndRememberSpeed(protocol: EUCProtocol, data: ByteArray) {
+        synchronized(speedLock) {
+            if (currentProtocol !== protocol) return
+            protocol.decode(data)
+            val measurement = protocol.latestSpeedMeasurement() ?: return
+            if (speedProtocol !== protocol || speedSequence != measurement.sequence) {
+                speedProtocol = protocol
+                speedSequence = measurement.sequence
+                speedLimitGuard.update(measurement.speedKmh, monotonicMillis())
+            }
+        }
+    }
+
+    private fun canChangeSpeedLimit(protocol: EUCProtocol): Boolean {
+        val reason = synchronized(speedLock) {
+            when {
+                connectionState != BLEConstants.ConnectionState.CONNECTED -> "Not connected to a device"
+                currentProtocol !== protocol || speedProtocol !== protocol -> "No speed measurement is available"
+                else -> speedLimitGuard.rejection(monotonicMillis())
+            }
+        }
+        if (reason != null) {
+            errorCallback?.onError(BLEException("Speed limit command rejected: $reason"))
+        }
+        return reason == null
+    }
 
     // Callbacks
     private var platformScanCallback: AndroidScanCallback? = null
@@ -510,6 +542,7 @@ class BLEManager internal constructor(
             errorCallback?.onError(BLEException("No protocol selected; cannot send command"))
             return
         }
+        if (commandId == CommandType.SET_SPEED_LIMIT.name && !canChangeSpeedLimit(protocol)) return
         when (val result = protocol.encodeCommand(commandId, value)) {
             is CommandEncodingResult.Rejected -> errorCallback?.onError(
                 BLEException("Command '$commandId' rejected (${result.reason}): ${result.message}")
@@ -553,6 +586,7 @@ class BLEManager internal constructor(
             errorCallback?.onError(BLEException("No protocol selected; cannot send command"))
             return
         }
+        if (commandType == CommandType.SET_SPEED_LIMIT && !canChangeSpeedLimit(protocol)) return
         val payload = createCommand(commandType, value)
         if (payload.isEmpty()) return
         val sensitivePayload = commandType == CommandType.AUTHENTICATE ||
@@ -945,7 +979,7 @@ class BLEManager internal constructor(
                         nosfet, ProtocolSelectionReason.AUTO_TELEMETRY, "Nosfet firmware in telemetry"
                     )
                 ) {
-                    nosfet.decode(frame)
+                    decodeAndRememberSpeed(nosfet, frame)
                     return
                 }
             }
@@ -953,7 +987,7 @@ class BLEManager internal constructor(
         currentProtocol?.let { protocol ->
             try {
                 pollingSession?.onNotification(data)
-                protocol.decode(data)
+                decodeAndRememberSpeed(protocol, data)
             } catch (e: Exception) {
                 errorCallback?.onError(BLEException("Data decoding failed: ${e.message}"))
             }
@@ -1081,6 +1115,11 @@ class BLEManager internal constructor(
         currentSelectionReason = null
         writeSession.reset()
         currentProtocol?.resetSession()
+        synchronized(speedLock) {
+            speedLimitGuard.reset()
+            speedProtocol = null
+            speedSequence = null
+        }
         _securityStateFlow.value = null
     }
 

@@ -19,6 +19,8 @@ import kotlin.math.roundToInt
  */
 class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = true
+
     companion object {
 
         private val HEADER = BLEConstants.INMOTION_FRAME_HEADER

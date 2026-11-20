@@ -387,6 +387,8 @@ open class GotwaySyncProtocol(
         eucData?.let { outbox.push(ProtocolOutput.Telemetry(it)) }
     }
 
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = data.frameType == "Type A"
+
     private fun parseTypeA(data: ByteArray): EUCData? {
 
         val speedRaw = ByteUtils.tryGetSignedShortBE(data, 4)?.toInt() ?: return null

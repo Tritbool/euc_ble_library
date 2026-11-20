@@ -11,6 +11,25 @@ class SessionRuntimeTest {
     }
 
     @Test
+    fun speedLimitRequiresARecentFiniteMeasurementBelowTwoKmh() {
+        val guard = SpeedLimitGuard()
+        assertNotNull(guard.rejection(0))
+        for (speed in listOf(0.0, 1.99, -1.99)) {
+            guard.update(speed, 100)
+            assertNull(guard.rejection(2_100))
+        }
+        for (speed in listOf(2.0, -2.0, Double.NaN, Double.POSITIVE_INFINITY)) {
+            guard.update(speed, 100)
+            assertNotNull(guard.rejection(100))
+        }
+        guard.update(0.0, 100)
+        assertNotNull(guard.rejection(2_101))
+        assertNotNull(guard.rejection(99))
+        guard.reset()
+        assertNotNull(guard.rejection(100))
+    }
+
+    @Test
     fun writeQueueOwnsBackoffAcceptanceDeadlineAndGeneration() {
         val queue = WriteQueue<String>(1)
         val bytes = byteArrayOf(1)

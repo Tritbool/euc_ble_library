@@ -23,6 +23,7 @@ import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.ProtocolWriteType
 import io.github.tritbool.euc.ble.protocols.SyncEucProtocol
+import io.github.tritbool.euc.ble.protocols.SpeedMeasurement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,8 @@ class ProtocolSessionDriver(
     private var scheduledDeadline: Long? = null
     private var timerGeneration = 0L
     private var lastTelemetry: EUCData? = null
+    private var speedSequence = 0L
+    private var speedMeasurement: SpeedMeasurement? = null
 
     private val dataChannel = Channel<EUCData>(
         capacity = BLEConstants.DEFAULT_FLOW_BUFFER_CAPACITY,
@@ -119,6 +122,7 @@ class ProtocolSessionDriver(
             cancelAllTimers()
             while (writeChannel.tryReceive().isSuccess) Unit
             while (dataChannel.tryReceive().isSuccess) Unit
+            speedMeasurement = null
             sessionTime = maxOf(sessionTime, now())
             session.reset(sessionTime)
             dispatchOutputs()
@@ -143,6 +147,8 @@ class ProtocolSessionDriver(
     override fun canSendCommand(payload: ByteArray): Boolean = call { protocol.canSendCommand(payload) }
     override fun onCommandSubmitted(payload: ByteArray) = call { protocol.onCommandSubmitted(payload) }
     override fun canRetryCommand(payload: ByteArray): Boolean = call { protocol.canRetryCommand(payload) }
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = call { protocol.hasSpeedMeasurement(data) }
+    override fun latestSpeedMeasurement(): SpeedMeasurement? = lock.withLock { speedMeasurement }
     override fun getCandidateDataCharacteristicUUIDs(): List<EucUuid> =
         call { protocol.getCandidateDataCharacteristicUUIDs() }
     override fun getDataCharacteristicUUID(): EucUuid = call { protocol.getDataCharacteristicUUID() }
@@ -194,6 +200,9 @@ class ProtocolSessionDriver(
                 is ProtocolOutput.DebugLog -> logger.debug(output.tag, output.message)
                 is ProtocolOutput.Telemetry -> {
                     lastTelemetry = output.data
+                    if (protocol.hasSpeedMeasurement(output.data)) {
+                        speedMeasurement = SpeedMeasurement(++speedSequence, output.data.speed)
+                    }
                     dataChannel.trySend(output.data)
                 }
                 is ProtocolOutput.SecurityStateChanged -> {

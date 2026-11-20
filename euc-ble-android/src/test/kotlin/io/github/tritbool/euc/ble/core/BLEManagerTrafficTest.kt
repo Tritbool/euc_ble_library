@@ -10,11 +10,13 @@ import io.github.tritbool.euc.ble.protocols.InMotionProtocol
 import io.github.tritbool.euc.ble.protocols.ProtocolPollingPlan
 import io.github.tritbool.euc.ble.protocols.EucFingerprintDatabase
 import io.github.tritbool.euc.ble.protocols.CommandType
+import io.github.tritbool.euc.ble.protocols.CommandValue
 import io.github.tritbool.euc.ble.protocols.CommandSupport
 import io.github.tritbool.euc.ble.protocols.ProtocolQuerySpec
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.core.EucUuid
 import io.github.tritbool.euc.ble.models.EUCDevice
+import io.github.tritbool.euc.ble.exceptions.BLEException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
@@ -41,6 +43,63 @@ import java.util.UUID
 @OptIn(ExperimentalCoroutinesApi::class)
 class BLEManagerTrafficTest {
     private val characteristicUuid = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
+
+    @Test
+    fun speedLimitRejectsUnknownMovingAndStaleSpeedBeforeEncoding() = runTest {
+        val manager = manager()
+        val protocol = GotwayProtocol(scope = backgroundScope)
+        manager.currentProtocol = protocol
+        attachGatt(manager).also { acceptWrites(it.first) }
+        manager.startDataFlowCollection(protocol)
+        val errors = mutableListOf<String>()
+        manager.setErrorCallback(object : ErrorCallback {
+            override fun onError(error: BLEException) { errors += error.message.orEmpty() }
+        })
+        val events = collectTraffic(manager)
+
+        manager.sendCommand(CommandType.SET_SPEED_LIMIT, 45)
+        manager.sendCommand("SET_SPEED_LIMIT", CommandValue.Integer(45))
+        manager.handleIncomingBytes(gotwayFrame(speedRaw = 56), characteristicUuid)
+        manager.sendCommand(CommandType.SET_SPEED_LIMIT, 45)
+        manager.handleIncomingBytes(gotwayFrame(speedRaw = 0), characteristicUuid)
+        advanceTimeBy(2_001)
+        manager.handleIncomingBytes(gotwayFrame(frameType = 4), characteristicUuid)
+        manager.sendCommand("SET_SPEED_LIMIT", CommandValue.Integer(45))
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(4, errors.size)
+        assertTrue(errors[0].contains("No speed measurement"))
+        assertTrue(errors[2].contains("moving"))
+        assertTrue(errors[3].contains("stale"))
+        assertTrue(events.none { it.direction == TrafficDirection.TX })
+    }
+
+    @Test
+    fun stationaryGotwaySpeedLimitIsEncoded() = runTest {
+        val manager = manager()
+        val gotway = GotwayProtocol(scope = backgroundScope)
+        val encoded = mutableListOf<String>()
+        val protocol = object : EUCProtocol by gotway {
+            override fun encodeCommand(commandId: String, value: CommandValue) =
+                gotway.encodeCommand(commandId, value).also { encoded += commandId }
+            override fun createCommand(commandType: CommandType, value: Any) =
+                gotway.createCommand(commandType, value).also { encoded += commandType.name }
+        }
+        manager.currentProtocol = protocol
+        attachGatt(manager)
+        val errors = mutableListOf<String>()
+        manager.setErrorCallback(object : ErrorCallback {
+            override fun onError(error: BLEException) { errors += error.message.orEmpty() }
+        })
+
+        manager.handleIncomingBytes(gotwayFrame(speedRaw = 55), characteristicUuid)
+        manager.sendCommand("SET_SPEED_LIMIT", CommandValue.Integer(45))
+        manager.sendCommand(CommandType.SET_SPEED_LIMIT, 45)
+
+        assertEquals(listOf("SET_SPEED_LIMIT", "SET_SPEED_LIMIT"), encoded)
+        assertTrue(errors.isEmpty(), errors.toString())
+    }
 
     @Test
     fun pollingDeadlineStartsAfterQueuedWriteIsAccepted() = runTest {
@@ -456,6 +515,15 @@ class BLEManagerTrafficTest {
 
     private fun TestScope.manager() = BLEManager(mock<Context>(), NoOpLogger(), backgroundScope,
         monotonicMillis = { testScheduler.currentTime })
+
+    private fun gotwayFrame(speedRaw: Int = 0, frameType: Int = 0) = ByteArray(24).apply {
+        this[0] = 0x55
+        this[1] = 0xaa.toByte()
+        this[4] = (speedRaw shr 8).toByte()
+        this[5] = speedRaw.toByte()
+        this[18] = frameType.toByte()
+        for (i in 20..23) this[i] = 0x5a
+    }
 
     private fun attachInMotionGatt(manager: BLEManager, version: Int = 2): BluetoothGatt {
         val signature = EucFingerprintDatabase.entries
