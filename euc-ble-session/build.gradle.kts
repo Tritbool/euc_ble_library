@@ -86,7 +86,7 @@ mavenPublishing {
     configure(KotlinMultiplatform())
     publishToMavenCentral()
     if (project.hasProperty("signingInMemoryKey")) signAllPublications()
-    coordinates("io.github.tritbool", "euc-ble-session", "0.1.3")
+    coordinates("io.github.tritbool", "euc-ble-session", project.version.toString())
     pom {
         name.set("EUC BLE Session")
         description.set("Platform-neutral EUC BLE session policies and state machines.")

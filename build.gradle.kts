@@ -33,6 +33,9 @@ plugins {
 }
 
 allprojects {
+    group = "io.github.tritbool"
+    version = providers.gradleProperty("libraryVersion").get()
+
     plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsPlugin> {
         extensions.configure<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec> {
             download.set(false)

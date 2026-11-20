@@ -97,7 +97,7 @@ mavenPublishing {
     configure(KotlinMultiplatform())
     publishToMavenCentral()
     if (project.hasProperty("signingInMemoryKey")) signAllPublications()
-    coordinates("io.github.tritbool", "euc-ble-protocols", "0.1.3")
+    coordinates("io.github.tritbool", "euc-ble-protocols", project.version.toString())
     pom {
         name.set("EUC BLE Protocols")
         description.set("Synchronous multiplatform EUC protocol engines and policies.")

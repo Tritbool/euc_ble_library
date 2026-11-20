@@ -177,7 +177,7 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates("io.github.tritbool", "euc-ble-core", "0.1.3")
+    coordinates("io.github.tritbool", "euc-ble-core", project.version.toString())
 
     pom {
         name.set("EUC BLE Core")
