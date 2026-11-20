@@ -41,7 +41,7 @@ Callbacks run on background threads; switch to the Android main thread for UI.
 
 | Module | Artifact | Role |
 |---|---|---|
-| `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | Synchronous manufacturer engines + shared models. **No BLE I/O, no coroutines.** JVM, JS and iOS targets. |
+| `euc-ble-protocols` | `io.github.tritbool:euc-ble-protocols` | Synchronous manufacturer engines + shared models. **No BLE I/O, no coroutines.** JVM, JS, iOS, Linux and macOS targets. |
 | `euc-ble-session` | `io.github.tritbool:euc-ble-session` | Coroutine-free session policies + `BleTransport` contract. |
 | `euc-ble-core` | `io.github.tritbool:euc-ble-core` | KMP coroutine facades and async session drivers; re-exports protocols and session. |
 | `euc-ble-android` | `io.github.tritbool:euc-ble-library` | `EucBleClient` entry point + GATT connector (`BLEManager`). |
@@ -68,8 +68,8 @@ Details: [architecture](docs/architecture.md) — sources: [PlantUML](docs/diagr
 - **Maintainable** — every protocol is driven by a declarative dictionary
   ([commands.json](docs/commands/commands.json)) that generates the portable descriptors; wire
   formats carry provenance comments (which capture, which firmware, which third-party codec).
-- **Portable** — one Kotlin codebase targets JVM, JavaScript and iOS for protocols, sessions and
-  drivers; only the GATT connector is Android-specific today.
+- **Portable** — one Kotlin codebase targets JVM, JavaScript, iOS, Linux and macOS for protocols,
+  sessions and drivers; only the GATT connector is Android-specific today.
 - **Credible** — parsers are validated against raw captures recorded from real wheels
   (WheelLog dumps, per brand) and replayed in CI: genuine protocol behaviour, including
   fragmented frames and in-the-wild garbage, is locked in as regression fixtures. See
