@@ -112,7 +112,16 @@ class BLEManagerTrafficTest {
                 byteArrayOf(3).also { encoded += commandType.name }
         }
         manager.currentProtocol = protocol
-        attachGatt(manager).also { acceptWrites(it.first) }
+        val (gatt, write) = attachGatt(manager)
+        @Suppress("DEPRECATION")
+        whenever(gatt.writeCharacteristic(any())).thenAnswer {
+            manager.onCharacteristicWrite(gatt, write, BluetoothGatt.GATT_SUCCESS)
+            true
+        }
+        whenever(gatt.writeCharacteristic(any(), any(), any())).thenAnswer {
+            manager.onCharacteristicWrite(gatt, write, BluetoothGatt.GATT_SUCCESS)
+            BluetoothStatusCodes.SUCCESS
+        }
         manager.startDataFlowCollection(protocol)
         val errors = mutableListOf<String>()
         manager.setErrorCallback(object : ErrorCallback {
