@@ -30,6 +30,8 @@ class KingsongSyncProtocol(
     private val unlockRandom: EucRandom
 ) : SyncEucProtocol {
 
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = true
+
     private val header = BLEConstants.KINGSONG_FRAME_HEADER_1
     private val FRAME_LENGTH = 20
 

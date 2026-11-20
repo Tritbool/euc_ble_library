@@ -22,6 +22,8 @@ import kotlin.math.roundToInt
  * - For long frames (len > 38), trailing CRC32 is expected
  */
 open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = true
+
     companion object {
         private const val LEAPERKIM_MAX_BMS_CELLS = 42
         private val LKAP = byteArrayOf(0x4C, 0x6B, 0x41, 0x70)  // "LkAp"

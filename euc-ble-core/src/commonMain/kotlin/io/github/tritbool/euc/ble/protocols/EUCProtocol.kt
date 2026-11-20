@@ -6,6 +6,9 @@ import io.github.tritbool.euc.ble.models.WheelSecurityState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
+/** Sequence changes only when a new speed measurement is decoded. */
+data class SpeedMeasurement(val sequence: Long, val speedKmh: Double)
+
 /**
  * Coroutine-compatible protocol facade. New protocol logic belongs in [SyncEucProtocol];
  * [io.github.tritbool.euc.ble.session.ProtocolSessionDriver] owns serialization and timers.
@@ -26,6 +29,9 @@ interface EUCProtocol : EucProtocolSpec {
     val writeFlow: Flow<ByteArray> get() = emptyFlow()
     val securityStateFlow: Flow<WheelSecurityState> get() = emptyFlow()
     val securityEventFlow: Flow<WheelSecurityEvent> get() = emptyFlow()
+
+    /** Latest measured speed, or null when the protocol cannot identify a speed sample. */
+    fun latestSpeedMeasurement(): SpeedMeasurement? = null
 
     fun decode(data: ByteArray): EUCData?
 }

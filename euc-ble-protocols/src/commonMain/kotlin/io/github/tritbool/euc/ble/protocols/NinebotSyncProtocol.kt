@@ -39,6 +39,8 @@ data class NinebotBmsSnapshot(
  */
 class NinebotSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = true
+
     companion object {
         private const val FRAME_HEADER = 0x55
         private const val FRAME_ACTION = 0x21

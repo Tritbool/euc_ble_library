@@ -38,6 +38,16 @@ values, unlisted choices and extra tuple fields **before** invoking an encoder.
 KingSong coupled speed/alarm writes additionally require the companion settings to have
 been read, rather than silently filling unknown settings with zero.
 
+Android's `sendCommand` rejects `SET_SPEED_LIMIT` before encoding unless a speed measurement
+from the current connection is less than 2 km/h in absolute value and no more than two seconds
+old. Missing, invalid and stale measurements are rejected through the error callback. Once
+accepted, the command and any protocol-scheduled follow-up writes proceed normally even if
+speed subsequently changes. This is a best-effort check, not a guarantee of standstill when
+the wheel receives or applies the command. Direct protocol encoding and raw byte writes are
+low-level APIs and do not apply this guard; custom protocols must expose actual speed samples
+through `latestSpeedMeasurement()` for the Android command API. Custom synchronous protocols
+using `ProtocolSessionDriver` must implement `hasSpeedMeasurement()` for this purpose.
+
 ## Dictionary
 
 Commands have `name`, `description`, `encoding` and `input`. Optional `operation` describes

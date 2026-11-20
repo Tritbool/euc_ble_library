@@ -75,6 +75,7 @@ class NinebotZSyncProtocol(clock: EucClock) : SyncEucProtocol {
     override fun onNotification(data: ByteArray) = delegate.onNotification(data)
     override fun pollOutput(): ProtocolOutput? = delegate.pollOutput()
     override fun resetSession() = delegate.resetSession()
+    override fun hasSpeedMeasurement(data: EUCData): Boolean = delegate.hasSpeedMeasurement(data)
 
     fun getZSettingsSnapshot(): NinebotSettingsSnapshot = delegate.getZSettingsSnapshot()
     fun getZBmsSnapshots(): List<NinebotBmsSnapshot> = delegate.getZBmsSnapshots()
