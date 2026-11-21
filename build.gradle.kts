@@ -1,9 +1,9 @@
 /*
  *
- *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
- *  * euc_ble_library — version 1.1.0 — licence GPL-3.0
- *  * https://github.com/Tritbool/euc_ble_library
- *
+ *  Copyright (C) 2026 Gauthier Le Bartz Lyan (Tritbool)
+ *  euc_ble_library — version 1.2.0 — licence GPL-3.0
+ *  https://github.com/Tritbool/euc_ble_library
+ * /
  */
 
 // Plugins shared by several modules are declared once here so that every module
