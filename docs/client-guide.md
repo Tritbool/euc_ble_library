@@ -97,6 +97,35 @@ client.initialize()
 client.startScan()
 ```
 
+### Connecting a device discovered by the application
+
+An Android app that performs its own scan, including a `PendingIntent`-based background scan,
+can connect the resulting `ScanResult` without first calling `client.startScan()`:
+
+```kotlin
+client.initialize()
+// result is an android.bluetooth.le.ScanResult received and validated by the app.
+client.connectExternalDevice(
+    result.device,
+    advertisedName = result.scanRecord?.deviceName,
+    rssi = result.rssi
+)
+```
+
+Set callbacks before connecting and keep the client alive for the session. The usual connection
+callbacks, protocol selection, timeout and reconnect settings apply. The advertised name is
+important for name-based protocol selection; when absent, the Android device name is used, or
+`Unknown` if unavailable. If RSSI is not supplied it is `0` (unknown). Discovery metadata does
+not prove that a device is a supported wheel. A failed connection is reported through the usual
+error and connection callbacks; calling while connecting or connected reports an error.
+
+The app owns filtering and selecting the wheel, background scanning, permissions, service
+lifecycle and notifications. Android's Bluetooth permissions and background execution restrictions
+still apply; on Android 12 and later `BLUETOOTH_CONNECT` is required for this call and
+`BLUETOOTH_SCAN` for the app's scan. A background connection may need an appropriately declared
+foreground service, subject to Android's service-start restrictions. Device addresses can change,
+so a remembered address is not a universally reliable identity.
+
 For commands:
 
 ```kotlin

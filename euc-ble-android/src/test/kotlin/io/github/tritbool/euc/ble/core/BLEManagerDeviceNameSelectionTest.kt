@@ -9,9 +9,11 @@
 package io.github.tritbool.euc.ble.core
 
 import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothProfile
 import android.content.Context
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.EUCDevice
@@ -34,6 +36,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.whenever
 import java.util.UUID
 
@@ -222,6 +226,27 @@ class BLEManagerDeviceNameSelectionTest {
     }
 */
     // ── onServicesDiscovered: device-name-only path (no fingerprint match) ──
+
+    @Test
+    fun `externally detected advertised name participates in protocol selection`() {
+        val gotway = GotwayProtocol().also(protocolsToClose::add)
+        val nosfet = NosfetProtocol().also(protocolsToClose::add)
+        manager.registerProtocol(gotway)
+        manager.registerProtocol(nosfet)
+        val gatt = gotwayGatt()
+        val androidDevice = mock<BluetoothDevice>()
+        whenever(androidDevice.address).thenReturn("00:11:22:33:44:55")
+        whenever(androidDevice.connectGatt(any(), eq(false), eq(manager))).thenReturn(gatt)
+        whenever(gatt.discoverServices()).thenReturn(true)
+
+        manager.connectExternalDevice(androidDevice, "NOSFET", -40)
+        manager.onConnectionStateChange(gatt, BluetoothGatt.GATT_SUCCESS, BluetoothProfile.STATE_CONNECTED)
+        manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
+
+        assertEquals(nosfet, manager.currentProtocol)
+        assertEquals(ProtocolSelectionReason.AUTO_DEVICE_NAME, callback.selectedProtocols.single().reason)
+        manager.disconnect()
+    }
 
     @Test
     fun `explicit Nosfet name takes precedence over conflicting Gotway fingerprint`() {
