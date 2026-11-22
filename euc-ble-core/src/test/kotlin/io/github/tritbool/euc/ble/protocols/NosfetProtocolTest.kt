@@ -137,6 +137,7 @@ class NosfetProtocolTest {
         assertTrue(protocol.matchesDeviceName("APEX X Pro"))
         assertTrue(protocol.matchesDeviceName("Aero 2"))
         assertTrue(protocol.matchesDeviceName("Aeon GT"))
+        assertTrue(protocol.matchesDeviceName("Xeno"))
     }
 
     @Test
