@@ -17,6 +17,7 @@ import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertNull
 import io.github.tritbool.euc.ble.test.JUnit4AssertionsCompat.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
+import kotlin.math.abs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -76,13 +77,13 @@ class NosfetProtocolTest {
     }
 
     @Test
-    fun speedUsesSignedTenthsOfKmhForAllNosfetModels() = runTest {
+    fun speedDecodesReverseRollingAsPositiveTenthsOfKmhForAllNosfetModels() = runTest {
         protocol = NosfetProtocol(scope = backgroundScope)
         protocol.dataFlow.test(timeout = 5.seconds) {
             for (version in listOf(42001, 43001, 44001)) {
                 for (raw in listOf(-390, 0, 390)) {
                     protocol.decode(createFrame(versionRaw = version, speedRaw = raw))
-                    assertEquals(raw / 10.0, awaitItem().speed, 0.000001)
+                    assertEquals(abs(raw) / 10.0, awaitItem().speed, 0.000001)
                 }
             }
             cancelAndIgnoreRemainingEvents()
