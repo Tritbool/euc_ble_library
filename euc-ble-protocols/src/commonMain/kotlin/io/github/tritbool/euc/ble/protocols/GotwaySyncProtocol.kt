@@ -603,8 +603,10 @@ open class GotwaySyncProtocol(
         // published battery current is inverted to match discharge-positive telemetry.
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         hasType7Current = true
-        // Begode/WheelLog convention: zero means the wheel has no motor temperature sensor.
-        lastKnownMotorTemperature = motorTemperatureRaw.takeIf { it != 0 }?.toDouble()
+        // Begode/WheelLog convention: a zero motor-temperature reading means the wheel
+        // has no motor temperature sensor; never clear the last known reading on zero,
+        // otherwise the value flickers between frames.
+        if (motorTemperatureRaw != 0) lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
             // Type 7 = vraie PWM entière en %, Begode partage le PWM réel (pas calculé).[web:23][file:16]
             val truePwmAbs = kotlin.math.abs(raw.toDouble())
