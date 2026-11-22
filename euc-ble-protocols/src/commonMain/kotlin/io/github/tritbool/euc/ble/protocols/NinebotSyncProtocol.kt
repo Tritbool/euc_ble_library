@@ -139,7 +139,7 @@ class NinebotSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         if ((data[0].toInt() and 0xFF) != FRAME_HEADER) return null
 
         val voltage = (ByteUtils.tryGetUnsignedShortLE(data, 4) ?: return null) / 100.0
-        val speed = (ByteUtils.tryGetSignedShortLE(data, 6)?.toInt() ?: return null) / 100.0
+        val speed = abs((ByteUtils.tryGetSignedShortLE(data, 6)?.toInt() ?: return null) / 100.0)
         val distance = (ByteUtils.tryGetUnsignedIntLE(data, 8) ?: return null) / 1000.0
         val current = (ByteUtils.tryGetSignedShortLE(data, 12)?.toInt() ?: return null) / 100.0
         val temperature = (ByteUtils.tryGetSignedShortLE(data, 14)?.toInt() ?: return null) / 100.0
