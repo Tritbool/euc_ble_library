@@ -1,9 +1,9 @@
 /*
  *
- *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
- *  * euc_ble_library — version 1.1.0 — licence GPL-3.0
- *  * https://github.com/Tritbool/euc_ble_library
- *
+ *  Copyright (C) 2026 Gauthier Le Bartz Lyan (Tritbool)
+ *  euc_ble_library — version 1.2.0 — licence GPL-3.0
+ *  https://github.com/Tritbool/euc_ble_library
+ * /
  */
 
 package io.github.tritbool.euc.ble.core
@@ -514,10 +514,7 @@ class BLEManager internal constructor(
      */
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun connect(device: EUCDevice) {
-        if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {
-            errorCallback?.onError(BLEException("Already connecting or connected"))
-            return
-        }
+        if (!canStartConnection()) return
 
         val androidDevice = bluetoothDevicesByAddress[device.address]
         if (androidDevice == null) {
@@ -527,6 +524,41 @@ class BLEManager internal constructor(
             return
         }
 
+        startConnection(device)
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun connectExternalDevice(device: BluetoothDevice, advertisedName: String?, rssi: Int) {
+        if (!canStartConnection()) return
+
+        val eucDevice = try {
+            EUCDevice(
+                name = advertisedName?.takeIf { it.isNotBlank() }
+                    ?: device.name?.takeIf { it.isNotBlank() } ?: "Unknown",
+                address = device.address,
+                manufacturerId = 0,
+                rssi = rssi,
+                timestamp = System.currentTimeMillis()
+            )
+        } catch (exception: SecurityException) {
+            val error = BLEException("Cannot access external Bluetooth device: ${exception.message}")
+            errorCallback?.onError(error)
+            connectionCallback?.onConnectionFailed(error)
+            return
+        }
+        bluetoothDevicesByAddress[eucDevice.address] = device
+        startConnection(eucDevice)
+    }
+
+    private fun canStartConnection(): Boolean {
+        if (connectionState != BLEConstants.ConnectionState.DISCONNECTED) {
+            errorCallback?.onError(BLEException("Already connecting or connected"))
+            return false
+        }
+        return true
+    }
+
+    private fun startConnection(device: EUCDevice) {
         currentDevice = device
         configureConnectionSession()
         connectionSession.connect(device.address)

@@ -1,9 +1,9 @@
 /*
  *
- *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
- *  * euc_ble_library — version 1.1.0 — licence GPL-3.0
- *  * https://github.com/Tritbool/euc_ble_library
- *
+ *  Copyright (C) 2026 Gauthier Le Bartz Lyan (Tritbool)
+ *  euc_ble_library — version 1.2.0 — licence GPL-3.0
+ *  https://github.com/Tritbool/euc_ble_library
+ * /
  */
 
 package io.github.tritbool.euc.ble.protocols
@@ -603,7 +603,10 @@ open class GotwaySyncProtocol(
         // published battery current is inverted to match discharge-positive telemetry.
         lastKnownCurrent = (-batteryCurrentRaw) / 100.0
         hasType7Current = true
-        lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
+        // Begode/WheelLog convention: a zero motor-temperature reading means the wheel
+        // has no motor temperature sensor; never clear the last known reading on zero,
+        // otherwise the value flickers between frames.
+        if (motorTemperatureRaw != 0.toShort()) lastKnownMotorTemperature = motorTemperatureRaw.toDouble()
         truePwmRaw?.let { raw ->
             // Type 7 = vraie PWM entière en %, Begode partage le PWM réel (pas calculé).[web:23][file:16]
             val truePwmAbs = kotlin.math.abs(raw.toDouble())

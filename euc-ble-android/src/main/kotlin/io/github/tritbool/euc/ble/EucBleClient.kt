@@ -1,14 +1,15 @@
 /*
  *
- *  * Copyright (C) ${YEAR} Gauthier Le Bartz Lyan (Tritbool)
- *  * euc_ble_library — version 1.1.0 — licence GPL-3.0
- *  * https://github.com/Tritbool/euc_ble_library
- *
+ *  Copyright (C) 2026 Gauthier Le Bartz Lyan (Tritbool)
+ *  euc_ble_library — version 1.2.0 — licence GPL-3.0
+ *  https://github.com/Tritbool/euc_ble_library
+ * /
  */
 
 package io.github.tritbool.euc.ble
 
 import android.Manifest
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -93,6 +94,17 @@ class EucBleClient(
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     fun connect(device: EUCDevice) {
         bleManager.connect(device)
+    }
+
+    /**
+     * Connect an Android device discovered by the application, without a library scan.
+     * Pass the advertised name when available, since it can affect protocol selection.
+     * An RSSI of zero means that the signal strength was not supplied.
+     */
+    @JvmOverloads
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun connectExternalDevice(device: BluetoothDevice, advertisedName: String? = null, rssi: Int = 0) {
+        bleManager.connectExternalDevice(device, advertisedName, rssi)
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
