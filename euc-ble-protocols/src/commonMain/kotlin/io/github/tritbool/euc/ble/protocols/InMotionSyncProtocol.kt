@@ -20,6 +20,7 @@ import io.github.tritbool.euc.ble.models.WheelSecurityState
 import io.github.tritbool.euc.ble.models.AuthenticationState
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import io.github.tritbool.euc.ble.core.EucUuid as UUID
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -112,7 +113,6 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         private const val LEGACY_BATTERY_OFFSET = 154
 
         private const val LEGACY_SPEED_DIVISOR = 820.0
-        private const val LEGACY_SPEED_MIN = -80.0
         private const val LEGACY_SPEED_MAX = 80.0
         private const val LEGACY_BATTERY_BASE_VOLTAGE = 55.0
         private const val LEGACY_BATTERY_VOLTAGE_RANGE = 30.0
@@ -766,7 +766,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         val current =
             (ByteUtils.tryGetSignedShortLE(frame, LEGACY_CURRENT_OFFSET)?.toInt() ?: 0) / 100.0
         val speedRaw = ByteUtils.tryGetSignedShortLE(frame, LEGACY_SPEED_OFFSET)?.toInt() ?: 0
-        val speed = (speedRaw / LEGACY_SPEED_DIVISOR).coerceIn(LEGACY_SPEED_MIN, LEGACY_SPEED_MAX)
+        val speed = abs(speedRaw / LEGACY_SPEED_DIVISOR).coerceIn(0.0, LEGACY_SPEED_MAX)
         val tripDistanceKm =
             (ByteUtils.tryGetUnsignedIntLE(frame, LEGACY_TRIP_DISTANCE_OFFSET)?.toDouble()
                 ?: 0.0) / 1000.0
@@ -1032,7 +1032,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         if (body.size < 33) return null
         val voltage = ByteUtils.getUnsignedShortLE(body, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(body, 2) / 100.0
-        val speed = ByteUtils.getSignedShortLE(body, 8) / 100.0
+        val speed = abs(ByteUtils.getSignedShortLE(body, 8) / 100.0)
         val torque = ByteUtils.getSignedShortLE(body, 12) / 100.0
         val pwm = ByteUtils.getSignedShortLE(body, 14) / 100.0
         val battery1 = ByteUtils.getUnsignedShortLE(body, 20) / 100.0
@@ -1211,7 +1211,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
-        val speed = ByteUtils.getSignedShortLE(payload, 4) / 100.0
+        val speed = abs(ByteUtils.getSignedShortLE(payload, 4) / 100.0)
         val torque = ByteUtils.getSignedShortLE(payload, 6) / 100.0
         val pwm = ByteUtils.getSignedShortLE(payload, 8) / 100.0
         val pitchAngle = ByteUtils.getSignedShortLE(payload, 16) / 100.0
@@ -1309,7 +1309,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         if (isP6) enqueueP6StatsQueryIfDue()
         val voltage = ByteUtils.getUnsignedShortLE(payload, 0) / 100.0
         val current = ByteUtils.getSignedShortLE(payload, 2) / 100.0
-        val speed = ByteUtils.getSignedShortLE(payload, 8) / 100.0
+        val speed = abs(ByteUtils.getSignedShortLE(payload, 8) / 100.0)
         val torque = ByteUtils.tryGetSignedShortLE(payload, 12)?.let { it / 100.0 }
         // Phase current is not transmitted by the P6; the InMotion app derives it from
         // torque using the motor's torque constant. Verified against a same-ride
