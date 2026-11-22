@@ -303,7 +303,7 @@ class BLEManagerDeviceNameSelectionTest {
         val gatt = buildGatt(
             listOf(serviceWithChar(uuid("0000ffe0-0000-1000-8000-00805f9b34fb"), leaperkimCharUuid))
         )
-        attachSession(device("VETERAN Leclerc", 0), gatt)
+        attachSession(device("Leclerc", 0), gatt)
         manager.setProtocolSelectionMode(ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK)
         manager.onServicesDiscovered(gatt, BluetoothGatt.GATT_SUCCESS)
 
