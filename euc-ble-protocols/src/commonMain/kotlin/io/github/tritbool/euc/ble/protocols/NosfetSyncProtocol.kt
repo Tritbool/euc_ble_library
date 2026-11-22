@@ -23,7 +23,7 @@ class NosfetSyncProtocol(clock: EucClock) :
     override fun matchesDeviceName(deviceName: String): Boolean {
         val lower = deviceName.lowercase()
         return lower.contains("nosfet") || lower.contains("apex") ||
-               lower.contains("aero") || lower.contains("aeon")
+               lower.contains("aero") || lower.contains("aeon") || lower.contains("xeno")
     }
 
     override fun modelByMajorVersion(version: Int): String {
