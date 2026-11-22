@@ -9,6 +9,7 @@
 package io.github.tritbool.euc.ble.protocols
 
 import io.github.tritbool.euc.ble.core.EucClock
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class NosfetSyncProtocol(clock: EucClock) :
@@ -18,7 +19,7 @@ class NosfetSyncProtocol(clock: EucClock) :
     override val protocolId: String = "NosfetProtocol"
     override val parentProtocolId: String = "LeaperkimProtocol"
 
-    override fun decodeSpeed(speedRaw: Short): Double = speedRaw / 10.0
+    override fun decodeSpeed(speedRaw: Short): Double = abs(speedRaw / 10.0)
 
     override fun matchesDeviceName(deviceName: String): Boolean {
         val lower = deviceName.lowercase()

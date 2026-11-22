@@ -63,6 +63,17 @@ class LeaperkimSyncProtocolTest {
     }
 
     @Test
+    fun `reverse rolling decodes as a positive speed magnitude`() {
+        // Leaperkim and Nosfet transmit speed as a signed 16-bit value: negative in reverse.
+        for (engine in listOf(LeaperkimSyncProtocol(clock), NosfetSyncProtocol(clock))) {
+            engine.onNotification(frame(43001, -25))
+            val data = (engine.pollOutput() as ProtocolOutput.Telemetry).data
+            assertEquals(2.5, data.speed)
+            assertNull(engine.pollOutput())
+        }
+    }
+
+    @Test
     fun `lock command uses injected local time`() {
         val engine = LeaperkimSyncProtocol(clock)
         val command = engine.createCommand(CommandType.LOCK)

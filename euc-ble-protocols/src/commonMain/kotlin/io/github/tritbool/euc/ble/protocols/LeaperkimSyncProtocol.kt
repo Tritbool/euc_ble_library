@@ -19,6 +19,7 @@ import io.github.tritbool.euc.ble.models.DiagnosticLogTransfer
 import io.github.tritbool.euc.ble.models.EUCData
 import io.github.tritbool.euc.ble.models.resolveBmsChargingState
 import io.github.tritbool.euc.ble.core.EucUuid as UUID
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -428,7 +429,7 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
 
     protected open fun bmsCellCount(majorVersion: Int?): Int = LEAPERKIM_MAX_BMS_CELLS
 
-    protected open fun decodeSpeed(speedRaw: Short): Double = speedRaw / 10.0
+    protected open fun decodeSpeed(speedRaw: Short): Double = abs(speedRaw / 10.0)
 
     private fun isCrcValid(frame: ByteArray, len: Int): Boolean {
         if (frame.size < len + 4) return false
