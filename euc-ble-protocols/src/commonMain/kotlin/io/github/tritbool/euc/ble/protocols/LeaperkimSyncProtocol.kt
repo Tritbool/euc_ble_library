@@ -46,7 +46,11 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
 
     override fun matchesDeviceName(deviceName: String): Boolean {
         val lower = deviceName.lowercase()
-        return lower.contains("sherman") || lower.contains("lynx") ||
+        // Veteran/Leaperkim wheels often advertise a generic "LK" + digits BLE name
+        // (e.g. "LK13709" on a Lynx) instead of the model name.
+        val lkSerialName = lower.length > 2 && lower.startsWith("lk") && lower[2].isDigit()
+        return lkSerialName || lower.contains("veteran") || lower.contains("leaperkim") ||
+                lower.contains("sherman") || lower.contains("lynx") ||
                 lower.contains("patton") || lower.contains("oryx") || lower.contains("abrams")
     }
 
