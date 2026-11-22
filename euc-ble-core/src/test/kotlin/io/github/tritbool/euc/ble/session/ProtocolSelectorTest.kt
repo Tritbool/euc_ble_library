@@ -10,10 +10,14 @@ package io.github.tritbool.euc.ble.session
 
 import io.github.tritbool.euc.ble.core.NoOpLogger
 import io.github.tritbool.euc.ble.core.EucUuid
+import io.github.tritbool.euc.ble.core.ProtocolSelectionMode
+import io.github.tritbool.euc.ble.core.ProtocolSelectionReason
 import io.github.tritbool.euc.ble.protocols.ExtremeBullProtocol
 import io.github.tritbool.euc.ble.protocols.GattServiceSpec
 import io.github.tritbool.euc.ble.protocols.GotwayProtocol
 import io.github.tritbool.euc.ble.protocols.KingsongProtocol
+import io.github.tritbool.euc.ble.protocols.LeaperkimProtocol
+import io.github.tritbool.euc.ble.protocols.NosfetProtocol
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
@@ -42,6 +46,30 @@ class ProtocolSelectorTest {
             listOf(listOf(GattServiceSpec(service)))
         }
         assertEquals(null to 0, result)
+    }
+
+    @Test
+    fun `generic LK serial and Veteran device names resolve to Leaperkim`() {
+        val leaperkim = LeaperkimProtocol()
+        val nosfet = NosfetProtocol()
+        val selector = ProtocolSelector(listOf(leaperkim, nosfet), NoOpLogger())
+        assertSame(leaperkim, selector.byName("LK13709"))
+        assertSame(leaperkim, selector.byName("Veteran Lynx"))
+        assertNull(selector.byName("KS-S22"))
+    }
+
+    @Test
+    fun `select auto-detects a Lynx from its generic LK name without fingerprint`() {
+        val leaperkim = LeaperkimProtocol()
+        val selector = ProtocolSelector(listOf(leaperkim), NoOpLogger())
+        val service = EucUuid.parse("0000ffe0-0000-1000-8000-00805f9b34fb")
+        val decision = selector.select(
+            "LK13709",
+            listOf(ProtocolSelector.Service(service, emptySet())),
+            ProtocolSelectionMode.AUTO_WITH_MANUAL_FALLBACK, null
+        ) { emptyList() }
+        assertSame(leaperkim, decision.protocol)
+        assertEquals(ProtocolSelectionReason.AUTO_DEVICE_NAME, decision.reason)
     }
 
     @Test
