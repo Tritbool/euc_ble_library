@@ -1083,6 +1083,38 @@ class InMotionProtocolTest {
     }
 
     /**
+     * Regression: the polling plan asks the plain 0x04 realtime frame every 200 ms while
+     * the extended 0x07 frame runs every second, and a real V9 answers both (the plain
+     * WheelLog-dialect realtime below is a captured frame, echo byte `84`, shared with
+     * loeuc-core). The plain parser carries no settings fields, so every alternate realtime
+     * EUCData had them null and the settings screen flickered between the reported value
+     * and "not reported". The status-page caches now merge into EVERY realtime frame.
+     */
+    @Test
+    fun v9PlainRealtimeFrameCarriesTheStatusPageReadback() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa162e2102a02000000000820000009411a00f951164006009012d2319010a28" +
+                    "646428d00764640000000000000730150052"
+            )
+        )
+        val data = protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa1457843e1e0c000000000000000000afffc30000000000ffffd7fe000000000600000000009a17191670178510a00f" +
+                    "401f401fa00fa00f983a00000000cdc900ceb0cec8ceb03a6400000000004900000000000000000000003f"
+            )
+        )
+
+        assertNotNull(data)
+        assertEquals(45, data!!.tiltBackSpeed ?: -1)
+        assertEquals(40, data.alarm1Speed ?: -1)
+        assertEquals(10, data.pedalMountingAngleTenths ?: -1)
+        assertEquals(25, data.speakerVolumePercent ?: -1)
+        assertEquals(true, data.daytimeRunningLight)
+    }
+
+    /**
      * Real V9 status page (btsnoop 2026-11-25): tiltback 45.00 km/h at body[9], speed-limit
      * alarm 40.00 at body[11], pedal mounting angle 1.0 deg at body[15], offroad ride-mode bit
      * at body[19], pedal sensitivities comfort 45 / classic 35 at body[20]/[21], voice volume
