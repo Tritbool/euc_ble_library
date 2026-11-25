@@ -186,6 +186,20 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 it.id == CommandType.SET_ALARM_SPEED.name &&
                     !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
                     true
+                it.id == CommandType.SET_RIDE_MODE.name &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
+                it.id == CommandType.SET_PEDAL_SENSITIVITY.name &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
+                it.id == CommandType.SET_PEDAL_ANGLE.name &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
+                (it.id == CommandType.SET_DRL.name || it.id == CommandType.SET_IMPERIAL_UNITS.name ||
+                    it.id == CommandType.SET_MUTE.name || it.id == CommandType.SET_AVAS.name ||
+                    it.id == CommandType.SPEAKER_VOLUME.name) &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
                 lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
                     it.id == CommandType.LOCK.name || it.id == CommandType.UNLOCK.name
                 else -> false
@@ -238,6 +252,10 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         commandId == CommandType.SET_ALARM_SPEED.name &&
             supportsExtendedRoutingPacks() && lastKnownSpeedLimitCenti == null ->
             "Wheel speed limit must be known (reported or written) before changing the speed alarm"
+        commandId == CommandType.SET_PEDAL_SENSITIVITY.name && supportsExtendedRoutingPacks() &&
+            (lastKnownRideModeOffroad == null || lastKnownComfortSensitivity == null ||
+                lastKnownClassicSensitivity == null) ->
+            "Wheel pedal settings must be reported by the status page before changing pedal sensitivity"
         else -> null
     }
 
@@ -257,6 +275,13 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
     /** Committed tiltback in 0.01 km/h, tracked from speed-limit writes and the status page. */
     private var lastKnownSpeedLimitCenti: Int? = null
+
+    /** True while the wheel rides the offroad/classic mode (status page bit at body[19]). */
+    private var lastKnownRideModeOffroad: Boolean? = null
+
+    /** Pedal sensitivity percents, tracked from the status page (comfort body[20], classic body[21]). */
+    private var lastKnownComfortSensitivity: Int? = null
+    private var lastKnownClassicSensitivity: Int? = null
 
     private var modelName: String = manufacturer
 
@@ -930,10 +955,15 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             }
             EXTENDED_SUB_STATUS -> {
                 // Status page 0x20 (btsnoop: `... 21 02 a0 20 00*8 <tilt u16> <alarm u16> ...`):
-                // tiltback u16 LE at body[9], speed-limit alarm at body[11]. This seeds
-                // lastKnownSpeedLimitCenti so the alarm opcode can preserve the tiltback.
+                // tiltback u16 LE at body[9], speed-limit alarm at body[11], ride-mode bit at
+                // body[19], pedal sensitivities (comfort, classic) at body[20]/[21].
                 if (body.size >= 15) {
                     lastKnownSpeedLimitCenti = ByteUtils.getUnsignedShortLE(body, 9)
+                }
+                if (body.size >= 22) {
+                    lastKnownRideModeOffroad = (body[19].toInt() and 0x01) != 0
+                    lastKnownComfortSensitivity = body[20].toInt() and 0xFF
+                    lastKnownClassicSensitivity = body[21].toInt() and 0xFF
                 }
                 null
             }
@@ -1836,6 +1866,106 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 byteArrayOf()
             }
 
+            CommandType.SPEAKER_VOLUME -> if (supportsExtendedRoutingPacks()) {
+                // Speaker volume (real V9 btsnoop, official app): opcode 0x26 with a
+                // single percent byte — 100 -> `60 26 64`, 0 -> `60 26 00`, 20 -> `60 26 14`.
+                // The status page echoes the percent at body[22].
+                val percent = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100)
+                    ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x26, byteArrayOf(percent.toByte()))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_MUTE -> if (supportsExtendedRoutingPacks()) {
+                // Speaker disable/enable (real V9 btsnoop, official app): opcode 0x2c with a
+                // bool byte — `60 2c 00` = speaker off / `60 2c 01` = on. The status page
+                // echoes the state in bit 0 of body[39]. Mute is the inverted view.
+                val mute = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x2c, byteArrayOf(if (mute) 0x00 else 0x01))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_AVAS -> if (supportsExtendedRoutingPacks()) {
+                // AVAS wave sound (real V9 btsnoop, official app): opcode 0x39 with a bool
+                // byte — `60 39 01` = on / `60 39 00` = off. The status page echoes the
+                // state in bit 0x04 of body[39].
+                val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x39, byteArrayOf(if (on) 0x01 else 0x00))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_DRL -> if (supportsExtendedRoutingPacks()) {
+                // Daytime running light (real V9 btsnoop, official app): opcode 0x44 with
+                // a single bool byte, `60 44 00` = off / `60 44 01` = on. The status page
+                // echoes the state in bit 0x04 of body[41].
+                val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x44, byteArrayOf(if (on) 0x01 else 0x00))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_IMPERIAL_UNITS -> if (supportsExtendedRoutingPacks()) {
+                // Speed-unit switch (real V9 btsnoop, official app): opcode 0x46 with a
+                // single bool byte, `60 46 01` = imperial / `60 46 00` = metric. The status
+                // page echoes the state in bit 0x02 of body[41].
+                val imperial = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x46, byteArrayOf(if (imperial) 0x01 else 0x00))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_RIDE_MODE -> if (supportsExtendedRoutingPacks()) {
+                // Ride-mode switch (real V9 btsnoop, official app): opcode 0x23 with a
+                // single bool byte — `60 23 00` selects the comfort mode, `60 23 01`
+                // switches back to the offroad/classic mode. The status page echoes the
+                // mode in bit 0 of body[19].
+                val offroad = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                lastKnownRideModeOffroad = offroad
+                buildExtendedRoutingCommand(0x23, byteArrayOf(if (offroad) 0x01 else 0x00))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_PEDAL_ANGLE -> if (supportsExtendedRoutingPacks()) {
+                // Pedal mounting angle (real V9 btsnoop, official app): opcode 0x22 with an
+                // i16 LE in 0.01 deg — 10.0 deg -> `60 22 e8 03`, -10.0 deg -> `60 22 18 fc`,
+                // 1.0 deg -> `60 22 64 00`. The value below is tenths of a degree (the
+                // library-wide SET_PEDAL_ANGLE unit); the status page echoes it at body[15].
+                val tenths = (value as? CommandValue.Integer)?.value?.coerceIn(-100, 100)
+                    ?: return byteArrayOf()
+                val centi = (tenths * 10).coerceIn(-32_768, 32_767)
+                buildExtendedRoutingCommand(
+                    0x22,
+                    byteArrayOf((centi and 0xFF).toByte(), ((centi shr 8) and 0xFF).toByte())
+                )
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_PEDAL_SENSITIVITY -> if (supportsExtendedRoutingPacks()) {
+                // Pedal sensitivity of the ACTIVE ride mode (real V9 btsnoop, official app):
+                // opcode 0x25 commits both percents `[comfort][classic]`, and the app only
+                // replaces the byte of the mode being ridden, preserving the other
+                // (comfort ride: `25 00 23`, `25 64 23`, `25 2d 23`; offroad/classic ride:
+                // `25 64 64`, `25 64 00`, `25 64 23`). Both slots must be known first.
+                val percent = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100)
+                    ?: return byteArrayOf()
+                val offroad = lastKnownRideModeOffroad ?: return byteArrayOf()
+                val comfort = lastKnownComfortSensitivity ?: return byteArrayOf()
+                val classic = lastKnownClassicSensitivity ?: return byteArrayOf()
+                if (offroad) lastKnownClassicSensitivity = percent else lastKnownComfortSensitivity = percent
+                buildExtendedRoutingCommand(
+                    0x25,
+                    if (offroad) byteArrayOf(comfort.toByte(), percent.toByte())
+                    else byteArrayOf(percent.toByte(), classic.toByte())
+                )
+            } else {
+                byteArrayOf()
+            }
+
             CommandType.POWER_OFF -> buildMessage(
                 FLAG_DEFAULT,
                 COMMAND_CONTROL,
@@ -2160,7 +2290,29 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     maxRetries = 1
                 )
             }
-        }
+        } + listOf(
+            // Status page 0x20 poll, in the official app's exact form (`AA AA 16 04 02 21
+            // 20 20 31`, btsnoop 2026-11-25): MAIN_INFO addressed to 0x21 with page 0x20
+            // selected by the leading arg byte. The wheel answers with the `a0 20` body
+            // that seeds the tiltback/alarm/ride-mode/pedal-sensitivity state tracked by
+            // parseExtendedRoutingResponse.
+            ProtocolQuerySpec(
+                id = "inmotion.extended-status",
+                commandType = CommandType.CUSTOM,
+                value = CommandValue.Bytes(buildMessage(
+                    FLAG_EXTENDED, COMMAND_MAIN_INFO,
+                    byteArrayOf(
+                        EXTENDED_ROUTING_MCU_ADDRESS.toByte(),
+                        EXTENDED_SUB_STATUS.toByte(),
+                        EXTENDED_SUB_STATUS.toByte()
+                    )
+                )),
+                initialDelayMs = 500L,
+                intervalMs = 2_000L,
+                responseTimeoutMs = 800L,
+                maxRetries = 1
+            )
+        )
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
         buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO, byteArrayOf(packAddress.toByte(), 0x02))

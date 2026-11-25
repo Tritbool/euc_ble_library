@@ -81,6 +81,18 @@ class CommandContractTest {
             assertIs<CommandEncodingResult.Encoded>(it.encodeCommand("SET_SPEED_LIMIT", CommandValue.Integer(45)))
             it.drainOutputs()
         }
+        if (command == "SET_PEDAL_SENSITIVITY" && it.protocolId == "InMotionProtocol") {
+            // The V9 sensitivity commit preserves the other ride mode's percent, so seed
+            // the ride mode and both slots from a captured status page (btsnoop 2026-11-25:
+            // comfort ride at 45%, classic at 35%).
+            it.onNotification(
+                ByteUtils.hexToBytes(
+                    "aaaa162e2102a0200000000000ff3e039411a00f951164006009002d2319010a28" +
+                        "646428d0076464c9c5cd02350107301500e4"
+                )
+            )
+            it.drainOutputs()
+        }
     }
 
     @Test
