@@ -216,6 +216,7 @@ complete or when run manually against a completed main-branch quality run.
 
 - [WheelLog](https://github.com/Wheellog/Wheellog.Android)
 - [eried/eucplanet](https://github.com/eried/eucplanet)
+- [cancelledbit/loeuc-core](https://github.com/cancelledbit/loeuc-core)
 
 ---
 
