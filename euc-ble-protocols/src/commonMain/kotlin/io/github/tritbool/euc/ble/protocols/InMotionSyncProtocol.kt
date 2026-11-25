@@ -724,10 +724,12 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 null
             }
 
-            COMMAND_REAL_TIME_INFO -> parseRealTime(payload, frame)?.also {
-                lastDetectedDialect = Dialect.V2
-                hasSeenV2Realtime = true
-            }
+            COMMAND_REAL_TIME_INFO -> parseRealTime(payload, frame)
+                ?.also {
+                    lastDetectedDialect = Dialect.V2
+                    hasSeenV2Realtime = true
+                }
+                ?.withStatusPageReadback()
 
             COMMAND_BATTERY_INFO -> {
                 lastDetectedDialect = Dialect.V2
@@ -1176,24 +1178,8 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             totalPowerOnTimeSeconds = totalPowerOnTimeSeconds,
             angle = null,
             roll = null,
-            speedLimit = lastKnownSpeedLimitCenti?.let { it / 100.0 },
+            speedLimit = null,
             mode = if (current < 0) "charging" else if (speed != 0.0) "active" else "idle",
-            // The status page (polled alongside realtime) is the V9/P6 readback for the settings
-            // commands; merge its last known values so every realtime frame carries them.
-            tiltBackSpeed = lastKnownSpeedLimitCenti?.let { it / 100 },
-            alarm1Speed = lastKnownAlarmSpeedCenti?.let { it / 100 },
-            usesMiles = lastKnownImperialUnits,
-            rideModeOffroad = lastKnownRideModeOffroad,
-            pedalSensitivityPercent = if (lastKnownRideModeOffroad == true) {
-                lastKnownClassicSensitivity
-            } else {
-                lastKnownComfortSensitivity
-            },
-            pedalMountingAngleTenths = lastKnownPedalAngleCenti?.let { it / 10 },
-            speakerVolumePercent = lastKnownSpeakerVolumePercent,
-            speakerMuted = lastKnownSpeakerMuted,
-            avasEnabled = lastKnownAvasEnabled,
-            daytimeRunningLight = lastKnownDaytimeRunningLight,
         ).also { decoded ->
             updateBmsSnapshot(
                 voltage = decoded.voltage,
@@ -1206,8 +1192,34 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     decoded.imuTemperature
                 )
             )
-        }
+        }.withStatusPageReadback()
     }
+
+    /**
+     * Merge the extended-routing status page (sub 0x20, polled every 2 s) into a realtime
+     * [EUCData]. The V9 answers its plain 0x04 realtime poll every 200 ms while the extended
+     * 0x07 frame runs every second, so without this every realtime frame carries null settings
+     * fields and the settings screen flickers between the reported value and "not reported".
+     * The caches are null on every model that never answered the status page, so the merge is a
+     * no-op for non-extended wheels. Values the frame itself reports win over the cache.
+     */
+    private fun EUCData.withStatusPageReadback(): EUCData = copy(
+        speedLimit = speedLimit ?: lastKnownSpeedLimitCenti?.let { it / 100.0 },
+        tiltBackSpeed = tiltBackSpeed ?: lastKnownSpeedLimitCenti?.let { it / 100 },
+        alarm1Speed = alarm1Speed ?: lastKnownAlarmSpeedCenti?.let { it / 100 },
+        usesMiles = usesMiles ?: lastKnownImperialUnits,
+        rideModeOffroad = rideModeOffroad ?: lastKnownRideModeOffroad,
+        pedalSensitivityPercent = pedalSensitivityPercent ?: if (lastKnownRideModeOffroad == true) {
+            lastKnownClassicSensitivity
+        } else {
+            lastKnownComfortSensitivity
+        },
+        pedalMountingAngleTenths = pedalMountingAngleTenths ?: lastKnownPedalAngleCenti?.let { it / 10 },
+        speakerVolumePercent = speakerVolumePercent ?: lastKnownSpeakerVolumePercent,
+        speakerMuted = speakerMuted ?: lastKnownSpeakerMuted,
+        avasEnabled = avasEnabled ?: lastKnownAvasEnabled,
+        daytimeRunningLight = daytimeRunningLight ?: lastKnownDaytimeRunningLight,
+    )
 
     /**
      * Parse the component-version entries shared by the MAIN_INFO versions page
@@ -1987,10 +1999,16 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
 
             CommandType.SET_RIDE_MODE -> if (supportsExtendedRoutingPacks()) {
                 // Ride-mode switch (real V9 btsnoop, official app): opcode 0x23 with a
-                // single bool byte — `60 23 00` selects the comfort mode, `60 23 01`
-                // switches back to the offroad/classic mode. The status page echoes the
-                // mode in bit 0 of body[19].
-                val offroad = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                // single bool byte — `60 23 00` selects the commuting/comfort mode,
+                // `60 23 01` switches to the offroad/classic mode. The status page echoes
+                // the mode in bit 0 of body[19]. The catalogue input is the choice
+                // commuting/offroad, so an Integer 0/1 is the primary form; the raw
+                // createCommand API still accepts a Toggle with true = offroad.
+                val offroad = when (value) {
+                    is CommandValue.Toggle -> value.value
+                    is CommandValue.Integer -> value.value == 1
+                    else -> return byteArrayOf()
+                }
                 lastKnownRideModeOffroad = offroad
                 buildExtendedRoutingCommand(0x23, byteArrayOf(if (offroad) 0x01 else 0x00))
             } else {
