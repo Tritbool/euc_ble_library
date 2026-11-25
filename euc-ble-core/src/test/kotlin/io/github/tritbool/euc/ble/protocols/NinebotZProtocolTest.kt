@@ -156,6 +156,7 @@ class NinebotZProtocolTest {
         val decoded = protocol.decode(wheelLogFrame(0xB0, payload))
         assertNotNull(decoded)
         assertEquals(22.0, decoded?.speedLimit ?: 0.0, 0.001)
+        assertEquals(22, decoded?.wheelMaxSpeed)
         assertEquals(22, decoded?.alarm1Speed)
         assertEquals(1, decoded?.lightMode)
 

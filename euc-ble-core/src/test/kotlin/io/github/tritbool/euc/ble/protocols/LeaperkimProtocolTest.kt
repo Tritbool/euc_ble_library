@@ -248,6 +248,7 @@ class LeaperkimProtocolTest {
             assertEquals(10, telemetry.autoPowerOffMinutes)
             assertEquals(30, telemetry.alarm1Speed)
             assertEquals(40, telemetry.tiltBackSpeed)
+            assertEquals(40, telemetry.wheelMaxSpeed)
             cancelAndIgnoreRemainingEvents()
         }
     }

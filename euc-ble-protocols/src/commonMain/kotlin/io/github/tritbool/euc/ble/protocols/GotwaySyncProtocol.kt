@@ -549,6 +549,8 @@ open class GotwaySyncProtocol(
             usesMiles = usesMiles,
             autoPowerOffMinutes = autoPowerOffMinutes,
             tiltBackSpeed = tiltBackSpeed,
+            // The tiltback is the max speed SET_SPEED_LIMIT writes: same value, normalized field.
+            wheelMaxSpeed = tiltBackSpeed,
             ledMode = ledMode,
             lightMode = lightMode,
             alertFlags = alertFlags,

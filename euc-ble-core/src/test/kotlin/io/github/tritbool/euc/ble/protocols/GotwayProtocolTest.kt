@@ -404,6 +404,7 @@ class GotwayProtocolTest {
             assertEquals(true, result.usesMiles)
             assertEquals(15, result.autoPowerOffMinutes)
             assertEquals(40, result.tiltBackSpeed)
+            assertEquals(40, result.wheelMaxSpeed)
             assertEquals(5, result.ledMode)
             assertEquals(2, result.lightMode)
             assertEquals(0b0010_1101, result.alertFlags)
@@ -1721,6 +1722,7 @@ class GotwayProtocolTest {
             protocol.decode(frame)
             val result = awaitItem()
             assertNull(result.tiltBackSpeed)
+            assertNull(result.wheelMaxSpeed)
             cancelAndIgnoreRemainingEvents()
         }
     }

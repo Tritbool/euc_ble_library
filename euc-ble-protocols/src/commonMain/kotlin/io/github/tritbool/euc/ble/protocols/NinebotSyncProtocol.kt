@@ -342,6 +342,8 @@ class NinebotSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             totalDistance = distance,
             alertFlags = zAlarmsArmedMask,
             speedLimit = zSpeedLimit,
+            // Ninebot Z: the speed-limit report is the max speed SET_SPEED_LIMIT writes.
+            wheelMaxSpeed = zSpeedLimit?.roundToInt()?.takeIf { it > 0 },
             alarm1Speed = zAlarm1Speed,
             alarm2Speed = zAlarm2Speed,
             alarm3Speed = zAlarm3Speed,

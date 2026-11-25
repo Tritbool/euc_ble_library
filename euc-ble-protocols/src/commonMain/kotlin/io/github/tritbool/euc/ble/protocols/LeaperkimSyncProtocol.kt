@@ -317,6 +317,8 @@ open class LeaperkimSyncProtocol(private val clock: EucClock) : SyncEucProtocol 
             // WheelLog, the eucplanet captures and the loeuc firmware readout. Above 120.0 km/h -
             // the firmware's own configuration ceiling - the word is a "disabled" marker or noise.
             tiltBackSpeed = speedTiltBackRaw.takeIf { it in 1..1200 }?.let { it / 10 },
+            // The tiltback is the max speed SET_SPEED_LIMIT writes: same value, normalized field.
+            wheelMaxSpeed = speedTiltBackRaw.takeIf { it in 1..1200 }?.let { it / 10 },
             alarm1Speed = speedAlertRaw.takeIf { it in 1..1200 }?.let { it / 10 },
             // Stock firmware fills offsets 40..45 with the 0x80 "not reported" sentinel; patched
             // builds put the motor probe there instead, in centidegrees capped by the firmware's

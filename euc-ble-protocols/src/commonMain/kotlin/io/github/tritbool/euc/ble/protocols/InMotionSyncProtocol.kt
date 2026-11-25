@@ -276,6 +276,14 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     /** Committed tiltback in 0.01 km/h, tracked from speed-limit writes and the status page. */
     private var lastKnownSpeedLimitCenti: Int? = null
 
+    /**
+     * Tiltback in 0.01 km/h as REPORTED by the wheel (status page only, never a write). The
+     * readback exposes this one: a write the wheel refuses (e.g. above the V9 factory ceiling)
+     * must not show up as the wheel's max speed. [lastKnownSpeedLimitCenti] stays optimistic
+     * because SET_ALARM_SPEED must re-commit the tiltback the app just wrote.
+     */
+    private var reportedSpeedLimitCenti: Int? = null
+
     /** True while the wheel rides the offroad/classic mode (status page bit at body[19]). */
     private var lastKnownRideModeOffroad: Boolean? = null
 
@@ -983,6 +991,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 }
                 if (body.size >= 15) {
                     lastKnownSpeedLimitCenti = ByteUtils.getUnsignedShortLE(body, 9)
+                    reportedSpeedLimitCenti = lastKnownSpeedLimitCenti
                 }
                 if (body.size >= 22) {
                     lastKnownRideModeOffroad = (body[19].toInt() and 0x01) != 0
@@ -1204,8 +1213,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
      * no-op for non-extended wheels. Values the frame itself reports win over the cache.
      */
     private fun EUCData.withStatusPageReadback(): EUCData = copy(
-        speedLimit = speedLimit ?: lastKnownSpeedLimitCenti?.let { it / 100.0 },
-        tiltBackSpeed = tiltBackSpeed ?: lastKnownSpeedLimitCenti?.let { it / 100 },
+        speedLimit = speedLimit ?: reportedSpeedLimitCenti?.let { it / 100.0 },
+        tiltBackSpeed = tiltBackSpeed ?: reportedSpeedLimitCenti?.let { it / 100 },
+        wheelMaxSpeed = wheelMaxSpeed ?: reportedSpeedLimitCenti?.let { it / 100 }?.takeIf { it > 0 },
         alarm1Speed = alarm1Speed ?: lastKnownAlarmSpeedCenti?.let { it / 100 },
         usesMiles = usesMiles ?: lastKnownImperialUnits,
         rideModeOffroad = rideModeOffroad ?: lastKnownRideModeOffroad,
@@ -2724,6 +2734,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         lastDetectedDialect = Dialect.UNKNOWN
         lastKnownIsCharging = null
         lastKnownSpeedLimitCenti = null
+        reportedSpeedLimitCenti = null
         lastKnownRideModeOffroad = null
         lastKnownComfortSensitivity = null
         lastKnownClassicSensitivity = null

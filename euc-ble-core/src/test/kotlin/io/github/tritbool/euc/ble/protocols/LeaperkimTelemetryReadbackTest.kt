@@ -54,6 +54,7 @@ class LeaperkimTelemetryReadbackTest {
         val tiltback30 = telemetry(tiltbackRaw = 300)?.data
         assertEquals(20, alarm20?.alarm1Speed)
         assertEquals(30, tiltback30?.tiltBackSpeed)
+        assertEquals(30, tiltback30?.wheelMaxSpeed)
     }
 
     @Test
