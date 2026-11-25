@@ -283,6 +283,23 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     private var lastKnownComfortSensitivity: Int? = null
     private var lastKnownClassicSensitivity: Int? = null
 
+    // V9-only status-page fields (all offsets V9-capture-verified; the P6 block is longer and its
+    // flag word sits elsewhere - see loeuc-core's toP6SettingCapabilities - so these stay null
+    // for the P6). Alarm word at body[11] shares the P6/V9 prefix (eucplanet parseP6Settings).
+
+    /** Speed-limit alarm in 0.01 km/h, tracked from the status page (u16 LE at body[11]). */
+    private var lastKnownAlarmSpeedCenti: Int? = null
+
+    /** Pedal mounting angle in 0.01 deg (i16 LE at body[15]), tracked from the status page. */
+    private var lastKnownPedalAngleCenti: Int? = null
+
+    /** Speaker volume percent and switches from the V9 status page (body[22], body[39..41]). */
+    private var lastKnownSpeakerVolumePercent: Int? = null
+    private var lastKnownSpeakerMuted: Boolean? = null
+    private var lastKnownAvasEnabled: Boolean? = null
+    private var lastKnownDaytimeRunningLight: Boolean? = null
+    private var lastKnownImperialUnits: Boolean? = null
+
     private var modelName: String = manufacturer
 
     private var serialNumber: String? = null
@@ -956,7 +973,12 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             EXTENDED_SUB_STATUS -> {
                 // Status page 0x20 (btsnoop: `... 21 02 a0 20 00*8 <tilt u16> <alarm u16> ...`):
                 // tiltback u16 LE at body[9], speed-limit alarm at body[11], ride-mode bit at
-                // body[19], pedal sensitivities (comfort, classic) at body[20]/[21].
+                // body[19], pedal sensitivities (comfort, classic) at body[20]/[21]. The P6/V9
+                // frames share this prefix (eucplanet parseP6Settings reads the same words), so
+                // the speed/alarm seeds below apply to both.
+                if (body.size >= 13) {
+                    lastKnownAlarmSpeedCenti = ByteUtils.getUnsignedShortLE(body, 11)
+                }
                 if (body.size >= 15) {
                     lastKnownSpeedLimitCenti = ByteUtils.getUnsignedShortLE(body, 9)
                 }
@@ -964,6 +986,30 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     lastKnownRideModeOffroad = (body[19].toInt() and 0x01) != 0
                     lastKnownComfortSensitivity = body[20].toInt() and 0xFF
                     lastKnownClassicSensitivity = body[21].toInt() and 0xFF
+                }
+                // The fields below live in the V9 layout only: on the P6 the block is six bytes
+                // longer before the flag word and its trailing bytes hold different fields
+                // (loeuc-core's toP6SettingCapabilities), so a P6 must not be decoded with the
+                // V9 offsets. All offsets verified against real V9 captures: pedal mounting
+                // angle i16 LE at body[15], volume percent at body[22], sound bit 0 of body[39],
+                // AVAS/active-sound bit 2 of body[40], units bit 1 and DRL bit 2 of body[41].
+                if (modelName == V9) {
+                    if (body.size >= 17) {
+                        lastKnownPedalAngleCenti = ByteUtils.getSignedShortLE(body, 15).toInt()
+                    }
+                    if (body.size >= 23) {
+                        lastKnownSpeakerVolumePercent = body[22].toInt() and 0xFF
+                    }
+                    if (body.size >= 40) {
+                        lastKnownSpeakerMuted = (body[39].toInt() and 0x01) == 0
+                    }
+                    if (body.size >= 41) {
+                        lastKnownAvasEnabled = (body[40].toInt() and 0x04) != 0
+                    }
+                    if (body.size >= 42) {
+                        lastKnownImperialUnits = (body[41].toInt() and 0x02) != 0
+                        lastKnownDaytimeRunningLight = (body[41].toInt() and 0x04) != 0
+                    }
                 }
                 null
             }
@@ -1130,8 +1176,24 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             totalPowerOnTimeSeconds = totalPowerOnTimeSeconds,
             angle = null,
             roll = null,
-            speedLimit = null,
+            speedLimit = lastKnownSpeedLimitCenti?.let { it / 100.0 },
             mode = if (current < 0) "charging" else if (speed != 0.0) "active" else "idle",
+            // The status page (polled alongside realtime) is the V9/P6 readback for the settings
+            // commands; merge its last known values so every realtime frame carries them.
+            tiltBackSpeed = lastKnownSpeedLimitCenti?.let { it / 100 },
+            alarm1Speed = lastKnownAlarmSpeedCenti?.let { it / 100 },
+            usesMiles = lastKnownImperialUnits,
+            rideModeOffroad = lastKnownRideModeOffroad,
+            pedalSensitivityPercent = if (lastKnownRideModeOffroad == true) {
+                lastKnownClassicSensitivity
+            } else {
+                lastKnownComfortSensitivity
+            },
+            pedalMountingAngleTenths = lastKnownPedalAngleCenti?.let { it / 10 },
+            speakerVolumePercent = lastKnownSpeakerVolumePercent,
+            speakerMuted = lastKnownSpeakerMuted,
+            avasEnabled = lastKnownAvasEnabled,
+            daytimeRunningLight = lastKnownDaytimeRunningLight,
         ).also { decoded ->
             updateBmsSnapshot(
                 voltage = decoded.voltage,
@@ -1852,6 +1914,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     ?: return byteArrayOf()
                 val tiltCenti = lastKnownSpeedLimitCenti ?: return byteArrayOf()
                 val raw = (alarmKmh * 100).coerceAtMost(0xFFFF)
+                lastKnownAlarmSpeedCenti = raw
                 val tilt = (tiltCenti + 1).coerceAtMost(0xFFFF)
                 buildExtendedRoutingCommand(
                     0x3E,
@@ -1872,6 +1935,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 // The status page echoes the percent at body[22].
                 val percent = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100)
                     ?: return byteArrayOf()
+                lastKnownSpeakerVolumePercent = percent
                 buildExtendedRoutingCommand(0x26, byteArrayOf(percent.toByte()))
             } else {
                 byteArrayOf()
@@ -1882,6 +1946,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 // bool byte — `60 2c 00` = speaker off / `60 2c 01` = on. The status page
                 // echoes the state in bit 0 of body[39]. Mute is the inverted view.
                 val mute = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                lastKnownSpeakerMuted = mute
                 buildExtendedRoutingCommand(0x2c, byteArrayOf(if (mute) 0x00 else 0x01))
             } else {
                 byteArrayOf()
@@ -1890,8 +1955,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
             CommandType.SET_AVAS -> if (supportsExtendedRoutingPacks()) {
                 // AVAS wave sound (real V9 btsnoop, official app): opcode 0x39 with a bool
                 // byte — `60 39 01` = on / `60 39 00` = off. The status page echoes the
-                // state in bit 0x04 of body[39].
+                // state in bit 0x04 of body[40].
                 val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                lastKnownAvasEnabled = on
                 buildExtendedRoutingCommand(0x39, byteArrayOf(if (on) 0x01 else 0x00))
             } else {
                 byteArrayOf()
@@ -1902,6 +1968,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 // a single bool byte, `60 44 00` = off / `60 44 01` = on. The status page
                 // echoes the state in bit 0x04 of body[41].
                 val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                lastKnownDaytimeRunningLight = on
                 buildExtendedRoutingCommand(0x44, byteArrayOf(if (on) 0x01 else 0x00))
             } else {
                 byteArrayOf()
@@ -1912,6 +1979,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 // single bool byte, `60 46 01` = imperial / `60 46 00` = metric. The status
                 // page echoes the state in bit 0x02 of body[41].
                 val imperial = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                lastKnownImperialUnits = imperial
                 buildExtendedRoutingCommand(0x46, byteArrayOf(if (imperial) 0x01 else 0x00))
             } else {
                 byteArrayOf()
@@ -1937,6 +2005,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 val tenths = (value as? CommandValue.Integer)?.value?.coerceIn(-100, 100)
                     ?: return byteArrayOf()
                 val centi = (tenths * 10).coerceIn(-32_768, 32_767)
+                lastKnownPedalAngleCenti = centi
                 buildExtendedRoutingCommand(
                     0x22,
                     byteArrayOf((centi and 0xFF).toByte(), ((centi shr 8) and 0xFF).toByte())
@@ -2636,6 +2705,17 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         p6Packs = emptyMap()
         lastDetectedDialect = Dialect.UNKNOWN
         lastKnownIsCharging = null
+        lastKnownSpeedLimitCenti = null
+        lastKnownRideModeOffroad = null
+        lastKnownComfortSensitivity = null
+        lastKnownClassicSensitivity = null
+        lastKnownAlarmSpeedCenti = null
+        lastKnownPedalAngleCenti = null
+        lastKnownSpeakerVolumePercent = null
+        lastKnownSpeakerMuted = null
+        lastKnownAvasEnabled = null
+        lastKnownDaytimeRunningLight = null
+        lastKnownImperialUnits = null
         controlAuthToken = null
         controlAuthVerified = false
         controlAuthVerificationPending = false

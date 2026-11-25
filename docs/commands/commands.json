@@ -377,6 +377,10 @@
         {
           "id": "p6-v2", "match": { "models": ["InMotion P6"], "dialects": ["V2"] },
           "commands": {
+            "LIGHT_BRIGHTNESS": {
+              "name": "Headlight brightness", "description": "The P6 has no headlight-brightness setting; the headlight is on/off only (LIGHT_ON / LIGHT_OFF).", "encoding": "unavailable",
+              "input": { "kind": "unknown", "reason": "Not implemented for the P6: the wheel has no such setting." }
+            },
             "SET_SPEED_LIMIT": {
               "name": "Speed limit", "description": "Set integer km/h without wire saturation; safe model limits remain unknown.", "encoding": "available",
               "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 655, "step": 1, "unit": "km/h" }
@@ -388,6 +392,10 @@
         {
           "id": "v9-v2", "match": { "models": ["InMotion V9"], "dialects": ["V2"] },
           "commands": {
+            "LIGHT_BRIGHTNESS": {
+              "name": "Headlight brightness", "description": "The V9 has no headlight-brightness setting: the official app never sends opcode 0x2B in any capture, and the V9 status page carries no brightness field. The headlight is on/off only (LIGHT_ON / LIGHT_OFF).", "encoding": "unavailable",
+              "input": { "kind": "unknown", "reason": "Not implemented for the V9: the wheel has no such setting." }
+            },
             "SET_SPEED_LIMIT": {
               "name": "Speed limit", "description": "Set integer km/h without wire saturation; safe model limits remain unknown.", "encoding": "available",
               "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 655, "step": 1, "unit": "km/h" }
