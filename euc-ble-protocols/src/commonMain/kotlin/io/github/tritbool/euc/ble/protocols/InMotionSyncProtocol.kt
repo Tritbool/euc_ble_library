@@ -182,6 +182,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     it.id != CommandType.REQUEST_FIRMWARE.name && it.id != CommandType.CUSTOM.name
                 lastDetectedDialect == Dialect.V2 && it.id == CommandType.SET_SPEED_LIMIT.name ->
                     !supportsExtendedRoutingPacks()
+                it.id == CommandType.SET_ALARM_SPEED.name &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
                 lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
                     it.id == CommandType.LOCK.name || it.id == CommandType.UNLOCK.name
                 else -> false
@@ -1780,6 +1783,27 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 buildExtendedRoutingCommand(
                     0x21,
                     byteArrayOf((raw and 0xFF).toByte(), (raw shr 8).toByte())
+                )
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_ALARM_SPEED -> if (supportsExtendedRoutingPacks()) {
+                // Speed-limit alarm, independent of the tiltback ceiling (60 21): the InMotion
+                // app commits any scalar setting through the 60 3E opcode, and the P6 labelled
+                // captures (eucplanet) confirm 60 3E carries the beep-at threshold as u16 LE in
+                // 0.01 km/h followed by two zero bytes.
+                val alarmKmh = (value as? CommandValue.Integer)?.value?.coerceIn(1, 99)
+                    ?: return byteArrayOf()
+                val raw = (alarmKmh * 100).coerceAtMost(0xFFFF)
+                buildExtendedRoutingCommand(
+                    0x3E,
+                    byteArrayOf(
+                        (raw and 0xFF).toByte(),
+                        (raw shr 8).toByte(),
+                        0x00,
+                        0x00,
+                    )
                 )
             } else {
                 byteArrayOf()

@@ -326,6 +326,10 @@
           "name": "Speed limit", "description": "Requires an identified P6/V9 V2 profile.", "encoding": "conditional",
           "input": { "kind": "unknown", "reason": "No model-independent speed-limit input." }
         },
+        "SET_ALARM_SPEED": {
+          "name": "Speed limit alarm", "description": "Beep threshold speed, independent of the tiltback limit. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
+          "input": { "kind": "range", "valueType": "integer", "min": 1, "max": 99, "step": 1, "unit": "km/h" }
+        },
         "REQUEST_SERIAL": { "name": "Serial number", "description": "Request V2 main information after dialect identification.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },
         "REQUEST_FIRMWARE": { "name": "Firmware version", "description": "Request V2 main information or probe an unknown dialect.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },
         "REQUEST_BATTERY_INFO": { "name": "Battery information", "description": "Request V2 realtime information after dialect identification.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },

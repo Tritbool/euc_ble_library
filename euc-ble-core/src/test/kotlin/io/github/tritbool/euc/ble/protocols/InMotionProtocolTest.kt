@@ -1024,6 +1024,30 @@ class InMotionProtocolTest {
         )
     }
 
+    /**
+     * P6 speed-limit alarm register (0x3E): u16 LE * 100 followed by two zero bytes, the
+     * scalar-commit opcode the InMotion app uses (eucplanet labelled P6 capture, 85 mph = 13679).
+     * Independent of the tiltback ceiling write (0x21); 25 km/h = c4 09, 15 km/h = dc 05.
+     */
+    @Test
+    fun v9AlarmSpeedCommandUsesScalarCommitRegister() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16080221603ec4090000ae"),
+            protocol.createCommand(CommandType.SET_ALARM_SPEED, 25)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16080221603edc050000ba"),
+            protocol.createCommand(CommandType.SET_ALARM_SPEED, 15)
+        )
+    }
+
+    @Test
+    fun alarmSpeedHasNoEncoderWithoutTheExtendedRoutingProfile() {
+        assertEquals(0, protocol.createCommand(CommandType.SET_ALARM_SPEED, 25).size)
+    }
+
     @Test
     fun v9HeadlightCommandsUseExtendedRouting() {
         protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
