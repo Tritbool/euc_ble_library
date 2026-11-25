@@ -195,7 +195,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 it.id == CommandType.SET_PEDAL_ANGLE.name &&
                     !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
                     true
-                (it.id == CommandType.SET_DRL.name || it.id == CommandType.SET_IMPERIAL_UNITS.name) &&
+                (it.id == CommandType.SET_DRL.name || it.id == CommandType.SET_IMPERIAL_UNITS.name ||
+                    it.id == CommandType.SET_MUTE.name || it.id == CommandType.SET_AVAS.name ||
+                    it.id == CommandType.SPEAKER_VOLUME.name) &&
                     !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
                     true
                 lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
@@ -1860,6 +1862,37 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                         (tilt shr 8).toByte(),
                     )
                 )
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SPEAKER_VOLUME -> if (supportsExtendedRoutingPacks()) {
+                // Speaker volume (real V9 btsnoop, official app): opcode 0x26 with a
+                // single percent byte — 100 -> `60 26 64`, 0 -> `60 26 00`, 20 -> `60 26 14`.
+                // The status page echoes the percent at body[22].
+                val percent = (value as? CommandValue.Integer)?.value?.coerceIn(0, 100)
+                    ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x26, byteArrayOf(percent.toByte()))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_MUTE -> if (supportsExtendedRoutingPacks()) {
+                // Speaker disable/enable (real V9 btsnoop, official app): opcode 0x2c with a
+                // bool byte — `60 2c 00` = speaker off / `60 2c 01` = on. The status page
+                // echoes the state in bit 0 of body[39]. Mute is the inverted view.
+                val mute = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x2c, byteArrayOf(if (mute) 0x00 else 0x01))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_AVAS -> if (supportsExtendedRoutingPacks()) {
+                // AVAS wave sound (real V9 btsnoop, official app): opcode 0x39 with a bool
+                // byte — `60 39 01` = on / `60 39 00` = off. The status page echoes the
+                // state in bit 0x04 of body[39].
+                val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x39, byteArrayOf(if (on) 0x01 else 0x00))
             } else {
                 byteArrayOf()
             }

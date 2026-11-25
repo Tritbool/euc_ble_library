@@ -1141,6 +1141,46 @@ class InMotionProtocolTest {
     }
 
     /**
+     * V9 audio commands, official-app btsnoop 2026-11-25: speaker volume 0x26 as a raw
+     * percent byte (100 -> `60 26 64`, 0 -> `60 26 00`, 20 -> `60 26 14`; echo at body[22]),
+     * speaker disable/enable 0x2c (`60 2c 00` off / `60 2c 01` on; bit 0 of body[39]), and
+     * AVAS wave sound 0x39 (`60 39 01` on / `60 39 00` off; bit 0x04 of body[39]).
+     */
+    @Test
+    fun v9AudioCommandsCommitVolumeMuteAndAvas() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160266412"),
+            protocol.createCommand(CommandType.SPEAKER_VOLUME, 100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160260076"),
+            protocol.createCommand(CommandType.SPEAKER_VOLUME, 0)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160261462"),
+            protocol.createCommand(CommandType.SPEAKER_VOLUME, 20)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16050221602c007c"),
+            protocol.createCommand(CommandType.SET_MUTE, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16050221602c017d"),
+            protocol.createCommand(CommandType.SET_MUTE, CommandValue.Toggle(false))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160390168"),
+            protocol.createCommand(CommandType.SET_AVAS, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160390069"),
+            protocol.createCommand(CommandType.SET_AVAS, CommandValue.Toggle(false))
+        )
+    }
+
+    /**
      * V9 daytime running light (0x44) and speed units (0x46): single bool bytes, official-app
      * btsnoop 2026-11-25 — `60 44 00`/`60 44 01` for DRL off/on (status page bit 0x04),
      * `60 46 01`/`60 46 00` for imperial/metric (status page bit 0x02).

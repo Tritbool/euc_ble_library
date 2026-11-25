@@ -342,6 +342,15 @@
         "SET_IMPERIAL_UNITS": { "name": "Imperial units", "description": "Switch the speed unit to imperial (true) or metric (false). Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
           "input": { "kind": "boolean" }
         },
+        "SPEAKER_VOLUME": { "name": "Speaker volume", "description": "Speaker volume percent (0 = off). Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
+          "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
+        },
+        "SET_MUTE": { "name": "Mute speaker", "description": "Mute the speaker (true) or re-enable it (false). Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
+          "input": { "kind": "boolean" }
+        },
+        "SET_AVAS": { "name": "Wave sound (AVAS)", "description": "Enable (true) or disable (false) the AVAS wave sound. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
+          "input": { "kind": "boolean" }
+        },
         "SET_PEDAL_SENSITIVITY": { "name": "Pedal sensitivity", "description": "Pedal sensitivity percent of the active ride mode; the other mode's percent is preserved from the status page. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
           "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
         },

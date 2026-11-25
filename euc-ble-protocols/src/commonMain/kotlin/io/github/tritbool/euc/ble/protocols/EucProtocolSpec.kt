@@ -239,6 +239,10 @@ enum class CommandType {
     SET_DRL,
     /** InMotion V9: imperial speed units (true) instead of metric (false), value = Boolean. */
     SET_IMPERIAL_UNITS,
+    /** InMotion V9: mute the speaker (true) or re-enable it (false), value = Boolean. */
+    SET_MUTE,
+    /** InMotion V9: AVAS wave sound (true) or off (false), value = Boolean. */
+    SET_AVAS,
     SPEAKER_VOLUME,
     BEEP,
     POWER_OFF,
