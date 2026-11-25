@@ -333,6 +333,9 @@
         "SET_RIDE_MODE": { "name": "Ride mode", "description": "Select the offroad/classic ride mode (true) or the comfort mode (false). Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
           "input": { "kind": "boolean" }
         },
+        "SET_PEDAL_ANGLE": { "name": "Pedal angle", "description": "Pedal mounting angle in tenths of a degree, committed as i16 LE in 0.01 deg. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
+          "input": { "kind": "range", "valueType": "integer", "min": -100, "max": 100, "step": 1, "unit": "0.1 degree" }
+        },
         "SET_PEDAL_SENSITIVITY": { "name": "Pedal sensitivity", "description": "Pedal sensitivity percent of the active ride mode; the other mode's percent is preserved from the status page. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
           "input": { "kind": "range", "valueType": "integer", "min": 0, "max": 100, "step": 1, "unit": "percent" }
         },

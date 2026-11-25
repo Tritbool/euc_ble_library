@@ -243,7 +243,12 @@ class InMotionProtocolTest {
         // No V14 pack probing: the V9 uses the P6-style pack queries instead.
         assertTrue(plan.periodicQueries.none { it.id.startsWith("inmotion.v14-pack-") })
         assertEquals(
-            listOf("inmotion.realtime", "inmotion.extended-realtime", "inmotion.control-auth"),
+            listOf(
+                "inmotion.realtime",
+                "inmotion.extended-realtime",
+                "inmotion.control-auth",
+                "inmotion.extended-status"
+            ),
             plan.periodicQueries.map { it.id }.filter { !it.startsWith("inmotion.p6-pack-") }
         )
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
@@ -255,8 +260,8 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        // realtime + extended realtime + control-auth + 6 pack queries.
-        assertEquals(9, plan.periodicQueries.size)
+        // realtime + extended realtime + control-auth + status page + 6 pack queries.
+        assertEquals(10, plan.periodicQueries.size)
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
         assertFalse(plan.periodicQueries.any { it.id.startsWith("inmotion.v14-pack-") })
     }
@@ -1132,6 +1137,29 @@ class InMotionProtocolTest {
         assertArrayEquals(
             ByteUtils.hexToBytes("aaaa1606022160252d3c67"),
             protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 60)
+        )
+    }
+
+    /**
+     * V9 pedal mounting angle (0x22): i16 LE in 0.01 deg, official-app btsnoop 2026-11-25 —
+     * 10.0 deg -> `60 22 e8 03`, -10.0 deg -> `60 22 18 fc`, 1.0 deg -> `60 22 64 00`
+     * (statuses echo the committed word at page body[15]). Values are tenths of a degree.
+     */
+    @Test
+    fun v9PedalAngleCommitsTenthsOfADegreeAsCentiWords() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216022e8039a"),
+            protocol.createCommand(CommandType.SET_PEDAL_ANGLE, 100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16060221602218fc95"),
+            protocol.createCommand(CommandType.SET_PEDAL_ANGLE, -100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216022640015"),
+            protocol.createCommand(CommandType.SET_PEDAL_ANGLE, 10)
         )
     }
 

@@ -192,6 +192,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 it.id == CommandType.SET_PEDAL_SENSITIVITY.name &&
                     !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
                     true
+                it.id == CommandType.SET_PEDAL_ANGLE.name &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
                 lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
                     it.id == CommandType.LOCK.name || it.id == CommandType.UNLOCK.name
                 else -> false
@@ -1870,6 +1873,22 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 byteArrayOf()
             }
 
+            CommandType.SET_PEDAL_ANGLE -> if (supportsExtendedRoutingPacks()) {
+                // Pedal mounting angle (real V9 btsnoop, official app): opcode 0x22 with an
+                // i16 LE in 0.01 deg — 10.0 deg -> `60 22 e8 03`, -10.0 deg -> `60 22 18 fc`,
+                // 1.0 deg -> `60 22 64 00`. The value below is tenths of a degree (the
+                // library-wide SET_PEDAL_ANGLE unit); the status page echoes it at body[15].
+                val tenths = (value as? CommandValue.Integer)?.value?.coerceIn(-100, 100)
+                    ?: return byteArrayOf()
+                val centi = (tenths * 10).coerceIn(-32_768, 32_767)
+                buildExtendedRoutingCommand(
+                    0x22,
+                    byteArrayOf((centi and 0xFF).toByte(), ((centi shr 8) and 0xFF).toByte())
+                )
+            } else {
+                byteArrayOf()
+            }
+
             CommandType.SET_PEDAL_SENSITIVITY -> if (supportsExtendedRoutingPacks()) {
                 // Pedal sensitivity of the ACTIVE ride mode (real V9 btsnoop, official app):
                 // opcode 0x25 commits both percents `[comfort][classic]`, and the app only
@@ -2215,7 +2234,29 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     maxRetries = 1
                 )
             }
-        }
+        } + listOf(
+            // Status page 0x20 poll, in the official app's exact form (`AA AA 16 04 02 21
+            // 20 20 31`, btsnoop 2026-11-25): MAIN_INFO addressed to 0x21 with page 0x20
+            // selected by the leading arg byte. The wheel answers with the `a0 20` body
+            // that seeds the tiltback/alarm/ride-mode/pedal-sensitivity state tracked by
+            // parseExtendedRoutingResponse.
+            ProtocolQuerySpec(
+                id = "inmotion.extended-status",
+                commandType = CommandType.CUSTOM,
+                value = CommandValue.Bytes(buildMessage(
+                    FLAG_EXTENDED, COMMAND_MAIN_INFO,
+                    byteArrayOf(
+                        EXTENDED_ROUTING_MCU_ADDRESS.toByte(),
+                        EXTENDED_SUB_STATUS.toByte(),
+                        EXTENDED_SUB_STATUS.toByte()
+                    )
+                )),
+                initialDelayMs = 500L,
+                intervalMs = 2_000L,
+                responseTimeoutMs = 800L,
+                maxRetries = 1
+            )
+        )
 
     private fun buildV14PackCellsQuery(packAddress: Int): ByteArray =
         buildMessage(FLAG_EXTENDED, COMMAND_MAIN_INFO, byteArrayOf(packAddress.toByte(), 0x02))
