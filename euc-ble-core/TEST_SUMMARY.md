@@ -21,4 +21,4 @@ for current measurements. Coverage is not a guarantee of protocol correctness or
 
 The suite combines raw BLE captures from physical wheels with constructed unit-test cases.
 Captures are CSV files exported from WheelLog and stored in
-`src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/`; capture and firmware coverage is partial.
+`fixtures/replay/ble_frames/<brand>/RAW_WHEELLOG/`; capture and firmware coverage is partial.

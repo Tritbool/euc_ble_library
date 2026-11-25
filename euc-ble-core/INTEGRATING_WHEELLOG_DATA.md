@@ -77,10 +77,10 @@ euc-ble-core/
 ### Option 1: Direct File Copy
 ```bash
 # Copy Kingsong files
-cp /path/to/wheellog/kingsong_*.csv /home/tritbool/Workspace/euc-ble-library/euc-ble-core/src/test/resources/ble_frames/kingsong/
+cp /path/to/wheellog/kingsong_*.csv /home/tritbool/Workspace/euc-ble-library/fixtures/replay/ble_frames/kingsong/
 
 # Copy Gotway files  
-cp /path/to/wheellog/gotway_*.csv /home/tritbool/Workspace/euc-ble-library/euc-ble-core/src/test/resources/ble_frames/gotway/
+cp /path/to/wheellog/gotway_*.csv /home/tritbool/Workspace/euc-ble-library/fixtures/replay/ble_frames/gotway/
 ```
 
 ### Option 2: Share File Samples
