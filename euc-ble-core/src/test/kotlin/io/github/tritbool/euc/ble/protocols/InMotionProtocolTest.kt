@@ -1141,6 +1141,33 @@ class InMotionProtocolTest {
     }
 
     /**
+     * V9 daytime running light (0x44) and speed units (0x46): single bool bytes, official-app
+     * btsnoop 2026-11-25 — `60 44 00`/`60 44 01` for DRL off/on (status page bit 0x04),
+     * `60 46 01`/`60 46 00` for imperial/metric (status page bit 0x02).
+     */
+    @Test
+    fun v9DrlAndImperialUnitsCommitSingleBoolBytes() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160440014"),
+            protocol.createCommand(CommandType.SET_DRL, CommandValue.Toggle(false))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160440115"),
+            protocol.createCommand(CommandType.SET_DRL, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160460117"),
+            protocol.createCommand(CommandType.SET_IMPERIAL_UNITS, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160460016"),
+            protocol.createCommand(CommandType.SET_IMPERIAL_UNITS, CommandValue.Toggle(false))
+        )
+    }
+
+    /**
      * V9 pedal mounting angle (0x22): i16 LE in 0.01 deg, official-app btsnoop 2026-11-25 —
      * 10.0 deg -> `60 22 e8 03`, -10.0 deg -> `60 22 18 fc`, 1.0 deg -> `60 22 64 00`
      * (statuses echo the committed word at page body[15]). Values are tenths of a degree.

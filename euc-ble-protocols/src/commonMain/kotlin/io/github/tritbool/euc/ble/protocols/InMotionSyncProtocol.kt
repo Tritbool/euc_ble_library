@@ -195,6 +195,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 it.id == CommandType.SET_PEDAL_ANGLE.name &&
                     !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
                     true
+                (it.id == CommandType.SET_DRL.name || it.id == CommandType.SET_IMPERIAL_UNITS.name) &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
                 lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
                     it.id == CommandType.LOCK.name || it.id == CommandType.UNLOCK.name
                 else -> false
@@ -1857,6 +1860,26 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                         (tilt shr 8).toByte(),
                     )
                 )
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_DRL -> if (supportsExtendedRoutingPacks()) {
+                // Daytime running light (real V9 btsnoop, official app): opcode 0x44 with
+                // a single bool byte, `60 44 00` = off / `60 44 01` = on. The status page
+                // echoes the state in bit 0x04 of body[41].
+                val on = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x44, byteArrayOf(if (on) 0x01 else 0x00))
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_IMPERIAL_UNITS -> if (supportsExtendedRoutingPacks()) {
+                // Speed-unit switch (real V9 btsnoop, official app): opcode 0x46 with a
+                // single bool byte, `60 46 01` = imperial / `60 46 00` = metric. The status
+                // page echoes the state in bit 0x02 of body[41].
+                val imperial = (value as? CommandValue.Toggle)?.value ?: return byteArrayOf()
+                buildExtendedRoutingCommand(0x46, byteArrayOf(if (imperial) 0x01 else 0x00))
             } else {
                 byteArrayOf()
             }

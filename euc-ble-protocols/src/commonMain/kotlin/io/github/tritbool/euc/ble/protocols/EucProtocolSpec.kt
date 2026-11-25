@@ -235,6 +235,10 @@ enum class CommandType {
     LIGHT_BRIGHTNESS,
     /** Set the high beam independently from the low beam (LeaperKim two-frame binary command). */
     SET_HIGH_BEAM,
+    /** InMotion V9: daytime running light, value = Boolean. */
+    SET_DRL,
+    /** InMotion V9: imperial speed units (true) instead of metric (false), value = Boolean. */
+    SET_IMPERIAL_UNITS,
     SPEAKER_VOLUME,
     BEEP,
     POWER_OFF,
