@@ -1136,6 +1136,7 @@ class InMotionProtocolTest {
         assertNotNull(data)
         assertEquals(45.0, data!!.speedLimit ?: -1.0, 0.01)
         assertEquals(45, data.tiltBackSpeed ?: -1)
+        assertEquals(45, data.wheelMaxSpeed ?: -1)
         assertEquals(40, data.alarm1Speed ?: -1)
         assertEquals(10, data.pedalMountingAngleTenths ?: -1)
         assertEquals(true, data.rideModeOffroad)
@@ -1145,6 +1146,47 @@ class InMotionProtocolTest {
         assertEquals(false, data.avasEnabled)
         assertEquals(true, data.daytimeRunningLight)
         assertEquals(false, data.usesMiles)
+    }
+
+    /**
+     * Field report: TuxWheel pushed 55 km/h to a V9 set to 40 km/h (above its factory ceiling);
+     * the wheel refused it, but the readback showed 55 because the write seeded it. The max
+     * speed readback now only follows what the wheel reports on its status page, while the
+     * alarm command keeps re-committing the tiltback the app just wrote.
+     */
+    @Test
+    fun v9MaxSpeedReadbackFollowsTheWheelNotTheWrite() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        val statusPage45 = ByteUtils.hexToBytes(
+            "aaaa162e2102a02000000000820000009411a00f951164006009012d2319010a28" +
+                "646428d00764640000000000000730150052"
+        )
+        protocol.decode(statusPage45)
+
+        protocol.createCommand(CommandType.SET_SPEED_LIMIT, 55)
+        val afterWrite = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+        assertEquals(45, afterWrite!!.wheelMaxSpeed ?: -1)
+        assertEquals(45, afterWrite.tiltBackSpeed ?: -1)
+
+        // The alarm still re-commits the tiltback just written (55.01 km/h = 0x157D).
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16080221603ea00f7d15"),
+            protocol.createCommand(CommandType.SET_ALARM_SPEED, 40).copyOfRange(0, 12)
+        )
+
+        // The wheel refused: its next status page still reports 45 km/h.
+        protocol.decode(statusPage45)
+        val afterReport = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+        assertEquals(45, afterReport!!.wheelMaxSpeed ?: -1)
+    }
+
+    @Test
+    fun v9MaxSpeedIsUnknownUntilTheStatusPageAnswers() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        protocol.createCommand(CommandType.SET_SPEED_LIMIT, 40)
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+        assertNull(data!!.wheelMaxSpeed)
+        assertNull(data.tiltBackSpeed)
     }
 
     /**

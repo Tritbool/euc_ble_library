@@ -72,7 +72,12 @@ import io.github.tritbool.euc.ble.core.InternalEucBleApi
  * @param alarm1Speed Alarm 1 speed threshold in km/h.
  * @param alarm2Speed Alarm 2 speed threshold in km/h.
  * @param alarm3Speed Alarm 3 speed threshold in km/h.
- * @param wheelMaxSpeed Configured maximum speed in km/h.
+ * @param wheelMaxSpeed Configured maximum speed in km/h, as REPORTED by the wheel (never the last
+ * value written): the value [io.github.tritbool.euc.ble.protocols.CommandType.SET_SPEED_LIMIT]
+ * sets. Filled by every protocol that reports it: KingSong (settings frame), Gotway/ExtremeBull
+ * and Leaperkim/Nosfet (tiltback), Ninebot Z (speed-limit report), InMotion V9/P6 (status page
+ * tiltback). Null while the wheel has not reported it. Clients should read this field rather
+ * than brand-specific ones.
  * @param wheelDistance KingSong-reported trip distance in km; null until that value is received.
  * @param angle Pitch angle in degrees.
  * @param phaseCurrent Motor phase current in A.
