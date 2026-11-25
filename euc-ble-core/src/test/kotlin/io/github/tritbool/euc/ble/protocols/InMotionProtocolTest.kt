@@ -1059,7 +1059,7 @@ class InMotionProtocolTest {
         protocol.decode(
             ByteUtils.hexToBytes(
                 "aaaa162e2102a02000000000000000009411ac0d95116400600901646419010a28" +
-                    "646428d0076464c4c3c302000000530150014"
+                    "646428d0076464c4c3c30200000530150014"
             )
         )
 
