@@ -75,6 +75,12 @@ class CommandContractTest {
             assertIs<CommandEncodingResult.Encoded>(it.encodeCommand("REQUEST_DIAGNOSTIC_LOG"))
             it.drainOutputs()
         }
+        if (command == "SET_ALARM_SPEED" && it.protocolId == "InMotionProtocol") {
+            // The V9 alarm commit re-applies the current tiltback, so seed it with a
+            // speed-limit write first (btsnoop: tilt 45 -> `60 21 94 11`).
+            assertIs<CommandEncodingResult.Encoded>(it.encodeCommand("SET_SPEED_LIMIT", CommandValue.Integer(45)))
+            it.drainOutputs()
+        }
     }
 
     @Test

@@ -56,6 +56,7 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
         private const val EXTENDED_SUB_DETAILED = 0x04
         private const val EXTENDED_SUB_INFO = 0x06
         private const val EXTENDED_SUB_REALTIME = 0x07
+        private const val EXTENDED_SUB_STATUS = 0x20
         private const val EXTENDED_RESPONSE_MARKER = 0x80
 
         // Control-endpoint auth handshake (the "password" dance). The wheel issues a
@@ -182,6 +183,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     it.id != CommandType.REQUEST_FIRMWARE.name && it.id != CommandType.CUSTOM.name
                 lastDetectedDialect == Dialect.V2 && it.id == CommandType.SET_SPEED_LIMIT.name ->
                     !supportsExtendedRoutingPacks()
+                it.id == CommandType.SET_ALARM_SPEED.name &&
+                    !(lastDetectedDialect == Dialect.V2 && supportsExtendedRoutingPacks()) ->
+                    true
                 lastDetectedDialect == Dialect.V2 && modelName == manufacturer ->
                     it.id == CommandType.LOCK.name || it.id == CommandType.UNLOCK.name
                 else -> false
@@ -230,6 +234,13 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     private var securityState = WheelSecurityState(authentication = AuthenticationState.UNKNOWN)
     override fun getSecurityState(): WheelSecurityState = securityState
 
+    override fun commandStateError(commandId: String): String? = when {
+        commandId == CommandType.SET_ALARM_SPEED.name &&
+            supportsExtendedRoutingPacks() && lastKnownSpeedLimitCenti == null ->
+            "Wheel speed limit must be known (reported or written) before changing the speed alarm"
+        else -> null
+    }
+
     private val v2Buffer = ArrayList<Byte>()
     private val legacyBuffer = ArrayList<Byte>()
     private var lastV2Chunk: ByteArray? = null
@@ -243,6 +254,9 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
     private var lastDetectedDialect: Dialect = Dialect.UNKNOWN
 
     private var lastKnownIsCharging: Boolean? = null
+
+    /** Committed tiltback in 0.01 km/h, tracked from speed-limit writes and the status page. */
+    private var lastKnownSpeedLimitCenti: Int? = null
 
     private var modelName: String = manufacturer
 
@@ -913,6 +927,15 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                     body[1].toInt() and 0xFF == 0x00
                 ) body.copyOfRange(2, body.size) else body
                 parseExtendedRealtime(data)?.also { hasSeenV2Realtime = true }
+            }
+            EXTENDED_SUB_STATUS -> {
+                // Status page 0x20 (btsnoop: `... 21 02 a0 20 00*8 <tilt u16> <alarm u16> ...`):
+                // tiltback u16 LE at body[9], speed-limit alarm at body[11]. This seeds
+                // lastKnownSpeedLimitCenti so the alarm opcode can preserve the tiltback.
+                if (body.size >= 15) {
+                    lastKnownSpeedLimitCenti = ByteUtils.getUnsignedShortLE(body, 9)
+                }
+                null
             }
             else -> null
         }
@@ -1777,9 +1800,37 @@ class InMotionSyncProtocol(private val clock: EucClock) : SyncEucProtocol {
                 // 35 km/h -> `02 21 60 21 ac 0d`.
                 val maxSpeedKmh = (value as? CommandValue.Integer)?.value?.coerceIn(0, 999) ?: return byteArrayOf()
                 val raw = (maxSpeedKmh * 100).coerceAtMost(0xFFFF)
+                lastKnownSpeedLimitCenti = raw
                 buildExtendedRoutingCommand(
                     0x21,
                     byteArrayOf((raw and 0xFF).toByte(), (raw shr 8).toByte())
+                )
+            } else {
+                byteArrayOf()
+            }
+
+            CommandType.SET_ALARM_SPEED -> if (supportsExtendedRoutingPacks()) {
+                // Speed-limit alarm through the InMotion app's scalar commit opcode 60 3E,
+                // verified against a real V9 btsnoop (official app): the packet carries TWO
+                // u16 LE values in 0.01 km/h units — the beep-at threshold followed by the
+                // current tiltback plus one centi (app setting tiltback 45 then alarm 35 sent
+                // `60 3E ac 0d 95 11`; alarm 40 kept the same `95 11`). The wheel's realtime
+                // status page reports the same pair, so the second word is preserved rather
+                // than written blind: it must be known (from a speed-limit write or the
+                // status report) before the alarm can change.
+                val alarmKmh = (value as? CommandValue.Integer)?.value?.coerceIn(1, 99)
+                    ?: return byteArrayOf()
+                val tiltCenti = lastKnownSpeedLimitCenti ?: return byteArrayOf()
+                val raw = (alarmKmh * 100).coerceAtMost(0xFFFF)
+                val tilt = (tiltCenti + 1).coerceAtMost(0xFFFF)
+                buildExtendedRoutingCommand(
+                    0x3E,
+                    byteArrayOf(
+                        (raw and 0xFF).toByte(),
+                        (raw shr 8).toByte(),
+                        (tilt and 0xFF).toByte(),
+                        (tilt shr 8).toByte(),
+                    )
                 )
             } else {
                 byteArrayOf()
