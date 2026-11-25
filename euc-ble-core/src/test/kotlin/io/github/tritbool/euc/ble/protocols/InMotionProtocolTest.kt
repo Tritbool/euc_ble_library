@@ -1025,22 +1025,56 @@ class InMotionProtocolTest {
     }
 
     /**
-     * P6 speed-limit alarm register (0x3E): u16 LE * 100 followed by two zero bytes, the
-     * scalar-commit opcode the InMotion app uses (eucplanet labelled P6 capture, 85 mph = 13679).
-     * Independent of the tiltback ceiling write (0x21); 25 km/h = c4 09, 15 km/h = dc 05.
+     * V9 speed-limit alarm (0x3E): u16 LE × 100 alarm threshold followed by
+     * the current tiltback plus one centi, exactly as the official InMotion app
+     * writes it (btsnoop 2026-11-25: tiltback 45 → `60 21 94 11`, then alarm 35 →
+     * `60 3E ac 0d 95 11`, alarm 40 → `60 3E a0 0f 95 11`).
      */
     @Test
-    fun v9AlarmSpeedCommandUsesScalarCommitRegister() {
+    fun v9AlarmSpeedCommandCommitsAlarmAndCurrentTiltback() {
         protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
 
         assertArrayEquals(
-            ByteUtils.hexToBytes("aaaa16080221603ec4090000ae"),
-            protocol.createCommand(CommandType.SET_ALARM_SPEED, 25)
+            ByteUtils.hexToBytes("aaaa1606022160219411f7"),
+            protocol.createCommand(CommandType.SET_SPEED_LIMIT, 45)
         )
         assertArrayEquals(
-            ByteUtils.hexToBytes("aaaa16080221603edc050000ba"),
-            protocol.createCommand(CommandType.SET_ALARM_SPEED, 15)
+            ByteUtils.hexToBytes("aaaa16080221603eac0d951146"),
+            protocol.createCommand(CommandType.SET_ALARM_SPEED, 35)
         )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16080221603ea00f951148"),
+            protocol.createCommand(CommandType.SET_ALARM_SPEED, 40)
+        )
+    }
+
+    /**
+     * The V9 realtime status page (0x20) reports the committed tiltback at body[9]
+     * (`94 11` = 45.00 km/h); decoding the captured page seeds the alarm's tiltback
+     * word without any speed-limit write (`60 3E a0 0f 95 11`, official-app capture).
+     */
+    @Test
+    fun v9AlarmSpeedUsesTheTiltbackReportedByTheStatusPage() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa162e2102a02000000000000000009411ac0d95116400600901646419010a28" +
+                    "646428d0076464c4c3c302000000530150014"
+            )
+        )
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16080221603ea00f951148"),
+            protocol.createCommand(CommandType.SET_ALARM_SPEED, 40)
+        )
+    }
+
+    @Test
+    fun v9AlarmSpeedRefusesToEncodeWhileTheTiltbackIsUnknown() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertEquals(0, protocol.createCommand(CommandType.SET_ALARM_SPEED, 35).size)
+        assertNotNull(protocol.commandStateError(CommandType.SET_ALARM_SPEED.name))
     }
 
     @Test

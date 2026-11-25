@@ -327,7 +327,7 @@
           "input": { "kind": "unknown", "reason": "No model-independent speed-limit input." }
         },
         "SET_ALARM_SPEED": {
-          "name": "Speed limit alarm", "description": "Beep threshold speed, independent of the tiltback limit. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
+          "name": "Speed limit alarm", "description": "Beep threshold speed. The write also re-commits the current tiltback (plus one centi), which must be known from a speed-limit write or the status page. Requires the identified P6/V9 V2 extended-routing profile.", "encoding": "conditional",
           "input": { "kind": "range", "valueType": "integer", "min": 1, "max": 99, "step": 1, "unit": "km/h" }
         },
         "REQUEST_SERIAL": { "name": "Serial number", "description": "Request V2 main information after dialect identification.", "encoding": "conditional", "operation": "query", "input": { "kind": "none" } },
