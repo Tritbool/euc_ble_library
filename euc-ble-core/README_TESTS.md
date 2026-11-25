@@ -10,7 +10,7 @@ Captures are stored as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android) under:
 
 ```
-src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/
+fixtures/replay/ble_frames/<brand>/RAW_WHEELLOG/
 ```
 
 Each CSV row contains the exact byte sequence received from the wheel over BLE. This means:
@@ -31,10 +31,10 @@ This compiles the engines without JVM APIs and runs common tests on JVM and Java
 fragmented InMotion authentication, acceptance-aware
 timers, reset and byte/CRC utilities. The separate `euc-ble-session:check` also tests portable
 selection, polling deadlines, bounded writes/generations, protocol timers and connection/reconnect
-state. Shared lifecycle inputs/actions are in `euc-ble-session/fixtures/connection.tsv`.
+state. Shared lifecycle inputs/actions are in `fixtures/connection.tsv`.
 `BMSDataTest` now lives in `euc-ble-protocols/src/commonTest` and runs on both targets.
-Command and telemetry fixtures are in `euc-ble-protocols/fixtures/commands.tsv` and
-`euc-ble-protocols/fixtures/telemetry.tsv`.
+Command and telemetry fixtures are in `fixtures/commands.tsv` and
+`fixtures/telemetry.tsv`.
 
 `CaptureGoldenTest` (in core's `AllTests`) replays the synchronous engines directly, draining outputs
 after every input without flows, jobs or real time. Its manifest accounts for all 58 corpus files:
@@ -42,7 +42,7 @@ after every input without flows, jobs or real time. Its manifest accounts for al
 byte decoding. HCI ACL continuations are reassembled before extracting ATT notifications. Two raw
 KingSong noise-only captures intentionally have no decoded outputs.
 
-Full expected outputs are checked in under `euc-ble-protocols/fixtures/captures/` as gzip-compressed
+Full expected outputs are checked in under `fixtures/captures/` as gzip-compressed
 UTF-8 JSON Lines. Each row has `line` (CSV source line or HCI record index) and `event`; `type`
 discriminates event/action objects. Telemetry includes every model field, byte arrays are lowercase
 hex, enums are strings, and unavailable values are JSON null. Changed BMS pull snapshots are included.
@@ -176,7 +176,7 @@ euc-ble-core/build/reports/jacoco/focused/html/index.html   # protocols + models
 ## Adding a new protocol or firmware variant
 
 1. Record a BLE session with WheelLog on the target wheel.
-2. Export the raw CSV and drop it in `src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/`.
+2. Export the raw CSV and drop it in `fixtures/replay/ble_frames/<brand>/RAW_WHEELLOG/`.
 3. Create a `WheelLog<Brand>Test` that loads the file and feeds frames through the protocol decoder.
 4. Regenerate and review the synchronous goldens and manifest using the opt-in command above,
    then verify without the update flag.

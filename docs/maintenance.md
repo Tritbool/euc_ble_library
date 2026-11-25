@@ -120,7 +120,7 @@ Protocol tests combine offline unit tests with **raw BLE captures recorded from 
 replayed via JUnit 5 without an Android device or emulator. Capture coverage is partial and does
 not mean every supported model, firmware, command, or edge case has been verified on a physical wheel.
 
-Captures are stored in `euc-ble-core/src/test/resources/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
+Captures are stored in `fixtures/replay/ble_frames/<brand>/RAW_WHEELLOG/` as CSV files exported from
 [WheelLog](https://github.com/Wheellog/Wheellog.Android), a well-established EUC logging app.
 Each CSV row contains the exact byte sequence received from the wheel over BLE.
 

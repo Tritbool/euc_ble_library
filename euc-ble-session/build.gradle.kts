@@ -25,12 +25,12 @@ dependencyLocking {
 }
 
 val generateSessionFixtures by tasks.registering {
-    val input = layout.projectDirectory.file("fixtures/connection.tsv")
+    val input = rootProject.file("fixtures/connection.tsv")
     val output = layout.buildDirectory.dir("generated/fixtures")
     inputs.file(input)
     outputs.dir(output)
     doLast {
-        val rows = input.asFile.readLines().filter { it.isNotBlank() && !it.startsWith("#") }
+        val rows = input.readLines().filter { it.isNotBlank() && !it.startsWith("#") }
         val literals = rows.joinToString(",\n") {
             "    \"" + it.replace("\\", "\\\\").replace("\"", "\\\"").replace("\t", "\\t").replace("$", "\\$") + "\""
         }

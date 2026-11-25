@@ -38,8 +38,8 @@ dokka {
 }
 
 val generateReplayFixtures by tasks.registering {
-    val commandFile = layout.projectDirectory.file("fixtures/commands.tsv")
-    val telemetryFile = layout.projectDirectory.file("fixtures/telemetry.tsv")
+    val commandFile = rootProject.file("fixtures/commands.tsv")
+    val telemetryFile = rootProject.file("fixtures/telemetry.tsv")
     val output = layout.buildDirectory.dir("generated/replay")
     inputs.files(commandFile, telemetryFile)
     outputs.dir(output)
@@ -53,8 +53,8 @@ val generateReplayFixtures by tasks.registering {
             parentFile.mkdirs()
             writeText(
                 "package io.github.tritbool.euc.ble.replay\n\n" +
-                    "internal val commandFixtures = listOf(\n${literals(commandFile.asFile)}\n)\n\n" +
-                    "internal val telemetryFixtures = listOf(\n${literals(telemetryFile.asFile)}\n)\n"
+                    "internal val commandFixtures = listOf(\n${literals(commandFile)}\n)\n\n" +
+                    "internal val telemetryFixtures = listOf(\n${literals(telemetryFile)}\n)\n"
             )
         }
     }

@@ -217,7 +217,7 @@ euc-ble-core/src/test/java/com/euc/ble/AllTestsSuite.kt
 
 ### Data Files (Provided by You)
 ```
-euc-ble-core/src/test/resources/ble_frames/kingsong/RAW_WHEELLOG/*.csv
+fixtures/replay/ble_frames/kingsong/RAW_WHEELLOG/*.csv
 ```
 
 ## 🎯 What This Means for the Project

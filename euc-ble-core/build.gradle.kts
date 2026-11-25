@@ -52,7 +52,7 @@ kotlin {
         }
         jvmTest {
             kotlin.srcDirs("src/test/kotlin", "src/testFixtures/kotlin")
-            resources.srcDir("src/test/resources")
+            resources.srcDir(rootProject.file("fixtures/replay"))
             dependencies {
                 implementation(kotlin("test-junit5"))
                 implementation(project.dependencies.platform("org.junit:junit-bom:5.10.2"))
@@ -79,11 +79,11 @@ val test by tasks.registering(Test::class) {
 }
 
 tasks.withType<Test>().configureEach {
-    systemProperty("replay.captureRoot", file("src/test/resources/ble_frames"))
-    systemProperty("replay.goldenRoot", rootProject.file("euc-ble-protocols/fixtures/captures"))
+    systemProperty("replay.captureRoot", rootProject.file("fixtures/replay/ble_frames"))
+    systemProperty("replay.goldenRoot", rootProject.file("fixtures/captures"))
     systemProperty("replay.updateGoldens", providers.gradleProperty("updateReplayGoldens").isPresent)
     if (!providers.gradleProperty("updateReplayGoldens").isPresent) {
-        inputs.dir(rootProject.file("euc-ble-protocols/fixtures/captures"))
+        inputs.dir(rootProject.file("fixtures/captures"))
     }
     useJUnitPlatform()
     val isCi = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"

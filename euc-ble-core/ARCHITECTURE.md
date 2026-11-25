@@ -228,7 +228,7 @@ the typed value model alone does not enforce each command's permitted variant at
 **Goal:** this remains a Kotlin/KMP library. A separate sister Rust library may use the architecture
 and behavior as a model; this project does not need FFI, Rust-compatible APIs, Rust crates, or
 allocation-free firmware constraints. KMP does not imply Kotlin can target ESP32 RISC-V.
-The common command vectors in `euc-ble-protocols/fixtures/commands.tsv` and replay tests are
+The common command vectors in `fixtures/commands.tsv` and replay tests are
 behavioral regression evidence, not proof of a complete architecture or a complete future sister library.
 
 Execution order for finishing phases 0-6: freeze capture outputs; enforce module boundaries;
