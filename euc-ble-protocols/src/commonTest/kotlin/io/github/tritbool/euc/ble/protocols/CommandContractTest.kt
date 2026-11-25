@@ -137,6 +137,22 @@ class CommandContractTest {
         }
     }
 
+    /**
+     * The P6 and the V9 have no headlight-brightness setting: the official app never sends
+     * opcode 0x2B in any V9 capture and their status page carries no brightness field, so the
+     * catalogue must not offer the command there. Other V2 wheels keep it.
+     */
+    @Test
+    fun headlightBrightnessExistsOnEveryWheelExceptTheP6AndV9() {
+        for (series in 12..13) {
+            val brightness = inMotion(series).getCommandDescriptors().single { it.id == "LIGHT_BRIGHTNESS" }
+            assertEquals(CommandEncoding.UNAVAILABLE, brightness.encoding, "series $series")
+            assertIs<CommandEncodingResult.Rejected>(inMotion(series).encodeCommand("LIGHT_BRIGHTNESS", CommandValue.Integer(50)))
+        }
+        val v2 = inMotion(6).getCommandDescriptors().single { it.id == "LIGHT_BRIGHTNESS" }
+        assertNotEquals(CommandEncoding.UNAVAILABLE, v2.encoding)
+    }
+
     @Test
     fun currentIdentityAndResetControlDiscoveryAndSubmission() {
         val engine = inMotion(12)

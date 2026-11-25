@@ -1083,6 +1083,67 @@ class InMotionProtocolTest {
     }
 
     /**
+     * Real V9 status page (btsnoop 2026-11-25): tiltback 45.00 km/h at body[9], speed-limit
+     * alarm 40.00 at body[11], pedal mounting angle 1.0 deg at body[15], offroad ride-mode bit
+     * at body[19], pedal sensitivities comfort 45 / classic 35 at body[20]/[21], voice volume
+     * 25% at body[22], and the flag tail at body[39..41]: sound on, AVAS off, DRL on, metric
+     * units. Every realtime frame merges the last known page into its EUCData, which is the
+     * readback the settings UI shows for every V9 command.
+     */
+    @Test
+    fun v9StatusPageSurfacesEveryReportedSettingInRealtimeData() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa162e2102a02000000000820000009411a00f951164006009012d2319010a28" +
+                    "646428d00764640000000000000730150052"
+            )
+        )
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+
+        assertNotNull(data)
+        assertEquals(45.0, data!!.speedLimit ?: -1.0, 0.01)
+        assertEquals(45, data.tiltBackSpeed ?: -1)
+        assertEquals(40, data.alarm1Speed ?: -1)
+        assertEquals(10, data.pedalMountingAngleTenths ?: -1)
+        assertEquals(true, data.rideModeOffroad)
+        assertEquals(35, data.pedalSensitivityPercent ?: -1)
+        assertEquals(25, data.speakerVolumePercent ?: -1)
+        assertEquals(false, data.speakerMuted)
+        assertEquals(false, data.avasEnabled)
+        assertEquals(true, data.daytimeRunningLight)
+        assertEquals(false, data.usesMiles)
+    }
+
+    /**
+     * V9 write commands update their own readback cache, so the reported value follows a
+     * write even before the next status page poll arrives (all cached values are captured-
+     * verified echo offsets; see the status-page test above).
+     */
+    @Test
+    fun v9WritesUpdateTheirReportedValueCaches() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(true))
+        protocol.createCommand(CommandType.SET_PEDAL_ANGLE, 50)
+        protocol.createCommand(CommandType.SPEAKER_VOLUME, 60)
+        protocol.createCommand(CommandType.SET_MUTE, CommandValue.Toggle(true))
+        protocol.createCommand(CommandType.SET_AVAS, CommandValue.Toggle(true))
+        protocol.createCommand(CommandType.SET_DRL, CommandValue.Toggle(false))
+        protocol.createCommand(CommandType.SET_IMPERIAL_UNITS, CommandValue.Toggle(true))
+        val data = protocol.decode(ByteUtils.hexToBytes(v9ExtendedRealtimeFrame))
+
+        assertNotNull(data)
+        assertEquals(true, data!!.rideModeOffroad)
+        assertEquals(50, data.pedalMountingAngleTenths ?: -1)
+        assertEquals(60, data.speakerVolumePercent ?: -1)
+        assertEquals(true, data.speakerMuted)
+        assertEquals(true, data.avasEnabled)
+        assertEquals(false, data.daytimeRunningLight)
+        assertEquals(true, data.usesMiles)
+    }
+
+    /**
      * V9 ride-mode switch (0x23): a single bool byte — `60 23 00` selects the comfort
      * mode, `60 23 01` switches back to the offroad/classic mode (official-app btsnoop
      * 2026-11-25). The status page echoes the mode in bit 0 of body[19].

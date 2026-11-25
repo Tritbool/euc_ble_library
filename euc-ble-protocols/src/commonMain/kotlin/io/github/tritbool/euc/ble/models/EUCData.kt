@@ -83,6 +83,17 @@ import io.github.tritbool.euc.ble.core.InternalEucBleApi
  * @param totalPowerOnTimeSeconds Cumulative lifetime powered-on time in seconds.
  * @param dynamicSpeedLimit KingSong F6 runtime speed ceiling in km/h, independent of the
  * configured [speedLimit]. Null until received; the reason for a reduction is not reported here.
+ * @param rideModeOffroad InMotion V9/P6: true while the offroad/classic ride mode is active, from
+ * the status page polled alongside realtime. Null while the wheel has not answered one.
+ * @param pedalSensitivityPercent InMotion V9/P6: pedal sensitivity percent of the ACTIVE ride
+ * mode, from the status page. Null while the wheel has not answered one.
+ * @param pedalMountingAngleTenths InMotion V9: pedal mounting angle in tenths of a degree, from
+ * the status page. Null while the wheel has not answered one.
+ * @param speakerVolumePercent InMotion V9: voice/speaker volume percent, from the status page.
+ * Null while the wheel has not answered one.
+ * @param speakerMuted InMotion V9: true while the speaker is switched off, from the status page.
+ * @param avasEnabled InMotion V9: AVAS wave-sound switch, from the status page.
+ * @param daytimeRunningLight InMotion V9: daytime running light switch, from the status page.
  */
 data class EUCData(
     @property:InternalEucBleApi val frameType: String = "BASE",
@@ -136,7 +147,14 @@ data class EUCData(
     val mode: String? = null,            // Ride mode/state string (e.g. "active", "idle"), null if unavailable
     val totalRideTimeSeconds: Long? = null,    // Cumulative ride time in seconds (from TotalStats), null if unavailable
     val totalPowerOnTimeSeconds: Long? = null, // Cumulative power-on time in seconds (from TotalStats), null if unavailable
-    val dynamicSpeedLimit: Double? = null     // KingSong runtime speed ceiling in km/h
+    val dynamicSpeedLimit: Double? = null,    // KingSong runtime speed ceiling in km/h
+    val rideModeOffroad: Boolean? = null,
+    val pedalSensitivityPercent: Int? = null,
+    val pedalMountingAngleTenths: Int? = null,
+    val speakerVolumePercent: Int? = null,
+    val speakerMuted: Boolean? = null,
+    val avasEnabled: Boolean? = null,
+    val daytimeRunningLight: Boolean? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
