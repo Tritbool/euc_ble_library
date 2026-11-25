@@ -235,6 +235,14 @@ enum class CommandType {
     LIGHT_BRIGHTNESS,
     /** Set the high beam independently from the low beam (LeaperKim two-frame binary command). */
     SET_HIGH_BEAM,
+    /** InMotion V9: daytime running light, value = Boolean. */
+    SET_DRL,
+    /** InMotion V9: imperial speed units (true) instead of metric (false), value = Boolean. */
+    SET_IMPERIAL_UNITS,
+    /** InMotion V9: mute the speaker (true) or re-enable it (false), value = Boolean. */
+    SET_MUTE,
+    /** InMotion V9: AVAS wave sound (true) or off (false), value = Boolean. */
+    SET_AVAS,
     SPEAKER_VOLUME,
     BEEP,
     POWER_OFF,
@@ -255,6 +263,8 @@ enum class CommandType {
     SET_PEDAL_ANGLE,
     /** LeaperKim: ride-mode scalar 0..100, value = Int. */
     SET_RIDE_MODE,
+    /** InMotion: pedal sensitivity of the active ride mode 0..100 %, value = Int. */
+    SET_PEDAL_SENSITIVITY,
     /** LeaperKim: maximum PWM percentage 0..100, value = Int. */
     SET_PWM_LIMIT,
     /** KingSong: charge cutoff percentage 0..100, value = Int. */

@@ -243,7 +243,12 @@ class InMotionProtocolTest {
         // No V14 pack probing: the V9 uses the P6-style pack queries instead.
         assertTrue(plan.periodicQueries.none { it.id.startsWith("inmotion.v14-pack-") })
         assertEquals(
-            listOf("inmotion.realtime", "inmotion.extended-realtime", "inmotion.control-auth"),
+            listOf(
+                "inmotion.realtime",
+                "inmotion.extended-realtime",
+                "inmotion.control-auth",
+                "inmotion.extended-status"
+            ),
             plan.periodicQueries.map { it.id }.filter { !it.startsWith("inmotion.p6-pack-") }
         )
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
@@ -255,8 +260,8 @@ class InMotionProtocolTest {
 
         val plan = protocol.getPollingPlan()
 
-        // realtime + extended realtime + control-auth + 6 pack queries.
-        assertEquals(9, plan.periodicQueries.size)
+        // realtime + extended realtime + control-auth + status page + 6 pack queries.
+        assertEquals(10, plan.periodicQueries.size)
         assertEquals(6, plan.periodicQueries.count { it.id.startsWith("inmotion.p6-pack-") })
         assertFalse(plan.periodicQueries.any { it.id.startsWith("inmotion.v14-pack-") })
     }
@@ -1075,6 +1080,162 @@ class InMotionProtocolTest {
 
         assertEquals(0, protocol.createCommand(CommandType.SET_ALARM_SPEED, 35).size)
         assertNotNull(protocol.commandStateError(CommandType.SET_ALARM_SPEED.name))
+    }
+
+    /**
+     * V9 ride-mode switch (0x23): a single bool byte — `60 23 00` selects the comfort
+     * mode, `60 23 01` switches back to the offroad/classic mode (official-app btsnoop
+     * 2026-11-25). The status page echoes the mode in bit 0 of body[19].
+     */
+    @Test
+    fun v9RideModeSelectsComfortOrOffroad() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160230073"),
+            protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(false))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160230172"),
+            protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(true))
+        )
+    }
+
+    /**
+     * V9 pedal sensitivity (0x25) commits both percents `[comfort][classic]`, replacing
+     * only the byte of the ride mode being ridden (official-app btsnoop 2026-11-25:
+     * comfort ride — `25 00 23`, `25 64 23`, `25 2d 23`; captured page comfort=45,
+     * classic=35). After switching to the offroad mode the second byte changes and
+     * the comfort percent (45) is preserved: 60 % -> `25 2d 3c`.
+     */
+    @Test
+    fun v9PedalSensitivityCommitsTheActiveModeSlot() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa162e2102a0200000000000ff3e039411a00f951164006009002d2319010a28" +
+                    "646428d0076464c9c5cd02350107301500e4"
+            )
+        )
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216025002355"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 0)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216025642331"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1606022160252d2378"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 45)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160230172"),
+            protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1606022160252d3c67"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 60)
+        )
+    }
+
+    /**
+     * V9 audio commands, official-app btsnoop 2026-11-25: speaker volume 0x26 as a raw
+     * percent byte (100 -> `60 26 64`, 0 -> `60 26 00`, 20 -> `60 26 14`; echo at body[22]),
+     * speaker disable/enable 0x2c (`60 2c 00` off / `60 2c 01` on; bit 0 of body[39]), and
+     * AVAS wave sound 0x39 (`60 39 01` on / `60 39 00` off; bit 0x04 of body[39]).
+     */
+    @Test
+    fun v9AudioCommandsCommitVolumeMuteAndAvas() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160266412"),
+            protocol.createCommand(CommandType.SPEAKER_VOLUME, 100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160260076"),
+            protocol.createCommand(CommandType.SPEAKER_VOLUME, 0)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160261462"),
+            protocol.createCommand(CommandType.SPEAKER_VOLUME, 20)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16050221602c007c"),
+            protocol.createCommand(CommandType.SET_MUTE, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16050221602c017d"),
+            protocol.createCommand(CommandType.SET_MUTE, CommandValue.Toggle(false))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160390168"),
+            protocol.createCommand(CommandType.SET_AVAS, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160390069"),
+            protocol.createCommand(CommandType.SET_AVAS, CommandValue.Toggle(false))
+        )
+    }
+
+    /**
+     * V9 daytime running light (0x44) and speed units (0x46): single bool bytes, official-app
+     * btsnoop 2026-11-25 — `60 44 00`/`60 44 01` for DRL off/on (status page bit 0x04),
+     * `60 46 01`/`60 46 00` for imperial/metric (status page bit 0x02).
+     */
+    @Test
+    fun v9DrlAndImperialUnitsCommitSingleBoolBytes() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160440014"),
+            protocol.createCommand(CommandType.SET_DRL, CommandValue.Toggle(false))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160440115"),
+            protocol.createCommand(CommandType.SET_DRL, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160460117"),
+            protocol.createCommand(CommandType.SET_IMPERIAL_UNITS, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160460016"),
+            protocol.createCommand(CommandType.SET_IMPERIAL_UNITS, CommandValue.Toggle(false))
+        )
+    }
+
+    /**
+     * V9 pedal mounting angle (0x22): i16 LE in 0.01 deg, official-app btsnoop 2026-11-25 —
+     * 10.0 deg -> `60 22 e8 03`, -10.0 deg -> `60 22 18 fc`, 1.0 deg -> `60 22 64 00`
+     * (statuses echo the committed word at page body[15]). Values are tenths of a degree.
+     */
+    @Test
+    fun v9PedalAngleCommitsTenthsOfADegreeAsCentiWords() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216022e8039a"),
+            protocol.createCommand(CommandType.SET_PEDAL_ANGLE, 100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa16060221602218fc95"),
+            protocol.createCommand(CommandType.SET_PEDAL_ANGLE, -100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216022640015"),
+            protocol.createCommand(CommandType.SET_PEDAL_ANGLE, 10)
+        )
+    }
+
+    @Test
+    fun v9PedalSensitivityRefusesToEncodeWithoutAStatusReport() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertEquals(0, protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 50).size)
+        assertNotNull(protocol.commandStateError(CommandType.SET_PEDAL_SENSITIVITY.name))
     }
 
     @Test
