@@ -215,6 +215,7 @@ ou manuellement à partir d'une analyse terminée du commit actuel de `main`.
 
 - [WheelLog](https://github.com/Wheellog/Wheellog.Android)
 - [eried/eucplanet](https://github.com/eried/eucplanet)
+- [cancelledbit/loeuc-core](https://github.com/cancelledbit/loeuc-core)
 
 ## Contribuer (pour ceux qui viendront après)
 
