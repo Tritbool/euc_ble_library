@@ -1077,6 +1077,72 @@ class InMotionProtocolTest {
         assertNotNull(protocol.commandStateError(CommandType.SET_ALARM_SPEED.name))
     }
 
+    /**
+     * V9 ride-mode switch (0x23): a single bool byte — `60 23 00` selects the comfort
+     * mode, `60 23 01` switches back to the offroad/classic mode (official-app btsnoop
+     * 2026-11-25). The status page echoes the mode in bit 0 of body[19].
+     */
+    @Test
+    fun v9RideModeSelectsComfortOrOffroad() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160230073"),
+            protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(false))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160230172"),
+            protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(true))
+        )
+    }
+
+    /**
+     * V9 pedal sensitivity (0x25) commits both percents `[comfort][classic]`, replacing
+     * only the byte of the ride mode being ridden (official-app btsnoop 2026-11-25:
+     * comfort ride — `25 00 23`, `25 64 23`, `25 2d 23`; captured page comfort=45,
+     * classic=35). After switching to the offroad mode the second byte changes and
+     * the comfort percent (45) is preserved: 60 % -> `25 2d 3c`.
+     */
+    @Test
+    fun v9PedalSensitivityCommitsTheActiveModeSlot() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+        protocol.decode(
+            ByteUtils.hexToBytes(
+                "aaaa162e2102a0200000000000ff3e039411a00f951164006009002d2319010a28" +
+                    "646428d0076464c9c5cd02350107301500e4"
+            )
+        )
+
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216025002355"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 0)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa160602216025642331"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 100)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1606022160252d2378"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 45)
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1605022160230172"),
+            protocol.createCommand(CommandType.SET_RIDE_MODE, CommandValue.Toggle(true))
+        )
+        assertArrayEquals(
+            ByteUtils.hexToBytes("aaaa1606022160252d3c67"),
+            protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 60)
+        )
+    }
+
+    @Test
+    fun v9PedalSensitivityRefusesToEncodeWithoutAStatusReport() {
+        protocol.decode(ByteUtils.hexToBytes(v9ExtendedIdentityFrame))
+
+        assertEquals(0, protocol.createCommand(CommandType.SET_PEDAL_SENSITIVITY, 50).size)
+        assertNotNull(protocol.commandStateError(CommandType.SET_PEDAL_SENSITIVITY.name))
+    }
+
     @Test
     fun alarmSpeedHasNoEncoderWithoutTheExtendedRoutingProfile() {
         assertEquals(0, protocol.createCommand(CommandType.SET_ALARM_SPEED, 25).size)

@@ -255,6 +255,8 @@ enum class CommandType {
     SET_PEDAL_ANGLE,
     /** LeaperKim: ride-mode scalar 0..100, value = Int. */
     SET_RIDE_MODE,
+    /** InMotion: pedal sensitivity of the active ride mode 0..100 %, value = Int. */
+    SET_PEDAL_SENSITIVITY,
     /** LeaperKim: maximum PWM percentage 0..100, value = Int. */
     SET_PWM_LIMIT,
     /** KingSong: charge cutoff percentage 0..100, value = Int. */
